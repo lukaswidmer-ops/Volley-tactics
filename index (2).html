@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tactical Volley – Das Volleyball-Strategie-Kartenspiel</title>
+<meta name="description" content="Tactical Volley ist ein taktisches Kartenspiel für 3–4 Spieler.">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--fire-red:#e84317;--fire-orange:#f97316;--fire-gold:#f59e0b;--dark:#080808;--dark2:#111111;--dark3:#1a1a1a;--dark4:#222;--silver:#b0b0b0;--white:#fff;}
+html{scroll-behavior:smooth}
+body{background:var(--dark);color:var(--white);font-family:'Barlow',sans-serif;overflow-x:hidden}
+
+nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:1rem 3rem;display:flex;justify-content:space-between;align-items:center;background:rgba(8,8,8,0.9);backdrop-filter:blur(12px);border-bottom:1px solid rgba(232,67,23,0.2)}
+.nav-logo{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:1.7rem;letter-spacing:4px;text-transform:uppercase;background:linear-gradient(90deg,var(--fire-red),var(--fire-gold));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.nav-links{display:flex;gap:2rem;list-style:none;align-items:center}
+.nav-links a{color:var(--silver);text-decoration:none;font-size:0.85rem;letter-spacing:2px;font-weight:600;text-transform:uppercase;transition:color 0.2s}
+.nav-links a:hover{color:var(--fire-orange)}
+
+.lang-toggle{display:flex;align-items:center;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:2px;overflow:hidden}
+.lang-btn{padding:0.4rem 0.9rem;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:0.8rem;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.35);transition:all 0.2s;border:none;background:transparent;cursor:pointer}
+.lang-btn.active{background:linear-gradient(135deg,var(--fire-red),var(--fire-orange));color:white}
+.lang-divider{width:1px;height:24px;background:rgba(255,255,255,0.1);flex-shrink:0}
+
+.hero{height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;position:relative;padding:0 2rem;overflow:hidden}
+.hero-grid-bg{position:absolute;inset:0;background-image:repeating-linear-gradient(0deg,transparent,transparent 59px,rgba(192,192,192,0.06) 59px,rgba(192,192,192,0.06) 60px),repeating-linear-gradient(90deg,transparent,transparent 59px,rgba(192,192,192,0.06) 59px,rgba(192,192,192,0.06) 60px)}
+.hero-glow{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:700px;height:500px;background:radial-gradient(ellipse,rgba(232,67,23,0.12) 0%,transparent 70%);pointer-events:none}
+.hero-content{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center}
+.hero-badge{display:inline-block;background:rgba(232,67,23,0.12);border:1px solid rgba(232,67,23,0.35);color:var(--fire-orange);font-size:0.7rem;letter-spacing:4px;text-transform:uppercase;padding:0.4rem 1.4rem;margin-bottom:1.2rem;font-weight:600}
+.hero-title{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:clamp(5.5rem,15vw,12rem);line-height:0.88;letter-spacing:2px;text-transform:uppercase}
+.hero-title .line1{display:block;color:var(--white)}
+.hero-title .line2{display:block;background:linear-gradient(90deg,var(--fire-red) 0%,var(--fire-orange) 50%,var(--fire-gold) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.glitch{position:relative}
+.glitch::before,.glitch::after{content:attr(data-text);position:absolute;top:0;left:0;width:100%;background:linear-gradient(90deg,var(--fire-red),var(--fire-orange),var(--fire-gold));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.glitch::before{animation:glitch1 4s infinite;clip-path:polygon(0 15%,100% 15%,100% 35%,0 35%)}
+.glitch::after{animation:glitch2 4s infinite 0.15s;clip-path:polygon(0 65%,100% 65%,100% 80%,0 80%)}
+@keyframes glitch1{0%,88%,100%{transform:translateX(0)}90%{transform:translateX(-4px)}92%{transform:translateX(4px)}94%{transform:translateX(-2px)}}
+@keyframes glitch2{0%,88%,100%{transform:translateX(0)}91%{transform:translateX(4px)}93%{transform:translateX(-4px)}95%{transform:translateX(2px)}}
+.hero-sub{font-size:1.05rem;color:var(--silver);letter-spacing:3px;text-transform:uppercase;margin:1.2rem auto 2rem;font-weight:400;max-width:480px}
+.hero-cta{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap}
+.btn-primary{background:linear-gradient(135deg,var(--fire-red),var(--fire-orange));color:white;padding:0.85rem 2.5rem;border:none;font-family:'Barlow Condensed',sans-serif;font-size:1.05rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;cursor:pointer;transition:transform 0.2s,box-shadow 0.2s;text-decoration:none;display:inline-block}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(232,67,23,0.45)}
+.btn-secondary{background:transparent;color:var(--white);padding:0.85rem 2.5rem;border:1px solid rgba(255,255,255,0.25);font-family:'Barlow Condensed',sans-serif;font-size:1.05rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;cursor:pointer;transition:all 0.2s;text-decoration:none;display:inline-block}
+.btn-secondary:hover{border-color:var(--fire-orange);color:var(--fire-orange)}
+.hero-scroll{position:absolute;bottom:2rem;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.25);font-size:0.65rem;letter-spacing:4px;text-transform:uppercase;display:flex;flex-direction:column;align-items:center;gap:0.5rem;animation:bounce 2.5s infinite}
+@keyframes bounce{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(7px)}}
+.scroll-line{width:1px;height:36px;background:linear-gradient(to bottom,rgba(232,67,23,0.5),transparent)}
+
+section{padding:6rem 2rem}
+.section-inner{max-width:1100px;margin:0 auto}
+.section-label{font-size:0.68rem;letter-spacing:5px;text-transform:uppercase;color:var(--fire-orange);font-weight:600;margin-bottom:0.6rem}
+.section-title{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:clamp(2.8rem,5vw,4.5rem);letter-spacing:1px;text-transform:uppercase;margin-bottom:1rem;line-height:0.95}
+.section-desc{color:var(--silver);font-size:1rem;line-height:1.8;max-width:600px;font-weight:300}
+
+#about{background:var(--dark2)}
+.hint{font-size:0.7rem;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.2);font-weight:500;margin:0.8rem 0 2.5rem}
+.hint span{color:var(--fire-orange);opacity:0.7}
+.cards-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1.5rem;perspective:1200px}
+.flip-card{height:280px;cursor:pointer;perspective:1200px}
+.flip-inner{width:100%;height:100%;position:relative;transform-style:preserve-3d;transition:transform 0.65s cubic-bezier(0.4,0.2,0.2,1)}
+.flip-card.flipped .flip-inner{transform:rotateY(180deg)}
+.flip-front,.flip-back{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden}
+.flip-front{background:var(--dark3);border:1px solid rgba(255,255,255,0.05);padding:2rem 1.5rem;display:flex;flex-direction:column;justify-content:space-between}
+.flip-front .top{display:flex;flex-direction:column;gap:0.8rem}
+.flip-front .icon{font-size:2.2rem}
+.flip-front h3{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:1.6rem;letter-spacing:2px;text-transform:uppercase;line-height:1}
+.flip-front p{color:var(--silver);font-size:0.9rem;line-height:1.6;font-weight:300}
+.flip-front .tap-hint{font-size:0.65rem;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.2);display:flex;align-items:center;gap:0.4rem}
+.flip-front .tap-hint::after{content:'↺';font-size:0.9rem;color:var(--fire-orange);opacity:0.6}
+.flip-back{background:var(--dark4);transform:rotateY(180deg);padding:1.5rem;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;border:1px solid rgba(232,67,23,0.15)}
+.flip-back::before{content:'';position:absolute;inset:0;background-image:repeating-linear-gradient(45deg,transparent,transparent 14px,rgba(255,255,255,0.015) 14px,rgba(255,255,255,0.015) 15px);pointer-events:none}
+.flip-back .back-label{font-size:0.6rem;letter-spacing:3px;text-transform:uppercase;color:var(--fire-gold);font-weight:700;margin-bottom:0.6rem}
+.flip-back h3{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:1.35rem;letter-spacing:2px;text-transform:uppercase;margin-bottom:1rem;line-height:1}
+.flip-back ul{list-style:none;display:flex;flex-direction:column;gap:0.5rem;flex:1}
+.flip-back ul li{display:flex;align-items:flex-start;gap:0.6rem;font-size:0.85rem;color:var(--silver);font-weight:300;line-height:1.5}
+.flip-back ul li::before{content:'';display:block;width:6px;height:6px;border-radius:50%;background:var(--fire-orange);flex-shrink:0;margin-top:0.45rem}
+.flip-back .back-close{font-size:0.62rem;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.2);text-align:right}
+.flip-back .back-close span{color:var(--fire-orange);opacity:0.6}
+.c1 .flip-front{border-top:3px solid #e84317}.c1 .flip-back{border-top:3px solid #f59e0b}
+.c2 .flip-front{border-top:3px solid #0ea5e9}.c2 .flip-back{border-top:3px solid #38bdf8}
+.c3 .flip-front{border-top:3px solid #16a34a}.c3 .flip-back{border-top:3px solid #4ade80}
+.c4 .flip-front{border-top:3px solid #a855f7}.c4 .flip-back{border-top:3px solid #c084fc}
+
+#cards{background:var(--dark)}
+.cards-showcase{display:flex;gap:1.5rem;margin-top:3rem;flex-wrap:wrap;justify-content:center}
+.player-card{width:155px;height:235px;position:relative;overflow:hidden;cursor:pointer;transition:transform 0.3s;flex-shrink:0}
+.player-card:hover{transform:translateY(-12px) scale(1.05)}
+.card-net{position:absolute;inset:0;background-image:repeating-linear-gradient(45deg,transparent,transparent 8px,rgba(255,255,255,0.04) 8px,rgba(255,255,255,0.04) 9px),repeating-linear-gradient(-45deg,transparent,transparent 8px,rgba(255,255,255,0.04) 8px,rgba(255,255,255,0.04) 9px)}
+.card-border-top{position:absolute;top:0;left:0;right:0;height:4px}
+.card-content{position:absolute;bottom:0;left:0;right:0;padding:1rem;z-index:1}
+.card-label{position:absolute;top:0.7rem;right:0.7rem;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:0.6rem;letter-spacing:2px;text-transform:uppercase;padding:0.2rem 0.5rem;color:white;z-index:1}
+.card-stars{color:var(--fire-gold);font-size:0.7rem;margin-bottom:0.2rem}
+.card-name{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:1.25rem;letter-spacing:2px;text-transform:uppercase}
+.card-pos{font-size:0.65rem;letter-spacing:2px;text-transform:uppercase;opacity:0.6;font-weight:500}
+.card-red{background:linear-gradient(160deg,#180806,#2d0f0f);border:1px solid rgba(232,67,23,0.3)}
+.card-red .card-border-top,.card-red .card-label{background:var(--fire-red)}
+.card-green{background:linear-gradient(160deg,#081408,#0d2a0d);border:1px solid rgba(34,197,94,0.25)}
+.card-green .card-border-top,.card-green .card-label{background:#16a34a}
+.card-lightblue{background:linear-gradient(160deg,#080f1a,#0d1a2d);border:1px solid rgba(56,189,248,0.25)}
+.card-lightblue .card-border-top,.card-lightblue .card-label{background:#0ea5e9}
+.card-darkblue{background:linear-gradient(160deg,#08091a,#0d0e2d);border:1px solid rgba(99,102,241,0.25)}
+.card-darkblue .card-border-top,.card-darkblue .card-label{background:#4f46e5}
+.card-yellow{background:linear-gradient(160deg,#171200,#2a2000);border:1px solid rgba(234,179,8,0.25)}
+.card-yellow .card-border-top,.card-yellow .card-label{background:#ca8a04}
+
+#rules{background:var(--dark2)}
+.title-row{display:flex;align-items:flex-end;justify-content:space-between;gap:1.5rem;margin-bottom:1.2rem;flex-wrap:wrap}
+.btn-download{display:inline-flex;align-items:center;gap:0.7rem;background:transparent;border:1px solid rgba(232,67,23,0.5);color:var(--fire-orange);padding:0.75rem 1.5rem;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:0.9rem;letter-spacing:3px;text-transform:uppercase;cursor:pointer;transition:all 0.2s;text-decoration:none;white-space:nowrap;flex-shrink:0}
+.btn-download:hover{background:rgba(232,67,23,0.1);border-color:var(--fire-orange);transform:translateY(-2px)}
+.dl-icon{display:flex;flex-direction:column;align-items:center;gap:2px}
+.dl-arrow{width:2px;height:8px;background:var(--fire-orange)}
+.dl-head{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid var(--fire-orange)}
+.dl-line{width:12px;height:2px;background:var(--fire-orange);margin-top:1px}
+.rules-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-top:3rem}
+@media(max-width:680px){.rules-grid{grid-template-columns:1fr}}
+.rule-block{background:var(--dark3);border:1px solid rgba(255,255,255,0.05);border-left:3px solid var(--fire-red);padding:1.5rem}
+.rule-block h3{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:1.3rem;letter-spacing:2px;text-transform:uppercase;color:var(--fire-orange);margin-bottom:0.8rem}
+.rule-block ul{padding-left:1.2rem}
+.rule-block li{color:var(--silver);font-size:0.9rem;line-height:1.9;font-weight:300}
+.rule-block strong{color:var(--fire-orange);font-weight:600}
+
+#campaign{background:var(--dark);position:relative;overflow:hidden}
+#campaign::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(232,67,23,0.07) 0%,transparent 65%)}
+.campaign-inner{position:relative;z-index:1;text-align:center}
+.campaign-goal{display:flex;justify-content:center;gap:3rem;margin:3rem 0;flex-wrap:wrap}
+.goal-number{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:4rem;line-height:1;background:linear-gradient(90deg,var(--fire-red),var(--fire-gold));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.goal-label{font-size:0.72rem;letter-spacing:3px;text-transform:uppercase;color:var(--silver);font-weight:500;margin-top:0.2rem}
+.campaign-bar-wrap{max-width:600px;margin:1.5rem auto;background:rgba(255,255,255,0.05);height:6px}
+.campaign-bar{height:100%;background:linear-gradient(90deg,var(--fire-red),var(--fire-gold));width:0;transition:width 1.5s ease}
+
+#contact{background:var(--dark2)}
+.social-title{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:clamp(2.5rem,5vw,4rem);text-transform:uppercase;letter-spacing:1px;line-height:0.95;margin-bottom:0.5rem}
+.social-cards{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-top:2.5rem;max-width:700px}
+@media(max-width:580px){.social-cards{grid-template-columns:1fr}}
+.social-card{background:var(--dark3);border:1px solid rgba(255,255,255,0.06);padding:2rem 1.8rem;display:flex;flex-direction:column;gap:1rem;transition:transform 0.2s;text-decoration:none;color:var(--white)}
+.social-card:hover{transform:translateY(-4px)}
+.social-card.tiktok{border-top:3px solid #ee1d52}
+.social-card.instagram{border-top:3px solid #e1306c}
+.social-icon{width:48px;height:48px;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:1.1rem;letter-spacing:1px}
+.tiktok .social-icon{background:rgba(238,29,82,0.12);color:#ee1d52}
+.instagram .social-icon{background:rgba(225,48,108,0.12);color:#e1306c}
+.social-name{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:1.4rem;letter-spacing:2px;text-transform:uppercase}
+.social-handle{font-size:0.85rem;color:var(--silver);letter-spacing:1px;font-weight:300}
+.social-desc{font-size:0.85rem;color:var(--silver);line-height:1.6;font-weight:300;flex:1}
+.social-cta{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:0.8rem;letter-spacing:3px;text-transform:uppercase;margin-top:0.5rem}
+.tiktok .social-cta{color:#ee1d52}
+.instagram .social-cta{color:#e1306c}
+
+footer{background:var(--dark);border-top:1px solid rgba(255,255,255,0.05);padding:2rem 3rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem}
+.footer-logo{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:1.3rem;letter-spacing:4px;text-transform:uppercase;background:linear-gradient(90deg,var(--fire-red),var(--fire-gold));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+footer p{color:rgba(255,255,255,0.2);font-size:0.78rem;letter-spacing:1px}
+
+@media(max-width:768px){nav{padding:1rem 1.5rem}.nav-links{display:none}section{padding:4rem 1.5rem}}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-logo">Tactical Volley</div>
+  <ul class="nav-links">
+    <li><a href="#about" data-de="Das Spiel" data-en="The Game">Das Spiel</a></li>
+    <li><a href="#cards" data-de="Karten" data-en="Cards">Karten</a></li>
+    <li><a href="#rules" data-de="Regeln" data-en="Rules">Regeln</a></li>
+    <li><a href="#campaign" data-de="Kampagne" data-en="Campaign">Kampagne</a></li>
+    <li><a href="#contact" data-de="Follow" data-en="Follow">Follow</a></li>
+    <li>
+      <div class="lang-toggle">
+        <button class="lang-btn active" id="btn-de" onclick="setLang('de')">DE</button>
+        <div class="lang-divider"></div>
+        <button class="lang-btn" id="btn-en" onclick="setLang('en')">EN</button>
+      </div>
+    </li>
+  </ul>
+</nav>
+
+<section class="hero">
+  <div class="hero-grid-bg"></div>
+  <div class="hero-glow"></div>
+  <div class="hero-content">
+    <div class="hero-badge" data-de="Das Volleyball-Strategie-Kartenspiel" data-en="The Volleyball Strategy Card Game">Das Volleyball-Strategie-Kartenspiel</div>
+    <h1 class="hero-title">
+      <span class="line1">Tactical</span>
+      <span class="line2 glitch" data-text="Volley">Volley</span>
+    </h1>
+    <p class="hero-sub" data-de="Baue dein Team · Dominiere die Liga · Hebe den Cup" data-en="Build your team · Dominate the league · Lift the cup">Baue dein Team · Dominiere die Liga · Hebe den Cup</p>
+    <div class="hero-cta">
+      <a href="#contact" class="btn-primary" data-de="Jetzt unterstützen" data-en="Support now">Jetzt unterstützen</a>
+      <a href="#rules" class="btn-secondary" data-de="Wie funktioniert es?" data-en="How does it work?">Wie funktioniert es?</a>
+    </div>
+  </div>
+  <div class="hero-scroll"><div class="scroll-line"></div><span>Scroll</span></div>
+</section>
+
+<section id="about">
+  <div class="section-inner">
+    <div class="section-label" data-de="Das Spiel" data-en="The Game">Das Spiel</div>
+    <h2 class="section-title" data-de="Volleyball trifft Strategie" data-en="Volleyball meets Strategy">Volleyball trifft Strategie</h2>
+    <p class="section-desc" data-de="Tactical Volley ist ein taktisches Kartenspiel für 3–4 Spieler. Manage dein Team, gewinne Turniere und sammle 8 Siegpunkte – bevor deine Gegner es tun." data-en="Tactical Volley is a tactical card game for 3–4 players. Manage your team, win tournaments and collect 8 victory points – before your opponents do.">Tactical Volley ist ein taktisches Kartenspiel für 3–4 Spieler. Manage dein Team, gewinne Turniere und sammle 8 Siegpunkte – bevor deine Gegner es tun.</p>
+    <p class="hint"><span>↺ </span><span class="hint-text" data-de="Karte antippen für mehr Details" data-en="Tap card for more details">Karte antippen für mehr Details</span></p>
+    <div class="cards-grid">
+
+      <div class="flip-card c1" onclick="this.classList.toggle('flipped')">
+        <div class="flip-inner">
+          <div class="flip-front">
+            <div class="top">
+              <div class="icon">🏐</div>
+              <h3 data-de="Team Management" data-en="Team Management">Team Management</h3>
+              <p data-de="Kaufe und entwickle Spielerkarten von 1–5 Sternen. Jede Position hat eigene Stärken." data-en="Buy and develop player cards from 1–5 stars. Each position has its own strengths.">Kaufe und entwickle Spielerkarten von 1–5 Sternen. Jede Position hat eigene Stärken.</p>
+            </div>
+            <div class="tap-hint" data-de="Mehr erfahren" data-en="Learn more">Mehr erfahren</div>
+          </div>
+          <div class="flip-back">
+            <div>
+              <div class="back-label" data-de="Team Management" data-en="Team Management">Team Management</div>
+              <h3 data-de="Dein Kader, deine Taktik" data-en="Your squad, your tactics">Dein Kader, deine Taktik</h3>
+              <ul>
+                <li data-de="5 Positionen: Outside, Middle, Setter, Libero (Dia), Libero" data-en="5 positions: Outside, Middle, Setter, Libero (Dia), Libero">5 Positionen: Outside, Middle, Setter, Libero (Dia), Libero</li>
+                <li data-de="Karten von 1★ Talent bis 5★ Weltstar" data-en="Cards from 1★ talent to 5★ world star">Karten von 1★ Talent bis 5★ Weltstar</li>
+                <li data-de="Startkapital 80.000 – klug investieren" data-en="Starting capital 80,000 – invest wisely">Startkapital 80.000 – klug investieren</li>
+                <li data-de="Stärkere Spieler = höhere Chancen in der Liga" data-en="Stronger players = better chances in the league">Stärkere Spieler = höhere Chancen in der Liga</li>
+              </ul>
+            </div>
+            <div class="back-close" data-de="Zurückdrehen ↺" data-en="Flip back ↺">Zurückdrehen <span>↺</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flip-card c2" onclick="this.classList.toggle('flipped')">
+        <div class="flip-inner">
+          <div class="flip-front">
+            <div class="top">
+              <div class="icon">🏆</div>
+              <h3 data-de="Turniere &amp; Liga" data-en="Tournaments &amp; League">Turniere &amp; Liga</h3>
+              <p data-de="SuperCup, Champions League, Cup – 6 Wochen voller Wettbewerb mit echtem Spielgeld." data-en="Super Cup, Champions League, Cup – 6 weeks of competition with real game money.">SuperCup, Champions League, Cup – 6 Wochen voller Wettbewerb mit echtem Spielgeld.</p>
+            </div>
+            <div class="tap-hint" data-de="Mehr erfahren" data-en="Learn more">Mehr erfahren</div>
+          </div>
+          <div class="flip-back">
+            <div>
+              <div class="back-label" data-de="Turnierkalender" data-en="Tournament Calendar">Turnierkalender</div>
+              <h3 data-de="6 Wochen, 5 Events" data-en="6 Weeks, 5 Events">6 Wochen, 5 Events</h3>
+              <ul>
+                <li data-de="Woche 1 – SuperCup (15.000)" data-en="Week 1 – Super Cup (15,000)">Woche 1 – SuperCup (15.000)</li>
+                <li data-de="Woche 2/4/6 – Champions League (20k / 35k Final)" data-en="Week 2/4/6 – Champions League (20k / 35k Final)">Woche 2/4/6 – Champions League (20k / 35k Final)</li>
+                <li data-de="Woche 3 – Cup-Runde" data-en="Week 3 – Cup Round">Woche 3 – Cup-Runde</li>
+                <li data-de="Woche 5 – Cup Final (20.000)" data-en="Week 5 – Cup Final (20,000)">Woche 5 – Cup Final (20.000)</li>
+              </ul>
+            </div>
+            <div class="back-close" data-de="Zurückdrehen ↺" data-en="Flip back ↺">Zurückdrehen <span>↺</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flip-card c3" onclick="this.classList.toggle('flipped')">
+        <div class="flip-inner">
+          <div class="flip-front">
+            <div class="top">
+              <div class="icon">🎲</div>
+              <h3 data-de="3 Liga-Systeme" data-en="3 League Systems">3 Liga-Systeme</h3>
+              <p data-de="Classical, Position Poker und Action Chains – jede Saison bringt neue Mechaniken." data-en="Classic, Position Poker and Action Chains – every season brings new mechanics.">Classical, Position Poker und Action Chains – jede Saison bringt neue Mechaniken.</p>
+            </div>
+            <div class="tap-hint" data-de="Mehr erfahren" data-en="Learn more">Mehr erfahren</div>
+          </div>
+          <div class="flip-back">
+            <div>
+              <div class="back-label" data-de="Liga-Systeme" data-en="League Systems">Liga-Systeme</div>
+              <h3 data-de="Jede Saison anders" data-en="Different every season">Jede Saison anders</h3>
+              <ul>
+                <li data-de="Classical – 12-seitiger Würfel, 12 Kriterien, Home-Bonus" data-en="Classic – 12-sided die, 12 criteria, home bonus">Classical – 12-seitiger Würfel, 12 Kriterien, Home-Bonus</li>
+                <li data-de="Position Poker – 3 Paare, direkte Sternvergleiche" data-en="Position Poker – 3 pairs, direct star comparisons">Position Poker – 3 Paare, direkte Sternvergleiche</li>
+                <li data-de="Action Chains – 6W, 3 Runden, Kettenreaktionen" data-en="Action Chains – 6-sided die, 3 rounds, chain reactions">Action Chains – 6W, 3 Runden, Kettenreaktionen</li>
+              </ul>
+            </div>
+            <div class="back-close" data-de="Zurückdrehen ↺" data-en="Flip back ↺">Zurückdrehen <span>↺</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flip-card c4" onclick="this.classList.toggle('flipped')">
+        <div class="flip-inner">
+          <div class="flip-front">
+            <div class="top">
+              <div class="icon">🎯</div>
+              <h3 data-de="Siegpunkte" data-en="Victory Points">Siegpunkte</h3>
+              <p data-de="Wer zuerst 8 Siegpunkte sammelt gewinnt. Jedes Turnier zählt – kein Fehler erlaubt." data-en="First to collect 8 victory points wins. Every tournament counts – no mistakes allowed.">Wer zuerst 8 Siegpunkte sammelt gewinnt. Jedes Turnier zählt – kein Fehler erlaubt.</p>
+            </div>
+            <div class="tap-hint" data-de="Mehr erfahren" data-en="Learn more">Mehr erfahren</div>
+          </div>
+          <div class="flip-back">
+            <div>
+              <div class="back-label" data-de="Siegpunkte" data-en="Victory Points">Siegpunkte</div>
+              <h3 data-de="Der Weg zum Titel" data-en="The Road to the Title">Der Weg zum Titel</h3>
+              <ul>
+                <li data-de="Liga 1. Platz → 3 Punkte" data-en="League 1st place → 3 points">Liga 1. Platz → 3 Punkte</li>
+                <li data-de="Liga 2. Platz → 2 · Liga 3. Platz → 1" data-en="League 2nd → 2 · League 3rd → 1">Liga 2. Platz → 2 · Liga 3. Platz → 1</li>
+                <li data-de="Champions League Sieg → 3 Punkte" data-en="Champions League win → 3 points">Champions League Sieg → 3 Punkte</li>
+                <li data-de="Cup-Sieger → 2 · Cup-Finalist → 1" data-en="Cup winner → 2 · Cup finalist → 1">Cup-Sieger → 2 · Cup-Finalist → 1</li>
+              </ul>
+            </div>
+            <div class="back-close" data-de="Zurückdrehen ↺" data-en="Flip back ↺">Zurückdrehen <span>↺</span></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="cards">
+  <div class="section-inner">
+    <div class="section-label" data-de="Spielerkarten" data-en="Player Cards">Spielerkarten</div>
+    <h2 class="section-title" data-de="Dein Kader,<br>deine Taktik" data-en="Your squad,<br>your tactics">Dein Kader,<br>deine Taktik</h2>
+    <p class="section-desc" data-de="5 Positionen, unzählige Kombinationen. Von 1-Stern-Talenten bis zu 5-Stern-Weltstars." data-en="5 positions, endless combinations. From 1-star talents to 5-star world stars.">5 Positionen, unzählige Kombinationen. Von 1-Stern-Talenten bis zu 5-Stern-Weltstars.</p>
+    <div class="cards-showcase">
+      <div class="player-card card-red"><div class="card-net"></div><div class="card-border-top"></div><div class="card-label">Outside</div><div class="card-content"><div class="card-stars">★★★★★</div><div class="card-name">Attacker</div><div class="card-pos" data-de="Outside Hitter" data-en="Outside Hitter">Outside Hitter</div></div></div>
+      <div class="player-card card-green"><div class="card-net"></div><div class="card-border-top"></div><div class="card-label">Middle</div><div class="card-content"><div class="card-stars">★★★★☆</div><div class="card-name">Blocker</div><div class="card-pos" data-de="Middle Blocker" data-en="Middle Blocker">Middle Blocker</div></div></div>
+      <div class="player-card card-lightblue"><div class="card-net"></div><div class="card-border-top"></div><div class="card-label">Setter</div><div class="card-content"><div class="card-stars">★★★★★</div><div class="card-name">Setter</div><div class="card-pos">Setter</div></div></div>
+      <div class="player-card card-darkblue"><div class="card-net"></div><div class="card-border-top"></div><div class="card-label">Libero</div><div class="card-content"><div class="card-stars">★★★☆☆</div><div class="card-name">Libero</div><div class="card-pos" data-de="Libero / Dia" data-en="Libero / Dia">Libero / Dia</div></div></div>
+      <div class="player-card card-yellow"><div class="card-net"></div><div class="card-border-top"></div><div class="card-label">Libero</div><div class="card-content"><div class="card-stars">★★★★☆</div><div class="card-name">Defender</div><div class="card-pos">Libero</div></div></div>
+    </div>
+  </div>
+</section>
+
+<section id="rules">
+  <div class="section-inner">
+    <div class="section-label" data-de="Spielregeln" data-en="Game Rules">Spielregeln</div>
+    <div class="title-row">
+      <h2 class="section-title" data-de="Wie funktioniert es?" data-en="How does it work?">Wie funktioniert es?</h2>
+      <a href="Tactical-Volley-Regeln.pdf" class="btn-download" id="pdf-link" download>
+        <div class="dl-icon"><div class="dl-arrow"></div><div class="dl-head"></div><div class="dl-line"></div></div>
+        <span data-de="Regelwerk PDF" data-en="Rules PDF">Regelwerk PDF</span>
+      </a>
+    </div>
+    <p class="section-desc" data-de="Ein schwarzer Hut steuert die globale Timeline – 6 Wochen, 5 Turniere, 3 Liga-Systeme." data-en="A black hat controls the global timeline – 6 weeks, 5 tournaments, 3 league systems.">Ein schwarzer Hut steuert die globale Timeline – 6 Wochen, 5 Turniere, 3 Liga-Systeme.</p>
+    <div class="rules-grid">
+      <div class="rule-block">
+        <h3 data-de="Grundregeln" data-en="Basic Rules">Grundregeln</h3>
+        <ul>
+          <li data-de="3–4 Spieler, Startkapital 80.000" data-en="3–4 players, starting capital 80,000">3–4 Spieler, Startkapital 80.000</li>
+          <li data-de="Ziel: Als erster 8 Siegpunkte" data-en="Goal: Be first to reach 8 victory points">Ziel: Als erster 8 Siegpunkte</li>
+          <li data-de="6 Wochen + optionale Woche 7" data-en="6 weeks + optional week 7">6 Wochen + optionale Woche 7</li>
+          <li data-de="Schwarzer Hut = globaler Fortschritt" data-en="Black hat = global progress">Schwarzer Hut = globaler Fortschritt</li>
+        </ul>
+      </div>
+      <div class="rule-block">
+        <h3 data-de="Turnierkalender" data-en="Tournament Calendar">Turnierkalender</h3>
+        <ul>
+          <li data-de="Woche 1 – SuperCup (15.000)" data-en="Week 1 – Super Cup (15,000)">Woche 1 – SuperCup (15.000)</li>
+          <li data-de="Woche 2/4/6 – Champions League" data-en="Week 2/4/6 – Champions League">Woche 2/4/6 – Champions League</li>
+          <li data-de="Woche 3 – Cup-Runde" data-en="Week 3 – Cup Round">Woche 3 – Cup-Runde</li>
+          <li data-de="Woche 5 – Cup Final (20.000)" data-en="Week 5 – Cup Final (20,000)">Woche 5 – Cup Final (20.000)</li>
+        </ul>
+      </div>
+      <div class="rule-block">
+        <h3 data-de="Siegpunkte" data-en="Victory Points">Siegpunkte</h3>
+        <ul>
+          <li data-de="Liga 1. Platz → 3 Punkte" data-en="League 1st place → 3 points">Liga 1. Platz → 3 Punkte</li>
+          <li data-de="Liga 2. Platz → 2 Punkte" data-en="League 2nd place → 2 points">Liga 2. Platz → 2 Punkte</li>
+          <li data-de="Liga 3. Platz → 1 Punkt" data-en="League 3rd place → 1 point">Liga 3. Platz → 1 Punkt</li>
+          <li data-de="Champions League Sieg → 3 Punkte" data-en="Champions League win → 3 points">Champions League Sieg → 3 Punkte</li>
+          <li data-de="Cup-Sieger → 2 · Cup-Finalist → 1" data-en="Cup winner → 2 · Cup finalist → 1">Cup-Sieger → 2 · Cup-Finalist → 1</li>
+        </ul>
+      </div>
+      <div class="rule-block">
+        <h3 data-de="Liga-Systeme" data-en="League Systems">Liga-Systeme</h3>
+        <ul>
+          <li><strong>Classical</strong> <span data-de="– 12-seitiger Würfel, 12 Kriterien" data-en="– 12-sided die, 12 criteria"> – 12-seitiger Würfel, 12 Kriterien</span></li>
+          <li><strong>Position Poker</strong> <span data-de="– 3 Paare, Sternvergleich" data-en="– 3 pairs, star comparison"> – 3 Paare, Sternvergleich</span></li>
+          <li><strong>Action Chains</strong> <span data-de="– 6W, 3 Runden" data-en="– 6-sided die, 3 rounds"> – 6W, 3 Runden</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="campaign">
+  <div class="section-inner campaign-inner">
+    <div class="section-label" data-de="Kampagne" data-en="Campaign">Kampagne</div>
+    <h2 class="section-title" data-de="Bring Tactical Volley<br>zum Leben" data-en="Bring Tactical Volley<br>to Life">Bring Tactical Volley<br>zum Leben</h2>
+    <p class="section-desc" style="margin:0.5rem auto 0;text-align:center" data-de="Bald auf Kickstarter / Gamefound. Sei dabei von Anfang an." data-en="Coming soon to Kickstarter / Gamefound. Be there from the start.">Bald auf Kickstarter / Gamefound. Sei dabei von Anfang an.</p>
+    <div class="campaign-goal">
+      <div class="goal-item"><div class="goal-number">3–4</div><div class="goal-label" data-de="Spieler" data-en="Players">Spieler</div></div>
+      <div class="goal-item"><div class="goal-number">6</div><div class="goal-label" data-de="Wochen" data-en="Weeks">Wochen</div></div>
+      <div class="goal-item"><div class="goal-number">3</div><div class="goal-label" data-de="Liga-Systeme" data-en="League Systems">Liga-Systeme</div></div>
+      <div class="goal-item"><div class="goal-number">8</div><div class="goal-label" data-de="Siegpunkte" data-en="Victory Points">Siegpunkte</div></div>
+    </div>
+    <div class="campaign-bar-wrap"><div class="campaign-bar" id="progressBar"></div></div>
+    <p style="color:rgba(255,255,255,0.25);font-size:0.75rem;letter-spacing:2px;text-transform:uppercase;margin-bottom:2.5rem">Coming Soon</p>
+    <a href="#contact" class="btn-primary" data-de="Folge uns für Updates" data-en="Follow us for updates">Folge uns für Updates</a>
+  </div>
+</section>
+
+<section id="contact">
+  <div class="section-inner">
+    <div class="section-label" data-de="Community" data-en="Community">Community</div>
+    <h2 class="social-title" data-de="Folge dem Spiel" data-en="Follow the Game">Folge dem Spiel</h2>
+    <p class="section-desc" data-de="Highlights, Einblicke hinter die Kulissen und Launch-Updates – direkt auf deinem Feed." data-en="Highlights, behind-the-scenes insights and launch updates – straight to your feed.">Highlights, Einblicke hinter die Kulissen und Launch-Updates – direkt auf deinem Feed.</p>
+    <div class="social-cards">
+      <a href="https://www.tiktok.com/@volley_ballers" class="social-card tiktok" target="_blank">
+        <div class="social-icon">TT</div>
+        <div><div class="social-name">TikTok</div><div class="social-handle">@Volley_ballers</div></div>
+        <div class="social-desc" data-de="Volleyball-Highlights, Spielszenen und Einblicke in die Entwicklung von Tactical Volley." data-en="Volleyball highlights, game footage and insights into the development of Tactical Volley.">Volleyball-Highlights, Spielszenen und Einblicke in die Entwicklung von Tactical Volley.</div>
+        <div class="social-cta" data-de="Jetzt folgen →" data-en="Follow now →">Jetzt folgen →</div>
+      </a>
+      <a href="#" class="social-card instagram" target="_blank">
+        <div class="social-icon">IG</div>
+        <div><div class="social-name">Instagram</div><div class="social-handle">@tacticalvolley</div></div>
+        <div class="social-desc" data-de="Karten-Previews, Spielmechanik-Sneak-Peeks und Neuigkeiten zum Kampagnen-Start." data-en="Card previews, gameplay sneak-peeks and news about the campaign launch.">Karten-Previews, Spielmechanik-Sneak-Peeks und Neuigkeiten zum Kampagnen-Start.</div>
+        <div class="social-cta" data-de="Jetzt folgen →" data-en="Follow now →">Jetzt folgen →</div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-logo">Tactical Volley</div>
+  <p data-de="© 2025 Lukas Widmer · Alle Rechte vorbehalten" data-en="© 2025 Lukas Widmer · All rights reserved">© 2025 Lukas Widmer · Alle Rechte vorbehalten</p>
+</footer>
+
+<script>
+  // Progress bar
+  const bar = document.getElementById('progressBar');
+  const obs = new IntersectionObserver(e => {
+    e.forEach(x => { if(x.isIntersecting) bar.style.width = '34%' });
+  }, {threshold: 0.3});
+  obs.observe(bar);
+
+  // Language switcher
+  function setLang(lang) {
+    document.getElementById('btn-de').classList.toggle('active', lang === 'de');
+    document.getElementById('btn-en').classList.toggle('active', lang === 'en');
+    document.documentElement.lang = lang;
+
+    // Update all translatable elements
+    document.querySelectorAll('[data-de]').forEach(el => {
+      const text = el.getAttribute('data-' + lang);
+      if (!text) return;
+      if (text.includes('<br>')) {
+        el.innerHTML = text;
+      } else {
+        el.textContent = text;
+      }
+    });
+
+    // Swap PDF to correct language version
+    const pdfLink = document.getElementById('pdf-link');
+    pdfLink.href = lang === 'en' ? 'Tactical-Volley-Rules-EN.pdf' : 'Tactical-Volley-Regeln.pdf';
+  }
+</script>
+</body>
+</html>
