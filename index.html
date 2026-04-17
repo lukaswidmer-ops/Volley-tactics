@@ -204,7 +204,6 @@ footer p{color:rgba(255,255,255,0.2);font-size:0.78rem;letter-spacing:1px}
     <li><a href="#about" data-de="Das Spiel" data-en="The Game">Das Spiel</a></li>
     <li><a href="#cards" data-de="Karten" data-en="Cards">Karten</a></li>
     <li><a href="#rules" data-de="Regeln" data-en="Rules">Regeln</a></li>
-    <li><a href="#gallery" data-de="Galerie" data-en="Gallery">Galerie</a></li>
     <li><a href="#campaign" data-de="Kampagne" data-en="Campaign">Kampagne</a></li>
     <li><a href="#contact" data-de="Follow" data-en="Follow">Follow</a></li>
     <li>
@@ -355,12 +354,13 @@ footer p{color:rgba(255,255,255,0.2);font-size:0.78rem;letter-spacing:1px}
     <div class="section-label" data-de="Spielerkarten" data-en="Player Cards">Spielerkarten</div>
     <h2 class="section-title" data-de="Dein Kader,<br>deine Taktik" data-en="Your squad,<br>your tactics">Dein Kader,<br>deine Taktik</h2>
     <p class="section-desc" data-de="5 Positionen, unzählige Kombinationen. Von 1-Stern-Talenten bis zu 5-Stern-Weltstars." data-en="5 positions, endless combinations. From 1-star talents to 5-star world stars.">5 Positionen, unzählige Kombinationen. Von 1-Stern-Talenten bis zu 5-Stern-Weltstars.</p>
+    <p class="hint" style="margin-bottom:2rem"><span>👆 </span><span data-de="Karte antippen um alle Karten zu sehen" data-en="Tap a card to browse all cards">Karte antippen um alle Karten zu sehen</span></p>
     <div class="cards-showcase">
-      <div class="player-card card-red"><div class="card-net"></div><div class="card-border-top"></div><div class="card-label">Outside</div><div class="card-content"><div class="card-stars">★★★★★</div><div class="card-name">Attacker</div><div class="card-pos" data-de="Outside Hitter" data-en="Outside Hitter">Outside Hitter</div></div></div>
-      <div class="player-card card-green"><div class="card-net"></div><div class="card-border-top"></div><div class="card-label">Middle</div><div class="card-content"><div class="card-stars">★★★★☆</div><div class="card-name">Blocker</div><div class="card-pos" data-de="Middle Blocker" data-en="Middle Blocker">Middle Blocker</div></div></div>
-      <div class="player-card card-lightblue"><div class="card-net"></div><div class="card-border-top"></div><div class="card-label">Setter</div><div class="card-content"><div class="card-stars">★★★★★</div><div class="card-name">Setter</div><div class="card-pos">Setter</div></div></div>
-      <div class="player-card card-darkblue"><div class="card-net"></div><div class="card-border-top"></div><div class="card-label">Libero</div><div class="card-content"><div class="card-stars">★★★☆☆</div><div class="card-name">Libero</div><div class="card-pos" data-de="Libero / Dia" data-en="Libero / Dia">Libero / Dia</div></div></div>
-      <div class="player-card card-yellow"><div class="card-net"></div><div class="card-border-top"></div><div class="card-label">Libero</div><div class="card-content"><div class="card-stars">★★★★☆</div><div class="card-name">Defender</div><div class="card-pos">Libero</div></div></div>
+      <div class="player-card card-red" onclick="openGallery('outside')" style="cursor:pointer"><div class="card-net"></div><div class="card-border-top"></div><div class="card-label">Outside</div><div class="card-content"><div class="card-stars">★★★★★</div><div class="card-name">Attacker</div><div class="card-pos" data-de="Outside Hitter" data-en="Outside Hitter">Outside Hitter</div></div></div>
+      <div class="player-card card-green" onclick="openGallery('middle')" style="cursor:pointer"><div class="card-net"></div><div class="card-border-top"></div><div class="card-label">Middle</div><div class="card-content"><div class="card-stars">★★★★☆</div><div class="card-name">Blocker</div><div class="card-pos" data-de="Middle Blocker" data-en="Middle Blocker">Middle Blocker</div></div></div>
+      <div class="player-card card-lightblue" onclick="openGallery('setter')" style="cursor:pointer"><div class="card-net"></div><div class="card-border-top"></div><div class="card-label">Setter</div><div class="card-content"><div class="card-stars">★★★★★</div><div class="card-name">Setter</div><div class="card-pos">Setter</div></div></div>
+      <div class="player-card card-darkblue" onclick="openGallery('diagonal')" style="cursor:pointer"><div class="card-net"></div><div class="card-border-top"></div><div class="card-label">Libero</div><div class="card-content"><div class="card-stars">★★★☆☆</div><div class="card-name">Libero</div><div class="card-pos" data-de="Libero / Dia" data-en="Libero / Dia">Libero / Dia</div></div></div>
+      <div class="player-card card-yellow" onclick="openGallery('libero')" style="cursor:pointer"><div class="card-net"></div><div class="card-border-top"></div><div class="card-label">Libero</div><div class="card-content"><div class="card-stars">★★★★☆</div><div class="card-name">Defender</div><div class="card-pos">Libero</div></div></div>
     </div>
   </div>
 </section>
@@ -418,41 +418,6 @@ footer p{color:rgba(255,255,255,0.2);font-size:0.78rem;letter-spacing:1px}
 </section>
 
 <script src="cards.js"></script>
-
-<section id="gallery">
-  <div class="section-inner">
-    <div class="section-label" data-de="Karten-Galerie" data-en="Card Gallery">Karten-Galerie</div>
-    <h2 class="section-title" data-de="Alle Spielerkarten" data-en="All Player Cards">Alle Spielerkarten</h2>
-    <p class="section-desc" data-de="Wähle eine Position um die Karten im 3D-Karussell zu durchstöbern." data-en="Select a position to browse the cards in the 3D carousel.">Wähle eine Position um die Karten im 3D-Karussell zu durchstöbern.</p>
-    <div class="gallery-positions">
-      <div class="gal-pos-btn" onclick="openGallery('outside')" style="--c:#e84317;--cd:#2d0f0f">
-        <div class="gal-pos-dot" style="background:#e84317"></div>
-        <span class="gal-pos-label" data-de="Aussenangreifer" data-en="Outside Hitter">Aussenangreifer</span>
-        <span class="gal-pos-count" id="count-outside"></span>
-      </div>
-      <div class="gal-pos-btn" onclick="openGallery('middle')" style="--c:#16a34a;--cd:#0d2a0d">
-        <div class="gal-pos-dot" style="background:#16a34a"></div>
-        <span class="gal-pos-label" data-de="Mittelblocker" data-en="Middle Blocker">Mittelblocker</span>
-        <span class="gal-pos-count" id="count-middle"></span>
-      </div>
-      <div class="gal-pos-btn" onclick="openGallery('setter')" style="--c:#0ea5e9;--cd:#0d1a2d">
-        <div class="gal-pos-dot" style="background:#0ea5e9"></div>
-        <span class="gal-pos-label" data-de="Zuspieler" data-en="Setter">Zuspieler</span>
-        <span class="gal-pos-count" id="count-setter"></span>
-      </div>
-      <div class="gal-pos-btn" onclick="openGallery('diagonal')" style="--c:#4f46e5;--cd:#0d0e2d">
-        <div class="gal-pos-dot" style="background:#4f46e5"></div>
-        <span class="gal-pos-label" data-de="Diagonal" data-en="Diagonal">Diagonal</span>
-        <span class="gal-pos-count" id="count-diagonal"></span>
-      </div>
-      <div class="gal-pos-btn" onclick="openGallery('libero')" style="--c:#ca8a04;--cd:#2a2000">
-        <div class="gal-pos-dot" style="background:#ca8a04"></div>
-        <span class="gal-pos-label" data-de="Libero" data-en="Libero">Libero</span>
-        <span class="gal-pos-count" id="count-libero"></span>
-      </div>
-    </div>
-  </div>
-</section>
 
 <!-- GALLERY MODAL -->
 <div id="gallery-modal" class="gal-modal" onclick="closeGalleryOnBg(event)">
@@ -582,7 +547,7 @@ footer p{color:rgba(255,255,255,0.2);font-size:0.78rem;letter-spacing:1px}
         ph.textContent = 'Karte ' + (i + 1);
         wrap.appendChild(ph);
       };
-      img.src = data.folder + '/' + file;
+      img.src = data.folder ? data.folder + '/' + file : file;
       wrap.appendChild(img);
       inner.appendChild(wrap);
 
