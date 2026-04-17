@@ -4,200 +4,397 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Tactical Volley – Das Volleyball-Strategie-Kartenspiel</title>
-<meta name="description" content="Tactical Volley ist ein taktisches Kartenspiel für 3–4 Spieler.">
+<meta name="description" content="Tactical Volley ist ein taktisches Kartenspiel für 3–4 Spieler. Baue dein Team, dominiere die Liga und hebe den Cup.">
+<meta name="theme-color" content="#080808">
+<link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
+<!-- cards.js muss VOR dem Seiteninhalt geladen sein -->
+<script src="cards.js"></script>
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-:root{--fire-red:#e84317;--fire-orange:#f97316;--fire-gold:#f59e0b;--dark:#080808;--dark2:#111111;--dark3:#1a1a1a;--dark4:#222;--silver:#b0b0b0;--white:#fff;}
-html{scroll-behavior:smooth}
-body{background:var(--dark);color:var(--white);font-family:'Barlow',sans-serif;overflow-x:hidden}
+/* ── RESET & BASE ── */
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html { scroll-behavior:smooth; -webkit-text-size-adjust:100%; }
+body {
+  background:#080808;
+  color:#fff;
+  font-family:'Barlow',sans-serif;
+  overflow-x:hidden;
+  /* verhindert Text-Cursor-Bug beim Klicken */
+  -webkit-user-select:none;
+  -moz-user-select:none;
+  user-select:none;
+}
+/* Erlaubt Text-Selektion nur wo sinnvoll */
+p, li, .section-desc, .rule-block li { -webkit-user-select:text; user-select:text; }
+img { display:block; max-width:100%; draggable:false; -webkit-user-drag:none; }
+a { color:inherit; text-decoration:none; }
+button { font-family:inherit; cursor:pointer; }
+/* Entfernt Fokus-Outline überall (kein blauer Rahmen beim Klicken) */
+*:focus { outline:none; }
+*:focus-visible { outline:2px solid rgba(232,67,23,0.5); outline-offset:2px; }
 
-nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:1rem 3rem;display:flex;justify-content:space-between;align-items:center;background:rgba(8,8,8,0.9);backdrop-filter:blur(12px);border-bottom:1px solid rgba(232,67,23,0.2)}
-.nav-logo{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:1.7rem;letter-spacing:4px;text-transform:uppercase;background:linear-gradient(90deg,var(--fire-red),var(--fire-gold));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.nav-links{display:flex;gap:2rem;list-style:none;align-items:center}
-.nav-links a{color:var(--silver);text-decoration:none;font-size:0.85rem;letter-spacing:2px;font-weight:600;text-transform:uppercase;transition:color 0.2s}
-.nav-links a:hover{color:var(--fire-orange)}
+/* ── CSS VARIABLEN ── */
+:root {
+  --red:#e84317;
+  --orange:#f97316;
+  --gold:#f59e0b;
+  --dark:#080808;
+  --dark2:#111;
+  --dark3:#1a1a1a;
+  --dark4:#222;
+  --silver:#b0b0b0;
+}
 
-.lang-toggle{display:flex;align-items:center;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:2px;overflow:hidden}
-.lang-btn{padding:0.4rem 0.9rem;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:0.8rem;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.35);transition:all 0.2s;border:none;background:transparent;cursor:pointer}
-.lang-btn.active{background:linear-gradient(135deg,var(--fire-red),var(--fire-orange));color:white}
-.lang-divider{width:1px;height:24px;background:rgba(255,255,255,0.1);flex-shrink:0}
+/* ── NAVIGATION ── */
+nav {
+  position:fixed; top:0; left:0; right:0; z-index:200;
+  padding:1rem 3rem;
+  display:flex; justify-content:space-between; align-items:center;
+  background:rgba(8,8,8,0.92);
+  backdrop-filter:blur(16px);
+  border-bottom:1px solid rgba(232,67,23,0.2);
+}
+.nav-logo {
+  font-family:'Barlow Condensed',sans-serif; font-weight:900;
+  font-size:1.7rem; letter-spacing:4px; text-transform:uppercase;
+  background:linear-gradient(90deg,var(--red),var(--gold));
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+}
+.nav-links { display:flex; gap:2rem; list-style:none; align-items:center; }
+.nav-links a {
+  color:var(--silver); font-size:0.85rem; letter-spacing:2px;
+  font-weight:600; text-transform:uppercase; transition:color 0.2s;
+}
+.nav-links a:hover { color:var(--orange); }
 
-.hero{height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;position:relative;padding:0 2rem;overflow:hidden}
-.hero-grid-bg{position:absolute;inset:0;background-image:repeating-linear-gradient(0deg,transparent,transparent 59px,rgba(192,192,192,0.06) 59px,rgba(192,192,192,0.06) 60px),repeating-linear-gradient(90deg,transparent,transparent 59px,rgba(192,192,192,0.06) 59px,rgba(192,192,192,0.06) 60px)}
-.hero-glow{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:700px;height:500px;background:radial-gradient(ellipse,rgba(232,67,23,0.12) 0%,transparent 70%);pointer-events:none}
-.hero-content{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center}
-.hero-badge{display:inline-block;background:rgba(232,67,23,0.12);border:1px solid rgba(232,67,23,0.35);color:var(--fire-orange);font-size:0.7rem;letter-spacing:4px;text-transform:uppercase;padding:0.4rem 1.4rem;margin-bottom:1.2rem;font-weight:600}
-.hero-title{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:clamp(5.5rem,15vw,12rem);line-height:0.88;letter-spacing:2px;text-transform:uppercase}
-.hero-title .line1{display:block;color:var(--white)}
-.hero-title .line2{display:block;background:linear-gradient(90deg,var(--fire-red) 0%,var(--fire-orange) 50%,var(--fire-gold) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.glitch{position:relative}
-.glitch::before,.glitch::after{content:attr(data-text);position:absolute;top:0;left:0;width:100%;background:linear-gradient(90deg,var(--fire-red),var(--fire-orange),var(--fire-gold));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.glitch::before{animation:glitch1 4s infinite;clip-path:polygon(0 15%,100% 15%,100% 35%,0 35%)}
-.glitch::after{animation:glitch2 4s infinite 0.15s;clip-path:polygon(0 65%,100% 65%,100% 80%,0 80%)}
-@keyframes glitch1{0%,88%,100%{transform:translateX(0)}90%{transform:translateX(-4px)}92%{transform:translateX(4px)}94%{transform:translateX(-2px)}}
-@keyframes glitch2{0%,88%,100%{transform:translateX(0)}91%{transform:translateX(4px)}93%{transform:translateX(-4px)}95%{transform:translateX(2px)}}
-.hero-sub{font-size:1.05rem;color:var(--silver);letter-spacing:3px;text-transform:uppercase;margin:1.2rem auto 2rem;font-weight:400;max-width:480px}
-.hero-cta{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap}
-.btn-primary{background:linear-gradient(135deg,var(--fire-red),var(--fire-orange));color:white;padding:0.85rem 2.5rem;border:none;font-family:'Barlow Condensed',sans-serif;font-size:1.05rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;cursor:pointer;transition:transform 0.2s,box-shadow 0.2s;text-decoration:none;display:inline-block}
-.btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(232,67,23,0.45)}
-.btn-secondary{background:transparent;color:var(--white);padding:0.85rem 2.5rem;border:1px solid rgba(255,255,255,0.25);font-family:'Barlow Condensed',sans-serif;font-size:1.05rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;cursor:pointer;transition:all 0.2s;text-decoration:none;display:inline-block}
-.btn-secondary:hover{border-color:var(--fire-orange);color:var(--fire-orange)}
-.hero-scroll{position:absolute;bottom:2rem;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.25);font-size:0.65rem;letter-spacing:4px;text-transform:uppercase;display:flex;flex-direction:column;align-items:center;gap:0.5rem;animation:bounce 2.5s infinite}
-@keyframes bounce{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(7px)}}
-.scroll-line{width:1px;height:36px;background:linear-gradient(to bottom,rgba(232,67,23,0.5),transparent)}
+.lang-toggle {
+  display:flex; align-items:center;
+  background:rgba(255,255,255,0.05);
+  border:1px solid rgba(255,255,255,0.1);
+  border-radius:2px; overflow:hidden;
+}
+.lang-btn {
+  padding:0.4rem 0.9rem;
+  font-family:'Barlow Condensed',sans-serif; font-weight:700;
+  font-size:0.8rem; letter-spacing:2px; text-transform:uppercase;
+  color:rgba(255,255,255,0.35); background:transparent; border:none;
+  transition:all 0.2s;
+}
+.lang-btn.active { background:linear-gradient(135deg,var(--red),var(--orange)); color:#fff; }
+.lang-divider { width:1px; height:24px; background:rgba(255,255,255,0.1); }
 
-section{padding:6rem 2rem}
-.section-inner{max-width:1100px;margin:0 auto}
-.section-label{font-size:0.68rem;letter-spacing:5px;text-transform:uppercase;color:var(--fire-orange);font-weight:600;margin-bottom:0.6rem}
-.section-title{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:clamp(2.8rem,5vw,4.5rem);letter-spacing:1px;text-transform:uppercase;margin-bottom:1rem;line-height:0.95}
-.section-desc{color:var(--silver);font-size:1rem;line-height:1.8;max-width:600px;font-weight:300}
+/* ── HERO ── */
+.hero {
+  height:100vh; display:flex; flex-direction:column;
+  justify-content:center; align-items:center;
+  text-align:center; position:relative; padding:0 2rem; overflow:hidden;
+}
+.hero-grid {
+  position:absolute; inset:0;
+  background-image:
+    repeating-linear-gradient(0deg,transparent,transparent 59px,rgba(192,192,192,0.06) 59px,rgba(192,192,192,0.06) 60px),
+    repeating-linear-gradient(90deg,transparent,transparent 59px,rgba(192,192,192,0.06) 59px,rgba(192,192,192,0.06) 60px);
+}
+.hero-glow {
+  position:absolute; top:50%; left:50%;
+  transform:translate(-50%,-50%);
+  width:700px; height:500px;
+  background:radial-gradient(ellipse,rgba(232,67,23,0.12) 0%,transparent 70%);
+  pointer-events:none;
+}
+.hero-content { position:relative; z-index:1; display:flex; flex-direction:column; align-items:center; }
+.hero-badge {
+  display:inline-block;
+  background:rgba(232,67,23,0.12); border:1px solid rgba(232,67,23,0.35);
+  color:var(--orange); font-size:0.7rem; letter-spacing:4px;
+  text-transform:uppercase; padding:0.4rem 1.4rem; margin-bottom:1.2rem; font-weight:600;
+}
+.hero-title {
+  font-family:'Barlow Condensed',sans-serif; font-weight:900;
+  font-size:clamp(5.5rem,15vw,12rem); line-height:0.88;
+  letter-spacing:2px; text-transform:uppercase;
+}
+.hero-title .line1 { display:block; color:#fff; }
+.hero-title .line2 {
+  display:block;
+  background:linear-gradient(90deg,var(--red) 0%,var(--orange) 50%,var(--gold) 100%);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+}
+.glitch { position:relative; }
+.glitch::before,.glitch::after {
+  content:attr(data-text); position:absolute; top:0; left:0; width:100%;
+  background:linear-gradient(90deg,var(--red),var(--orange),var(--gold));
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+}
+.glitch::before { animation:g1 4s infinite; clip-path:polygon(0 15%,100% 15%,100% 35%,0 35%); }
+.glitch::after  { animation:g2 4s infinite 0.15s; clip-path:polygon(0 65%,100% 65%,100% 80%,0 80%); }
+@keyframes g1 { 0%,88%,100%{transform:translateX(0)} 90%{transform:translateX(-4px)} 92%{transform:translateX(4px)} 94%{transform:translateX(-2px)} }
+@keyframes g2 { 0%,88%,100%{transform:translateX(0)} 91%{transform:translateX(4px)} 93%{transform:translateX(-4px)} 95%{transform:translateX(2px)} }
+.hero-sub {
+  font-size:1.05rem; color:var(--silver); letter-spacing:3px;
+  text-transform:uppercase; margin:1.2rem auto 2rem; font-weight:400; max-width:480px;
+}
+.hero-cta { display:flex; gap:1rem; justify-content:center; flex-wrap:wrap; }
+.btn-primary {
+  background:linear-gradient(135deg,var(--red),var(--orange));
+  color:#fff; padding:0.85rem 2.5rem; border:none;
+  font-family:'Barlow Condensed',sans-serif; font-size:1.05rem;
+  font-weight:700; letter-spacing:3px; text-transform:uppercase;
+  transition:transform 0.2s,box-shadow 0.2s; display:inline-block;
+}
+.btn-primary:hover { transform:translateY(-2px); box-shadow:0 8px 30px rgba(232,67,23,0.45); }
+.btn-secondary {
+  background:transparent; color:#fff; padding:0.85rem 2.5rem;
+  border:1px solid rgba(255,255,255,0.25);
+  font-family:'Barlow Condensed',sans-serif; font-size:1.05rem;
+  font-weight:700; letter-spacing:3px; text-transform:uppercase;
+  transition:all 0.2s; display:inline-block;
+}
+.btn-secondary:hover { border-color:var(--orange); color:var(--orange); }
+.hero-scroll {
+  position:absolute; bottom:2rem; left:50%; transform:translateX(-50%);
+  color:rgba(255,255,255,0.25); font-size:0.65rem; letter-spacing:4px;
+  text-transform:uppercase; display:flex; flex-direction:column;
+  align-items:center; gap:0.5rem; animation:bounce 2.5s infinite;
+}
+@keyframes bounce { 0%,100%{transform:translateX(-50%) translateY(0)} 50%{transform:translateX(-50%) translateY(7px)} }
+.scroll-line { width:1px; height:36px; background:linear-gradient(to bottom,rgba(232,67,23,0.5),transparent); }
 
-#about{background:var(--dark2)}
-.hint{font-size:0.7rem;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.2);font-weight:500;margin:0.8rem 0 2.5rem}
-.hint span{color:var(--fire-orange);opacity:0.7}
-.cards-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1.5rem;perspective:1200px}
-.flip-card{height:280px;cursor:pointer;perspective:1200px}
-.flip-inner{width:100%;height:100%;position:relative;transform-style:preserve-3d;transition:transform 0.65s cubic-bezier(0.4,0.2,0.2,1)}
-.flip-card.flipped .flip-inner{transform:rotateY(180deg)}
-.flip-front,.flip-back{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden}
-.flip-front{background:var(--dark3);border:1px solid rgba(255,255,255,0.05);padding:2rem 1.5rem;display:flex;flex-direction:column;justify-content:space-between}
-.flip-front .top{display:flex;flex-direction:column;gap:0.8rem}
-.flip-front .icon{font-size:2.2rem}
-.flip-front h3{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:1.6rem;letter-spacing:2px;text-transform:uppercase;line-height:1}
-.flip-front p{color:var(--silver);font-size:0.9rem;line-height:1.6;font-weight:300}
-.flip-front .tap-hint{font-size:0.65rem;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.2);display:flex;align-items:center;gap:0.4rem}
-.flip-front .tap-hint::after{content:'↺';font-size:0.9rem;color:var(--fire-orange);opacity:0.6}
-.flip-back{background:var(--dark4);transform:rotateY(180deg);padding:1.5rem;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;border:1px solid rgba(232,67,23,0.15)}
-.flip-back::before{content:'';position:absolute;inset:0;background-image:repeating-linear-gradient(45deg,transparent,transparent 14px,rgba(255,255,255,0.015) 14px,rgba(255,255,255,0.015) 15px);pointer-events:none}
-.flip-back .back-label{font-size:0.6rem;letter-spacing:3px;text-transform:uppercase;color:var(--fire-gold);font-weight:700;margin-bottom:0.6rem}
-.flip-back h3{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:1.35rem;letter-spacing:2px;text-transform:uppercase;margin-bottom:1rem;line-height:1}
-.flip-back ul{list-style:none;display:flex;flex-direction:column;gap:0.5rem;flex:1}
-.flip-back ul li{display:flex;align-items:flex-start;gap:0.6rem;font-size:0.85rem;color:var(--silver);font-weight:300;line-height:1.5}
-.flip-back ul li::before{content:'';display:block;width:6px;height:6px;border-radius:50%;background:var(--fire-orange);flex-shrink:0;margin-top:0.45rem}
-.flip-back .back-close{font-size:0.62rem;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.2);text-align:right}
-.flip-back .back-close span{color:var(--fire-orange);opacity:0.6}
-.c1 .flip-front{border-top:3px solid #e84317}.c1 .flip-back{border-top:3px solid #f59e0b}
-.c2 .flip-front{border-top:3px solid #0ea5e9}.c2 .flip-back{border-top:3px solid #38bdf8}
-.c3 .flip-front{border-top:3px solid #16a34a}.c3 .flip-back{border-top:3px solid #4ade80}
-.c4 .flip-front{border-top:3px solid #a855f7}.c4 .flip-back{border-top:3px solid #c084fc}
+/* ── SECTIONS ── */
+section { padding:6rem 2rem; }
+.section-inner { max-width:1100px; margin:0 auto; }
+.section-label { font-size:0.68rem; letter-spacing:5px; text-transform:uppercase; color:var(--orange); font-weight:600; margin-bottom:0.6rem; }
+.section-title {
+  font-family:'Barlow Condensed',sans-serif; font-weight:900;
+  font-size:clamp(2.8rem,5vw,4.5rem); letter-spacing:1px;
+  text-transform:uppercase; margin-bottom:1rem; line-height:0.95;
+}
+.section-desc { color:var(--silver); font-size:1rem; line-height:1.8; max-width:600px; font-weight:300; }
 
-#cards{background:var(--dark)}
-.cards-showcase{display:flex;gap:1.5rem;margin-top:3rem;flex-wrap:wrap;justify-content:center}
-.player-card{width:155px;height:235px;position:relative;overflow:hidden;cursor:pointer;transition:transform 0.3s;flex-shrink:0}
-.player-card:hover{transform:translateY(-12px) scale(1.05)}
-.card-net{position:absolute;inset:0;background-image:repeating-linear-gradient(45deg,transparent,transparent 8px,rgba(255,255,255,0.04) 8px,rgba(255,255,255,0.04) 9px),repeating-linear-gradient(-45deg,transparent,transparent 8px,rgba(255,255,255,0.04) 8px,rgba(255,255,255,0.04) 9px)}
-.card-border-top{position:absolute;top:0;left:0;right:0;height:4px}
-.card-content{position:absolute;bottom:0;left:0;right:0;padding:1rem;z-index:1}
-.card-label{position:absolute;top:0.7rem;right:0.7rem;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:0.6rem;letter-spacing:2px;text-transform:uppercase;padding:0.2rem 0.5rem;color:white;z-index:1}
-.card-stars{color:var(--fire-gold);font-size:0.7rem;margin-bottom:0.2rem}
-.card-name{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:1.25rem;letter-spacing:2px;text-transform:uppercase}
-.card-pos{font-size:0.65rem;letter-spacing:2px;text-transform:uppercase;opacity:0.6;font-weight:500}
-.card-red{background:linear-gradient(160deg,#180806,#2d0f0f);border:1px solid rgba(232,67,23,0.3)}
-.card-red .card-border-top,.card-red .card-label{background:var(--fire-red)}
-.card-green{background:linear-gradient(160deg,#081408,#0d2a0d);border:1px solid rgba(34,197,94,0.25)}
-.card-green .card-border-top,.card-green .card-label{background:#16a34a}
-.card-lightblue{background:linear-gradient(160deg,#080f1a,#0d1a2d);border:1px solid rgba(56,189,248,0.25)}
-.card-lightblue .card-border-top,.card-lightblue .card-label{background:#0ea5e9}
-.card-darkblue{background:linear-gradient(160deg,#08091a,#0d0e2d);border:1px solid rgba(99,102,241,0.25)}
-.card-darkblue .card-border-top,.card-darkblue .card-label{background:#4f46e5}
-.card-yellow{background:linear-gradient(160deg,#171200,#2a2000);border:1px solid rgba(234,179,8,0.25)}
-.card-yellow .card-border-top,.card-yellow .card-label{background:#ca8a04}
+/* ── ABOUT / FLIP CARDS ── */
+#about { background:var(--dark2); }
+.hint { font-size:0.7rem; letter-spacing:2px; text-transform:uppercase; color:rgba(255,255,255,0.2); font-weight:500; margin:0.8rem 0 2.5rem; }
+.hint span { color:var(--orange); opacity:0.7; }
+.cards-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:1.5rem; perspective:1200px; }
+.flip-card { height:280px; cursor:pointer; perspective:1200px; }
+.flip-inner { width:100%; height:100%; position:relative; transform-style:preserve-3d; transition:transform 0.65s cubic-bezier(0.4,0.2,0.2,1); }
+.flip-card.flipped .flip-inner { transform:rotateY(180deg); }
+.flip-front, .flip-back { position:absolute; inset:0; backface-visibility:hidden; -webkit-backface-visibility:hidden; }
+.flip-front { background:var(--dark3); border:1px solid rgba(255,255,255,0.05); padding:2rem 1.5rem; display:flex; flex-direction:column; justify-content:space-between; }
+.flip-front .top { display:flex; flex-direction:column; gap:0.8rem; }
+.flip-front .icon { font-size:2.2rem; }
+.flip-front h3 { font-family:'Barlow Condensed',sans-serif; font-weight:900; font-size:1.6rem; letter-spacing:2px; text-transform:uppercase; line-height:1; }
+.flip-front p { color:var(--silver); font-size:0.9rem; line-height:1.6; font-weight:300; }
+.flip-front .tap-hint { font-size:0.65rem; letter-spacing:2px; text-transform:uppercase; color:rgba(255,255,255,0.2); display:flex; align-items:center; gap:0.4rem; }
+.flip-front .tap-hint::after { content:'↺'; font-size:0.9rem; color:var(--orange); opacity:0.6; }
+.flip-back { background:var(--dark4); transform:rotateY(180deg); padding:1.5rem; display:flex; flex-direction:column; justify-content:space-between; overflow:hidden; border:1px solid rgba(232,67,23,0.15); }
+.flip-back::before { content:''; position:absolute; inset:0; background-image:repeating-linear-gradient(45deg,transparent,transparent 14px,rgba(255,255,255,0.015) 14px,rgba(255,255,255,0.015) 15px); pointer-events:none; }
+.flip-back .back-label { font-size:0.6rem; letter-spacing:3px; text-transform:uppercase; color:var(--gold); font-weight:700; margin-bottom:0.6rem; }
+.flip-back h3 { font-family:'Barlow Condensed',sans-serif; font-weight:900; font-size:1.35rem; letter-spacing:2px; text-transform:uppercase; margin-bottom:1rem; line-height:1; }
+.flip-back ul { list-style:none; display:flex; flex-direction:column; gap:0.5rem; flex:1; }
+.flip-back ul li { display:flex; align-items:flex-start; gap:0.6rem; font-size:0.85rem; color:var(--silver); font-weight:300; line-height:1.5; }
+.flip-back ul li::before { content:''; display:block; width:6px; height:6px; border-radius:50%; background:var(--orange); flex-shrink:0; margin-top:0.45rem; }
+.flip-back .back-close { font-size:0.62rem; letter-spacing:2px; text-transform:uppercase; color:rgba(255,255,255,0.2); text-align:right; }
+.flip-back .back-close span { color:var(--orange); opacity:0.6; }
+.c1 .flip-front{border-top:3px solid #e84317} .c1 .flip-back{border-top:3px solid #f59e0b}
+.c2 .flip-front{border-top:3px solid #0ea5e9} .c2 .flip-back{border-top:3px solid #38bdf8}
+.c3 .flip-front{border-top:3px solid #16a34a} .c3 .flip-back{border-top:3px solid #4ade80}
+.c4 .flip-front{border-top:3px solid #a855f7} .c4 .flip-back{border-top:3px solid #c084fc}
 
-#rules{background:var(--dark2)}
-.title-row{display:flex;align-items:flex-end;justify-content:space-between;gap:1.5rem;margin-bottom:1.2rem;flex-wrap:wrap}
-.btn-download{display:inline-flex;align-items:center;gap:0.7rem;background:transparent;border:1px solid rgba(232,67,23,0.5);color:var(--fire-orange);padding:0.75rem 1.5rem;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:0.9rem;letter-spacing:3px;text-transform:uppercase;cursor:pointer;transition:all 0.2s;text-decoration:none;white-space:nowrap;flex-shrink:0}
-.btn-download:hover{background:rgba(232,67,23,0.1);border-color:var(--fire-orange);transform:translateY(-2px)}
-.dl-icon{display:flex;flex-direction:column;align-items:center;gap:2px}
-.dl-arrow{width:2px;height:8px;background:var(--fire-orange)}
-.dl-head{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid var(--fire-orange)}
-.dl-line{width:12px;height:2px;background:var(--fire-orange);margin-top:1px}
-.rules-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-top:3rem}
-@media(max-width:680px){.rules-grid{grid-template-columns:1fr}}
-.rule-block{background:var(--dark3);border:1px solid rgba(255,255,255,0.05);border-left:3px solid var(--fire-red);padding:1.5rem}
-.rule-block h3{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:1.3rem;letter-spacing:2px;text-transform:uppercase;color:var(--fire-orange);margin-bottom:0.8rem}
-.rule-block ul{padding-left:1.2rem}
-.rule-block li{color:var(--silver);font-size:0.9rem;line-height:1.9;font-weight:300}
-.rule-block strong{color:var(--fire-orange);font-weight:600}
+/* ── PLAYER CARDS ── */
+#cards { background:var(--dark); }
+.cards-showcase { display:flex; gap:1.5rem; margin-top:3rem; flex-wrap:wrap; justify-content:center; }
+.player-card {
+  width:155px; height:235px; position:relative; overflow:hidden;
+  cursor:pointer; transition:transform 0.3s; flex-shrink:0;
+}
+.player-card:hover { transform:translateY(-12px) scale(1.05); }
+.card-net {
+  position:absolute; inset:0;
+  background-image:
+    repeating-linear-gradient(45deg,transparent,transparent 8px,rgba(255,255,255,0.04) 8px,rgba(255,255,255,0.04) 9px),
+    repeating-linear-gradient(-45deg,transparent,transparent 8px,rgba(255,255,255,0.04) 8px,rgba(255,255,255,0.04) 9px);
+}
+.card-border-top { position:absolute; top:0; left:0; right:0; height:4px; }
+.card-content { position:absolute; bottom:0; left:0; right:0; padding:1rem; z-index:1; }
+.card-label {
+  position:absolute; top:0.7rem; right:0.7rem;
+  font-family:'Barlow Condensed',sans-serif; font-weight:800;
+  font-size:0.6rem; letter-spacing:2px; text-transform:uppercase;
+  padding:0.2rem 0.5rem; color:#fff; z-index:1;
+}
+.card-stars { color:var(--gold); font-size:0.7rem; margin-bottom:0.2rem; }
+.card-name { font-family:'Barlow Condensed',sans-serif; font-weight:900; font-size:1.25rem; letter-spacing:2px; text-transform:uppercase; }
+.card-pos { font-size:0.65rem; letter-spacing:2px; text-transform:uppercase; opacity:0.6; font-weight:500; }
+.card-red { background:linear-gradient(160deg,#180806,#2d0f0f); border:1px solid rgba(232,67,23,0.3); }
+.card-red .card-border-top, .card-red .card-label { background:var(--red); }
+.card-green { background:linear-gradient(160deg,#081408,#0d2a0d); border:1px solid rgba(34,197,94,0.25); }
+.card-green .card-border-top, .card-green .card-label { background:#16a34a; }
+.card-lightblue { background:linear-gradient(160deg,#080f1a,#0d1a2d); border:1px solid rgba(56,189,248,0.25); }
+.card-lightblue .card-border-top, .card-lightblue .card-label { background:#0ea5e9; }
+.card-darkblue { background:linear-gradient(160deg,#08091a,#0d0e2d); border:1px solid rgba(99,102,241,0.25); }
+.card-darkblue .card-border-top, .card-darkblue .card-label { background:#4f46e5; }
+.card-yellow { background:linear-gradient(160deg,#171200,#2a2000); border:1px solid rgba(234,179,8,0.25); }
+.card-yellow .card-border-top, .card-yellow .card-label { background:#ca8a04; }
 
-#campaign{background:var(--dark);position:relative;overflow:hidden}
-#campaign::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(232,67,23,0.07) 0%,transparent 65%)}
-.campaign-inner{position:relative;z-index:1;text-align:center}
-.campaign-goal{display:flex;justify-content:center;gap:3rem;margin:3rem 0;flex-wrap:wrap}
-.goal-number{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:4rem;line-height:1;background:linear-gradient(90deg,var(--fire-red),var(--fire-gold));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.goal-label{font-size:0.72rem;letter-spacing:3px;text-transform:uppercase;color:var(--silver);font-weight:500;margin-top:0.2rem}
-.campaign-bar-wrap{max-width:600px;margin:1.5rem auto;background:rgba(255,255,255,0.05);height:6px}
-.campaign-bar{height:100%;background:linear-gradient(90deg,var(--fire-red),var(--fire-gold));width:0;transition:width 1.5s ease}
+/* ── RULES ── */
+#rules { background:var(--dark2); }
+.title-row { display:flex; align-items:flex-end; justify-content:space-between; gap:1.5rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+.btn-download {
+  display:inline-flex; align-items:center; gap:0.7rem;
+  background:transparent; border:1px solid rgba(232,67,23,0.5);
+  color:var(--orange); padding:0.75rem 1.5rem;
+  font-family:'Barlow Condensed',sans-serif; font-weight:700;
+  font-size:0.9rem; letter-spacing:3px; text-transform:uppercase;
+  transition:all 0.2s; white-space:nowrap; flex-shrink:0;
+}
+.btn-download:hover { background:rgba(232,67,23,0.1); border-color:var(--orange); transform:translateY(-2px); }
+.dl-icon { display:flex; flex-direction:column; align-items:center; gap:2px; }
+.dl-arrow { width:2px; height:8px; background:var(--orange); }
+.dl-head { width:0; height:0; border-left:4px solid transparent; border-right:4px solid transparent; border-top:5px solid var(--orange); }
+.dl-line { width:12px; height:2px; background:var(--orange); margin-top:1px; }
+.rules-grid { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; margin-top:3rem; }
+@media(max-width:680px){ .rules-grid { grid-template-columns:1fr; } }
+.rule-block { background:var(--dark3); border:1px solid rgba(255,255,255,0.05); border-left:3px solid var(--red); padding:1.5rem; }
+.rule-block h3 { font-family:'Barlow Condensed',sans-serif; font-weight:800; font-size:1.3rem; letter-spacing:2px; text-transform:uppercase; color:var(--orange); margin-bottom:0.8rem; }
+.rule-block ul { padding-left:1.2rem; }
+.rule-block li { color:var(--silver); font-size:0.9rem; line-height:1.9; font-weight:300; }
+.rule-block strong { color:var(--orange); font-weight:600; }
 
-#contact{background:var(--dark2)}
-.social-title{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:clamp(2.5rem,5vw,4rem);text-transform:uppercase;letter-spacing:1px;line-height:0.95;margin-bottom:0.5rem}
-.social-cards{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-top:2.5rem;max-width:700px}
-@media(max-width:580px){.social-cards{grid-template-columns:1fr}}
-.social-card{background:var(--dark3);border:1px solid rgba(255,255,255,0.06);padding:2rem 1.8rem;display:flex;flex-direction:column;gap:1rem;transition:transform 0.2s;text-decoration:none;color:var(--white)}
-.social-card:hover{transform:translateY(-4px)}
-.social-card.tiktok{border-top:3px solid #ee1d52}
-.social-card.instagram{border-top:3px solid #e1306c}
-.social-icon{width:48px;height:48px;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:1.1rem;letter-spacing:1px}
-.tiktok .social-icon{background:rgba(238,29,82,0.12);color:#ee1d52}
-.instagram .social-icon{background:rgba(225,48,108,0.12);color:#e1306c}
-.social-name{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:1.4rem;letter-spacing:2px;text-transform:uppercase}
-.social-handle{font-size:0.85rem;color:var(--silver);letter-spacing:1px;font-weight:300}
-.social-desc{font-size:0.85rem;color:var(--silver);line-height:1.6;font-weight:300;flex:1}
-.social-cta{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:0.8rem;letter-spacing:3px;text-transform:uppercase;margin-top:0.5rem}
-.tiktok .social-cta{color:#ee1d52}
-.instagram .social-cta{color:#e1306c}
+/* ── CAMPAIGN ── */
+#campaign { background:var(--dark); position:relative; overflow:hidden; }
+#campaign::before { content:''; position:absolute; inset:0; background:radial-gradient(ellipse at center,rgba(232,67,23,0.07) 0%,transparent 65%); }
+.campaign-inner { position:relative; z-index:1; text-align:center; }
+.campaign-goal { display:flex; justify-content:center; gap:3rem; margin:3rem 0; flex-wrap:wrap; }
+.goal-number { font-family:'Barlow Condensed',sans-serif; font-weight:900; font-size:4rem; line-height:1; background:linear-gradient(90deg,var(--red),var(--gold)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+.goal-label { font-size:0.72rem; letter-spacing:3px; text-transform:uppercase; color:var(--silver); font-weight:500; margin-top:0.2rem; }
+.campaign-bar-wrap { max-width:600px; margin:1.5rem auto; background:rgba(255,255,255,0.05); height:6px; }
+.campaign-bar { height:100%; background:linear-gradient(90deg,var(--red),var(--gold)); width:0; transition:width 1.5s ease; }
 
-footer{background:var(--dark);border-top:1px solid rgba(255,255,255,0.05);padding:2rem 3rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem}
-.footer-logo{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:1.3rem;letter-spacing:4px;text-transform:uppercase;background:linear-gradient(90deg,var(--fire-red),var(--fire-gold));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-footer p{color:rgba(255,255,255,0.2);font-size:0.78rem;letter-spacing:1px}
+/* ── SOCIAL ── */
+#contact { background:var(--dark2); }
+.social-title { font-family:'Barlow Condensed',sans-serif; font-weight:900; font-size:clamp(2.5rem,5vw,4rem); text-transform:uppercase; letter-spacing:1px; line-height:0.95; margin-bottom:0.5rem; }
+.social-cards { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; margin-top:2.5rem; max-width:700px; }
+@media(max-width:580px){ .social-cards { grid-template-columns:1fr; } }
+.social-card { background:var(--dark3); border:1px solid rgba(255,255,255,0.06); padding:2rem 1.8rem; display:flex; flex-direction:column; gap:1rem; transition:transform 0.2s; color:#fff; }
+.social-card:hover { transform:translateY(-4px); }
+.social-card.tiktok { border-top:3px solid #ee1d52; }
+.social-card.instagram { border-top:3px solid #e1306c; }
+.social-icon { width:48px; height:48px; display:flex; align-items:center; justify-content:center; font-family:'Barlow Condensed',sans-serif; font-weight:900; font-size:1.1rem; letter-spacing:1px; }
+.tiktok .social-icon { background:rgba(238,29,82,0.12); color:#ee1d52; }
+.instagram .social-icon { background:rgba(225,48,108,0.12); color:#e1306c; }
+.social-name { font-family:'Barlow Condensed',sans-serif; font-weight:900; font-size:1.4rem; letter-spacing:2px; text-transform:uppercase; }
+.social-handle { font-size:0.85rem; color:var(--silver); letter-spacing:1px; font-weight:300; }
+.social-desc { font-size:0.85rem; color:var(--silver); line-height:1.6; font-weight:300; flex:1; }
+.social-cta { font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:0.8rem; letter-spacing:3px; text-transform:uppercase; margin-top:0.5rem; }
+.tiktok .social-cta { color:#ee1d52; }
+.instagram .social-cta { color:#e1306c; }
 
-/* GALLERY */
-#gallery{background:var(--dark)}
-.gallery-positions{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin-top:3rem}
-.gal-pos-btn{background:var(--dark3);border:1px solid rgba(255,255,255,0.06);border-top:3px solid var(--c);padding:1.5rem 1.2rem;cursor:pointer;transition:transform 0.2s,box-shadow 0.2s;display:flex;flex-direction:column;gap:0.6rem}
-.gal-pos-btn:hover{transform:translateY(-4px);box-shadow:0 8px 30px rgba(0,0,0,0.4);border-color:var(--c)}
-.gal-pos-dot{width:28px;height:28px;border-radius:50%}
-.gal-pos-label{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:1.1rem;letter-spacing:2px;text-transform:uppercase;color:var(--white)}
-.gal-pos-count{font-size:0.72rem;letter-spacing:2px;text-transform:uppercase;color:var(--silver);font-weight:400}
+/* ── FOOTER ── */
+footer { background:var(--dark); border-top:1px solid rgba(255,255,255,0.05); padding:2rem 3rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; }
+.footer-logo { font-family:'Barlow Condensed',sans-serif; font-weight:900; font-size:1.3rem; letter-spacing:4px; text-transform:uppercase; background:linear-gradient(90deg,var(--red),var(--gold)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+footer p { color:rgba(255,255,255,0.2); font-size:0.78rem; letter-spacing:1px; }
 
-/* MODAL */
-.gal-modal{position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:999;display:none;align-items:center;justify-content:center;padding:1rem}
-.gal-modal.open{display:flex}
-.gal-modal-inner{background:var(--dark2);width:100%;max-width:820px;border:1px solid rgba(255,255,255,0.08);position:relative;padding:2rem}
-.gal-modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:2rem}
-.gal-modal-title{display:flex;align-items:center;gap:0.8rem}
-.gal-modal-dot{width:20px;height:20px;border-radius:50%;flex-shrink:0}
-.gal-modal-title > span:first-of-type{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:1.8rem;letter-spacing:3px;text-transform:uppercase}
-.gal-modal-counter{font-size:0.75rem;letter-spacing:2px;text-transform:uppercase;color:var(--silver);font-weight:400;margin-left:0.5rem}
-.gal-close{background:transparent;border:1px solid rgba(255,255,255,0.15);color:var(--silver);width:36px;height:36px;cursor:pointer;font-size:1rem;transition:all 0.2s;display:flex;align-items:center;justify-content:center}
-.gal-close:hover{border-color:var(--fire-orange);color:var(--fire-orange)}
+/* ── GALLERY OVERLAY ── */
+.gal-overlay {
+  position:fixed; inset:0; z-index:500;
+  background:rgba(0,0,0,0.95);
+  display:flex; flex-direction:column;
+  opacity:0; pointer-events:none;
+  transition:opacity 0.3s ease;
+}
+.gal-overlay.open { opacity:1; pointer-events:all; }
 
-/* CAROUSEL */
-.gal-carousel-wrap{position:relative;display:flex;align-items:center;gap:1rem}
-.gal-carousel{flex:1;overflow:hidden;perspective:1200px}
-.gal-carousel-inner{display:flex;gap:1.5rem;transition:transform 0.5s cubic-bezier(0.4,0.2,0.2,1);will-change:transform;align-items:center;justify-content:center;padding:1.5rem 0}
-.gal-card-wrap{flex-shrink:0;transition:transform 0.5s,opacity 0.5s,filter 0.5s;cursor:pointer}
-.gal-card-wrap.center{transform:scale(1.12);z-index:2;opacity:1;filter:none}
-.gal-card-wrap.side{transform:scale(0.85) rotateY(12deg);opacity:0.5;filter:brightness(0.6)}
-.gal-card-wrap.side-right{transform:scale(0.85) rotateY(-12deg);opacity:0.5;filter:brightness(0.6)}
-.gal-card-wrap.far{transform:scale(0.72) rotateY(20deg);opacity:0.25;filter:brightness(0.4)}
-.gal-card-wrap.far-right{transform:scale(0.72) rotateY(-20deg);opacity:0.25;filter:brightness(0.4)}
-.gal-card-img{width:180px;height:260px;object-fit:cover;display:block;border-radius:4px}
-.gal-card-placeholder{width:180px;height:260px;background:var(--dark3);border:1px solid rgba(255,255,255,0.08);border-radius:4px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.2);font-size:0.7rem;letter-spacing:2px;text-transform:uppercase;font-family:'Barlow Condensed',sans-serif}
+.gal-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:1.5rem 2rem; border-bottom:1px solid rgba(255,255,255,0.08);
+  flex-shrink:0;
+}
+.gal-title-row { display:flex; align-items:center; gap:0.8rem; }
+.gal-dot { width:16px; height:16px; border-radius:50%; flex-shrink:0; }
+.gal-title {
+  font-family:'Barlow Condensed',sans-serif; font-weight:900;
+  font-size:1.8rem; letter-spacing:3px; text-transform:uppercase;
+}
+.gal-counter { font-size:0.8rem; letter-spacing:2px; text-transform:uppercase; color:var(--silver); margin-left:0.5rem; }
+.gal-close-btn {
+  width:40px; height:40px; background:transparent;
+  border:1px solid rgba(255,255,255,0.2); color:var(--silver);
+  font-size:1.2rem; display:flex; align-items:center; justify-content:center;
+  transition:all 0.2s; flex-shrink:0;
+}
+.gal-close-btn:hover { border-color:var(--orange); color:var(--orange); }
 
-.gal-arrow{background:transparent;border:1px solid rgba(255,255,255,0.15);color:var(--white);width:44px;height:44px;font-size:1.8rem;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;flex-shrink:0;line-height:1}
-.gal-arrow:hover{border-color:var(--fire-orange);color:var(--fire-orange)}
+.gal-body {
+  flex:1; display:flex; align-items:center; justify-content:center;
+  padding:1rem 0; overflow:hidden; position:relative;
+}
+.gal-prev, .gal-next {
+  position:absolute; top:50%; transform:translateY(-50%);
+  width:50px; height:50px; z-index:10;
+  background:rgba(8,8,8,0.8); border:1px solid rgba(255,255,255,0.2);
+  color:#fff; font-size:2rem; display:flex; align-items:center; justify-content:center;
+  transition:all 0.2s;
+}
+.gal-prev { left:1rem; }
+.gal-next { right:1rem; }
+.gal-prev:hover, .gal-next:hover { border-color:var(--orange); color:var(--orange); background:rgba(232,67,23,0.1); }
 
-.gal-dots{display:flex;justify-content:center;gap:6px;margin-top:1.5rem;flex-wrap:wrap}
-.gal-dot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,0.2);cursor:pointer;transition:all 0.2s;border:none;padding:0}
-.gal-dot.active{background:var(--fire-orange);transform:scale(1.3)}
+.gal-track-wrap { overflow:hidden; width:100%; height:100%; display:flex; align-items:center; }
+.gal-track {
+  display:flex; align-items:center; gap:24px;
+  padding:20px 50%;
+  transition:transform 0.45s cubic-bezier(0.4,0.2,0.2,1);
+  will-change:transform;
+}
+.gal-item {
+  flex-shrink:0; cursor:pointer;
+  transition:transform 0.45s, opacity 0.45s, filter 0.45s;
+  transform-origin:center center;
+}
+.gal-item img {
+  width:180px; height:260px; object-fit:cover;
+  border-radius:6px; display:block;
+  -webkit-user-drag:none; pointer-events:none;
+}
+.gal-item.is-active { transform:scale(1.1); opacity:1; filter:none; z-index:2; }
+.gal-item.is-near { transform:scale(0.85) rotateY(15deg); opacity:0.55; filter:brightness(0.6); }
+.gal-item.is-near-right { transform:scale(0.85) rotateY(-15deg); opacity:0.55; filter:brightness(0.6); }
+.gal-item.is-far { transform:scale(0.7) rotateY(22deg); opacity:0.25; filter:brightness(0.35); }
+.gal-item.is-far-right { transform:scale(0.7) rotateY(-22deg); opacity:0.25; filter:brightness(0.35); }
+.gal-item.is-hidden { opacity:0; pointer-events:none; }
 
-@media(max-width:768px){nav{padding:1rem 1.5rem}.nav-links{display:none}section{padding:4rem 1.5rem}}
-@media(max-width:600px){.gal-card-img,.gal-card-placeholder{width:130px;height:188px}.gal-modal-inner{padding:1.2rem}}
+.gal-placeholder {
+  width:180px; height:260px; background:var(--dark3);
+  border:1px solid rgba(255,255,255,0.08); border-radius:6px;
+  display:flex; align-items:center; justify-content:center;
+  color:rgba(255,255,255,0.15); font-size:0.7rem; letter-spacing:2px;
+  text-transform:uppercase; font-family:'Barlow Condensed',sans-serif;
+}
+
+.gal-dots {
+  display:flex; justify-content:center; gap:6px;
+  padding:1rem 2rem; flex-wrap:wrap; flex-shrink:0;
+}
+.gal-dot-btn {
+  width:7px; height:7px; border-radius:50%;
+  background:rgba(255,255,255,0.2); border:none;
+  transition:all 0.25s; padding:0;
+}
+.gal-dot-btn.active { background:var(--orange); transform:scale(1.4); }
+
+@media(max-width:768px) {
+  nav { padding:1rem 1.5rem; }
+  .nav-links { display:none; }
+  section { padding:4rem 1.5rem; }
+  .gal-item img, .gal-placeholder { width:130px; height:188px; }
+  .gal-header { padding:1rem 1.2rem; }
+}
 </style>
 </head>
 <body>
 
+<!-- NAVIGATION -->
 <nav>
   <div class="nav-logo">Tactical Volley</div>
   <ul class="nav-links">
@@ -216,8 +413,9 @@ footer p{color:rgba(255,255,255,0.2);font-size:0.78rem;letter-spacing:1px}
   </ul>
 </nav>
 
+<!-- HERO -->
 <section class="hero">
-  <div class="hero-grid-bg"></div>
+  <div class="hero-grid"></div>
   <div class="hero-glow"></div>
   <div class="hero-content">
     <div class="hero-badge" data-de="Das Volleyball-Strategie-Kartenspiel" data-en="The Volleyball Strategy Card Game">Das Volleyball-Strategie-Kartenspiel</div>
@@ -234,35 +432,23 @@ footer p{color:rgba(255,255,255,0.2);font-size:0.78rem;letter-spacing:1px}
   <div class="hero-scroll"><div class="scroll-line"></div><span>Scroll</span></div>
 </section>
 
+<!-- DAS SPIEL -->
 <section id="about">
   <div class="section-inner">
     <div class="section-label" data-de="Das Spiel" data-en="The Game">Das Spiel</div>
     <h2 class="section-title" data-de="Volleyball trifft Strategie" data-en="Volleyball meets Strategy">Volleyball trifft Strategie</h2>
     <p class="section-desc" data-de="Tactical Volley ist ein taktisches Kartenspiel für 3–4 Spieler. Manage dein Team, gewinne Turniere und sammle 8 Siegpunkte – bevor deine Gegner es tun." data-en="Tactical Volley is a tactical card game for 3–4 players. Manage your team, win tournaments and collect 8 victory points – before your opponents do.">Tactical Volley ist ein taktisches Kartenspiel für 3–4 Spieler. Manage dein Team, gewinne Turniere und sammle 8 Siegpunkte – bevor deine Gegner es tun.</p>
-    <p class="hint"><span>↺ </span><span class="hint-text" data-de="Karte antippen für mehr Details" data-en="Tap card for more details">Karte antippen für mehr Details</span></p>
+    <p class="hint"><span>↺ </span><span data-de="Karte antippen für mehr Details" data-en="Tap card for more details">Karte antippen für mehr Details</span></p>
     <div class="cards-grid">
 
       <div class="flip-card c1" onclick="this.classList.toggle('flipped')">
         <div class="flip-inner">
           <div class="flip-front">
-            <div class="top">
-              <div class="icon">🏐</div>
-              <h3 data-de="Team Management" data-en="Team Management">Team Management</h3>
-              <p data-de="Kaufe und entwickle Spielerkarten von 1–5 Sternen. Jede Position hat eigene Stärken." data-en="Buy and develop player cards from 1–5 stars. Each position has its own strengths.">Kaufe und entwickle Spielerkarten von 1–5 Sternen. Jede Position hat eigene Stärken.</p>
-            </div>
+            <div class="top"><div class="icon">🏐</div><h3 data-de="Team Management" data-en="Team Management">Team Management</h3><p data-de="Kaufe und entwickle Spielerkarten von 1–5 Sternen. Jede Position hat eigene Stärken." data-en="Buy and develop player cards from 1–5 stars. Each position has its own strengths.">Kaufe und entwickle Spielerkarten von 1–5 Sternen. Jede Position hat eigene Stärken.</p></div>
             <div class="tap-hint" data-de="Mehr erfahren" data-en="Learn more">Mehr erfahren</div>
           </div>
           <div class="flip-back">
-            <div>
-              <div class="back-label" data-de="Team Management" data-en="Team Management">Team Management</div>
-              <h3 data-de="Dein Kader, deine Taktik" data-en="Your squad, your tactics">Dein Kader, deine Taktik</h3>
-              <ul>
-                <li data-de="5 Positionen: Outside, Middle, Setter, Libero (Dia), Libero" data-en="5 positions: Outside, Middle, Setter, Libero (Dia), Libero">5 Positionen: Outside, Middle, Setter, Libero (Dia), Libero</li>
-                <li data-de="Karten von 1★ Talent bis 5★ Weltstar" data-en="Cards from 1★ talent to 5★ world star">Karten von 1★ Talent bis 5★ Weltstar</li>
-                <li data-de="Startkapital 80.000 – klug investieren" data-en="Starting capital 80,000 – invest wisely">Startkapital 80.000 – klug investieren</li>
-                <li data-de="Stärkere Spieler = höhere Chancen in der Liga" data-en="Stronger players = better chances in the league">Stärkere Spieler = höhere Chancen in der Liga</li>
-              </ul>
-            </div>
+            <div><div class="back-label" data-de="Team Management" data-en="Team Management">Team Management</div><h3 data-de="Dein Kader, deine Taktik" data-en="Your squad, your tactics">Dein Kader, deine Taktik</h3><ul><li data-de="5 Positionen: Outside, Middle, Setter, Libero (Dia), Libero" data-en="5 positions: Outside, Middle, Setter, Libero (Dia), Libero">5 Positionen: Outside, Middle, Setter, Libero (Dia), Libero</li><li data-de="Karten von 1★ Talent bis 5★ Weltstar" data-en="Cards from 1★ talent to 5★ world star">Karten von 1★ Talent bis 5★ Weltstar</li><li data-de="Startkapital 80.000 – klug investieren" data-en="Starting capital 80,000 – invest wisely">Startkapital 80.000 – klug investieren</li><li data-de="Stärkere Spieler = höhere Chancen in der Liga" data-en="Stronger players = better chances in the league">Stärkere Spieler = höhere Chancen in der Liga</li></ul></div>
             <div class="back-close" data-de="Zurückdrehen ↺" data-en="Flip back ↺">Zurückdrehen <span>↺</span></div>
           </div>
         </div>
@@ -271,24 +457,11 @@ footer p{color:rgba(255,255,255,0.2);font-size:0.78rem;letter-spacing:1px}
       <div class="flip-card c2" onclick="this.classList.toggle('flipped')">
         <div class="flip-inner">
           <div class="flip-front">
-            <div class="top">
-              <div class="icon">🏆</div>
-              <h3 data-de="Turniere &amp; Liga" data-en="Tournaments &amp; League">Turniere &amp; Liga</h3>
-              <p data-de="SuperCup, Champions League, Cup – 6 Wochen voller Wettbewerb mit echtem Spielgeld." data-en="Super Cup, Champions League, Cup – 6 weeks of competition with real game money.">SuperCup, Champions League, Cup – 6 Wochen voller Wettbewerb mit echtem Spielgeld.</p>
-            </div>
+            <div class="top"><div class="icon">🏆</div><h3 data-de="Turniere &amp; Liga" data-en="Tournaments &amp; League">Turniere &amp; Liga</h3><p data-de="SuperCup, Champions League, Cup – 6 Wochen voller Wettbewerb mit echtem Spielgeld." data-en="Super Cup, Champions League, Cup – 6 weeks of competition with real game money.">SuperCup, Champions League, Cup – 6 Wochen voller Wettbewerb mit echtem Spielgeld.</p></div>
             <div class="tap-hint" data-de="Mehr erfahren" data-en="Learn more">Mehr erfahren</div>
           </div>
           <div class="flip-back">
-            <div>
-              <div class="back-label" data-de="Turnierkalender" data-en="Tournament Calendar">Turnierkalender</div>
-              <h3 data-de="6 Wochen, 5 Events" data-en="6 Weeks, 5 Events">6 Wochen, 5 Events</h3>
-              <ul>
-                <li data-de="Woche 1 – SuperCup (15.000)" data-en="Week 1 – Super Cup (15,000)">Woche 1 – SuperCup (15.000)</li>
-                <li data-de="Woche 2/4/6 – Champions League (20k / 35k Final)" data-en="Week 2/4/6 – Champions League (20k / 35k Final)">Woche 2/4/6 – Champions League (20k / 35k Final)</li>
-                <li data-de="Woche 3 – Cup-Runde" data-en="Week 3 – Cup Round">Woche 3 – Cup-Runde</li>
-                <li data-de="Woche 5 – Cup Final (20.000)" data-en="Week 5 – Cup Final (20,000)">Woche 5 – Cup Final (20.000)</li>
-              </ul>
-            </div>
+            <div><div class="back-label" data-de="Turnierkalender" data-en="Tournament Calendar">Turnierkalender</div><h3 data-de="6 Wochen, 5 Events" data-en="6 Weeks, 5 Events">6 Wochen, 5 Events</h3><ul><li data-de="Woche 1 – SuperCup (15.000)" data-en="Week 1 – Super Cup (15,000)">Woche 1 – SuperCup (15.000)</li><li data-de="Woche 2/4/6 – Champions League (20k / 35k Final)" data-en="Week 2/4/6 – Champions League (20k / 35k Final)">Woche 2/4/6 – Champions League (20k / 35k Final)</li><li data-de="Woche 3 – Cup-Runde" data-en="Week 3 – Cup Round">Woche 3 – Cup-Runde</li><li data-de="Woche 5 – Cup Final (20.000)" data-en="Week 5 – Cup Final (20,000)">Woche 5 – Cup Final (20.000)</li></ul></div>
             <div class="back-close" data-de="Zurückdrehen ↺" data-en="Flip back ↺">Zurückdrehen <span>↺</span></div>
           </div>
         </div>
@@ -297,23 +470,11 @@ footer p{color:rgba(255,255,255,0.2);font-size:0.78rem;letter-spacing:1px}
       <div class="flip-card c3" onclick="this.classList.toggle('flipped')">
         <div class="flip-inner">
           <div class="flip-front">
-            <div class="top">
-              <div class="icon">🎲</div>
-              <h3 data-de="3 Liga-Systeme" data-en="3 League Systems">3 Liga-Systeme</h3>
-              <p data-de="Classical, Position Poker und Action Chains – jede Saison bringt neue Mechaniken." data-en="Classic, Position Poker and Action Chains – every season brings new mechanics.">Classical, Position Poker und Action Chains – jede Saison bringt neue Mechaniken.</p>
-            </div>
+            <div class="top"><div class="icon">🎲</div><h3 data-de="3 Liga-Systeme" data-en="3 League Systems">3 Liga-Systeme</h3><p data-de="Classical, Position Poker und Action Chains – jede Saison bringt neue Mechaniken." data-en="Classic, Position Poker and Action Chains – every season brings new mechanics.">Classical, Position Poker und Action Chains – jede Saison bringt neue Mechaniken.</p></div>
             <div class="tap-hint" data-de="Mehr erfahren" data-en="Learn more">Mehr erfahren</div>
           </div>
           <div class="flip-back">
-            <div>
-              <div class="back-label" data-de="Liga-Systeme" data-en="League Systems">Liga-Systeme</div>
-              <h3 data-de="Jede Saison anders" data-en="Different every season">Jede Saison anders</h3>
-              <ul>
-                <li data-de="Classical – 12-seitiger Würfel, 12 Kriterien, Home-Bonus" data-en="Classic – 12-sided die, 12 criteria, home bonus">Classical – 12-seitiger Würfel, 12 Kriterien, Home-Bonus</li>
-                <li data-de="Position Poker – 3 Paare, direkte Sternvergleiche" data-en="Position Poker – 3 pairs, direct star comparisons">Position Poker – 3 Paare, direkte Sternvergleiche</li>
-                <li data-de="Action Chains – 6W, 3 Runden, Kettenreaktionen" data-en="Action Chains – 6-sided die, 3 rounds, chain reactions">Action Chains – 6W, 3 Runden, Kettenreaktionen</li>
-              </ul>
-            </div>
+            <div><div class="back-label" data-de="Liga-Systeme" data-en="League Systems">Liga-Systeme</div><h3 data-de="Jede Saison anders" data-en="Different every season">Jede Saison anders</h3><ul><li data-de="Classical – 12-seitiger Würfel, 12 Kriterien, Home-Bonus" data-en="Classic – 12-sided die, 12 criteria, home bonus">Classical – 12-seitiger Würfel, 12 Kriterien, Home-Bonus</li><li data-de="Position Poker – 3 Paare, direkte Sternvergleiche" data-en="Position Poker – 3 pairs, direct star comparisons">Position Poker – 3 Paare, direkte Sternvergleiche</li><li data-de="Action Chains – 6W, 3 Runden, Kettenreaktionen" data-en="Action Chains – 6-sided die, 3 rounds, chain reactions">Action Chains – 6W, 3 Runden, Kettenreaktionen</li></ul></div>
             <div class="back-close" data-de="Zurückdrehen ↺" data-en="Flip back ↺">Zurückdrehen <span>↺</span></div>
           </div>
         </div>
@@ -322,24 +483,11 @@ footer p{color:rgba(255,255,255,0.2);font-size:0.78rem;letter-spacing:1px}
       <div class="flip-card c4" onclick="this.classList.toggle('flipped')">
         <div class="flip-inner">
           <div class="flip-front">
-            <div class="top">
-              <div class="icon">🎯</div>
-              <h3 data-de="Siegpunkte" data-en="Victory Points">Siegpunkte</h3>
-              <p data-de="Wer zuerst 8 Siegpunkte sammelt gewinnt. Jedes Turnier zählt – kein Fehler erlaubt." data-en="First to collect 8 victory points wins. Every tournament counts – no mistakes allowed.">Wer zuerst 8 Siegpunkte sammelt gewinnt. Jedes Turnier zählt – kein Fehler erlaubt.</p>
-            </div>
+            <div class="top"><div class="icon">🎯</div><h3 data-de="Siegpunkte" data-en="Victory Points">Siegpunkte</h3><p data-de="Wer zuerst 8 Siegpunkte sammelt gewinnt. Jedes Turnier zählt – kein Fehler erlaubt." data-en="First to collect 8 victory points wins. Every tournament counts – no mistakes allowed.">Wer zuerst 8 Siegpunkte sammelt gewinnt. Jedes Turnier zählt – kein Fehler erlaubt.</p></div>
             <div class="tap-hint" data-de="Mehr erfahren" data-en="Learn more">Mehr erfahren</div>
           </div>
           <div class="flip-back">
-            <div>
-              <div class="back-label" data-de="Siegpunkte" data-en="Victory Points">Siegpunkte</div>
-              <h3 data-de="Der Weg zum Titel" data-en="The Road to the Title">Der Weg zum Titel</h3>
-              <ul>
-                <li data-de="Liga 1. Platz → 3 Punkte" data-en="League 1st place → 3 points">Liga 1. Platz → 3 Punkte</li>
-                <li data-de="Liga 2. Platz → 2 · Liga 3. Platz → 1" data-en="League 2nd → 2 · League 3rd → 1">Liga 2. Platz → 2 · Liga 3. Platz → 1</li>
-                <li data-de="Champions League Sieg → 3 Punkte" data-en="Champions League win → 3 points">Champions League Sieg → 3 Punkte</li>
-                <li data-de="Cup-Sieger → 2 · Cup-Finalist → 1" data-en="Cup winner → 2 · Cup finalist → 1">Cup-Sieger → 2 · Cup-Finalist → 1</li>
-              </ul>
-            </div>
+            <div><div class="back-label" data-de="Siegpunkte" data-en="Victory Points">Siegpunkte</div><h3 data-de="Der Weg zum Titel" data-en="The Road to the Title">Der Weg zum Titel</h3><ul><li data-de="Liga 1. Platz → 3 Punkte" data-en="League 1st place → 3 points">Liga 1. Platz → 3 Punkte</li><li data-de="Liga 2. Platz → 2 · Liga 3. Platz → 1" data-en="League 2nd → 2 · League 3rd → 1">Liga 2. Platz → 2 · Liga 3. Platz → 1</li><li data-de="Champions League Sieg → 3 Punkte" data-en="Champions League win → 3 points">Champions League Sieg → 3 Punkte</li><li data-de="Cup-Sieger → 2 · Cup-Finalist → 1" data-en="Cup winner → 2 · Cup finalist → 1">Cup-Sieger → 2 · Cup-Finalist → 1</li></ul></div>
             <div class="back-close" data-de="Zurückdrehen ↺" data-en="Flip back ↺">Zurückdrehen <span>↺</span></div>
           </div>
         </div>
@@ -349,22 +497,44 @@ footer p{color:rgba(255,255,255,0.2);font-size:0.78rem;letter-spacing:1px}
   </div>
 </section>
 
+<!-- SPIELERKARTEN -->
 <section id="cards">
   <div class="section-inner">
     <div class="section-label" data-de="Spielerkarten" data-en="Player Cards">Spielerkarten</div>
     <h2 class="section-title" data-de="Dein Kader,<br>deine Taktik" data-en="Your squad,<br>your tactics">Dein Kader,<br>deine Taktik</h2>
     <p class="section-desc" data-de="5 Positionen, unzählige Kombinationen. Von 1-Stern-Talenten bis zu 5-Stern-Weltstars." data-en="5 positions, endless combinations. From 1-star talents to 5-star world stars.">5 Positionen, unzählige Kombinationen. Von 1-Stern-Talenten bis zu 5-Stern-Weltstars.</p>
-    <p class="hint" style="margin-bottom:2rem"><span>👆 </span><span data-de="Karte antippen um alle Karten zu sehen" data-en="Tap a card to browse all cards">Karte antippen um alle Karten zu sehen</span></p>
+    <p class="hint" style="margin-top:1rem"><span>👆 </span><span data-de="Karte antippen um alle Karten zu sehen" data-en="Tap a card to browse all cards">Karte antippen um alle Karten zu sehen</span></p>
     <div class="cards-showcase">
-      <div class="player-card card-red" onclick="openGallery('outside')" style="cursor:pointer"><div class="card-net"></div><div class="card-border-top"></div><div class="card-label">Outside</div><div class="card-content"><div class="card-stars">★★★★★</div><div class="card-name">Attacker</div><div class="card-pos" data-de="Outside Hitter" data-en="Outside Hitter">Outside Hitter</div></div></div>
-      <div class="player-card card-green" onclick="openGallery('middle')" style="cursor:pointer"><div class="card-net"></div><div class="card-border-top"></div><div class="card-label">Middle</div><div class="card-content"><div class="card-stars">★★★★☆</div><div class="card-name">Blocker</div><div class="card-pos" data-de="Middle Blocker" data-en="Middle Blocker">Middle Blocker</div></div></div>
-      <div class="player-card card-lightblue" onclick="openGallery('setter')" style="cursor:pointer"><div class="card-net"></div><div class="card-border-top"></div><div class="card-label">Setter</div><div class="card-content"><div class="card-stars">★★★★★</div><div class="card-name">Setter</div><div class="card-pos">Setter</div></div></div>
-      <div class="player-card card-darkblue" onclick="openGallery('diagonal')" style="cursor:pointer"><div class="card-net"></div><div class="card-border-top"></div><div class="card-label">Libero</div><div class="card-content"><div class="card-stars">★★★☆☆</div><div class="card-name">Libero</div><div class="card-pos" data-de="Libero / Dia" data-en="Libero / Dia">Libero / Dia</div></div></div>
-      <div class="player-card card-yellow" onclick="openGallery('libero')" style="cursor:pointer"><div class="card-net"></div><div class="card-border-top"></div><div class="card-label">Libero</div><div class="card-content"><div class="card-stars">★★★★☆</div><div class="card-name">Defender</div><div class="card-pos">Libero</div></div></div>
+      <div class="player-card card-red" onclick="openGallery('outside')">
+        <div class="card-net"></div><div class="card-border-top"></div>
+        <div class="card-label">Outside</div>
+        <div class="card-content"><div class="card-stars">★★★★★</div><div class="card-name">Attacker</div><div class="card-pos" data-de="Outside Hitter" data-en="Outside Hitter">Outside Hitter</div></div>
+      </div>
+      <div class="player-card card-green" onclick="openGallery('middle')">
+        <div class="card-net"></div><div class="card-border-top"></div>
+        <div class="card-label">Middle</div>
+        <div class="card-content"><div class="card-stars">★★★★☆</div><div class="card-name">Blocker</div><div class="card-pos" data-de="Middle Blocker" data-en="Middle Blocker">Middle Blocker</div></div>
+      </div>
+      <div class="player-card card-lightblue" onclick="openGallery('setter')">
+        <div class="card-net"></div><div class="card-border-top"></div>
+        <div class="card-label">Setter</div>
+        <div class="card-content"><div class="card-stars">★★★★★</div><div class="card-name">Setter</div><div class="card-pos">Setter</div></div>
+      </div>
+      <div class="player-card card-darkblue" onclick="openGallery('diagonal')">
+        <div class="card-net"></div><div class="card-border-top"></div>
+        <div class="card-label">Diagonal</div>
+        <div class="card-content"><div class="card-stars">★★★☆☆</div><div class="card-name">Diagonal</div><div class="card-pos" data-de="Libero / Dia" data-en="Libero / Dia">Libero / Dia</div></div>
+      </div>
+      <div class="player-card card-yellow" onclick="openGallery('libero')">
+        <div class="card-net"></div><div class="card-border-top"></div>
+        <div class="card-label">Libero</div>
+        <div class="card-content"><div class="card-stars">★★★★☆</div><div class="card-name">Libero</div><div class="card-pos">Libero</div></div>
+      </div>
     </div>
   </div>
 </section>
 
+<!-- REGELN -->
 <section id="rules">
   <div class="section-inner">
     <div class="section-label" data-de="Spielregeln" data-en="Game Rules">Spielregeln</div>
@@ -377,70 +547,15 @@ footer p{color:rgba(255,255,255,0.2);font-size:0.78rem;letter-spacing:1px}
     </div>
     <p class="section-desc" data-de="Ein schwarzer Hut steuert die globale Timeline – 6 Wochen, 5 Turniere, 3 Liga-Systeme." data-en="A black hat controls the global timeline – 6 weeks, 5 tournaments, 3 league systems.">Ein schwarzer Hut steuert die globale Timeline – 6 Wochen, 5 Turniere, 3 Liga-Systeme.</p>
     <div class="rules-grid">
-      <div class="rule-block">
-        <h3 data-de="Grundregeln" data-en="Basic Rules">Grundregeln</h3>
-        <ul>
-          <li data-de="3–4 Spieler, Startkapital 80.000" data-en="3–4 players, starting capital 80,000">3–4 Spieler, Startkapital 80.000</li>
-          <li data-de="Ziel: Als erster 8 Siegpunkte" data-en="Goal: Be first to reach 8 victory points">Ziel: Als erster 8 Siegpunkte</li>
-          <li data-de="6 Wochen + optionale Woche 7" data-en="6 weeks + optional week 7">6 Wochen + optionale Woche 7</li>
-          <li data-de="Schwarzer Hut = globaler Fortschritt" data-en="Black hat = global progress">Schwarzer Hut = globaler Fortschritt</li>
-        </ul>
-      </div>
-      <div class="rule-block">
-        <h3 data-de="Turnierkalender" data-en="Tournament Calendar">Turnierkalender</h3>
-        <ul>
-          <li data-de="Woche 1 – SuperCup (15.000)" data-en="Week 1 – Super Cup (15,000)">Woche 1 – SuperCup (15.000)</li>
-          <li data-de="Woche 2/4/6 – Champions League" data-en="Week 2/4/6 – Champions League">Woche 2/4/6 – Champions League</li>
-          <li data-de="Woche 3 – Cup-Runde" data-en="Week 3 – Cup Round">Woche 3 – Cup-Runde</li>
-          <li data-de="Woche 5 – Cup Final (20.000)" data-en="Week 5 – Cup Final (20,000)">Woche 5 – Cup Final (20.000)</li>
-        </ul>
-      </div>
-      <div class="rule-block">
-        <h3 data-de="Siegpunkte" data-en="Victory Points">Siegpunkte</h3>
-        <ul>
-          <li data-de="Liga 1. Platz → 3 Punkte" data-en="League 1st place → 3 points">Liga 1. Platz → 3 Punkte</li>
-          <li data-de="Liga 2. Platz → 2 Punkte" data-en="League 2nd place → 2 points">Liga 2. Platz → 2 Punkte</li>
-          <li data-de="Liga 3. Platz → 1 Punkt" data-en="League 3rd place → 1 point">Liga 3. Platz → 1 Punkt</li>
-          <li data-de="Champions League Sieg → 3 Punkte" data-en="Champions League win → 3 points">Champions League Sieg → 3 Punkte</li>
-          <li data-de="Cup-Sieger → 2 · Cup-Finalist → 1" data-en="Cup winner → 2 · Cup finalist → 1">Cup-Sieger → 2 · Cup-Finalist → 1</li>
-        </ul>
-      </div>
-      <div class="rule-block">
-        <h3 data-de="Liga-Systeme" data-en="League Systems">Liga-Systeme</h3>
-        <ul>
-          <li><strong>Classical</strong> <span data-de="– 12-seitiger Würfel, 12 Kriterien" data-en="– 12-sided die, 12 criteria"> – 12-seitiger Würfel, 12 Kriterien</span></li>
-          <li><strong>Position Poker</strong> <span data-de="– 3 Paare, Sternvergleich" data-en="– 3 pairs, star comparison"> – 3 Paare, Sternvergleich</span></li>
-          <li><strong>Action Chains</strong> <span data-de="– 6W, 3 Runden" data-en="– 6-sided die, 3 rounds"> – 6W, 3 Runden</span></li>
-        </ul>
-      </div>
+      <div class="rule-block"><h3 data-de="Grundregeln" data-en="Basic Rules">Grundregeln</h3><ul><li data-de="3–4 Spieler, Startkapital 80.000" data-en="3–4 players, starting capital 80,000">3–4 Spieler, Startkapital 80.000</li><li data-de="Ziel: Als erster 8 Siegpunkte" data-en="Goal: Be first to reach 8 victory points">Ziel: Als erster 8 Siegpunkte</li><li data-de="6 Wochen + optionale Woche 7" data-en="6 weeks + optional week 7">6 Wochen + optionale Woche 7</li><li data-de="Schwarzer Hut = globaler Fortschritt" data-en="Black hat = global progress">Schwarzer Hut = globaler Fortschritt</li></ul></div>
+      <div class="rule-block"><h3 data-de="Turnierkalender" data-en="Tournament Calendar">Turnierkalender</h3><ul><li data-de="Woche 1 – SuperCup (15.000)" data-en="Week 1 – Super Cup (15,000)">Woche 1 – SuperCup (15.000)</li><li data-de="Woche 2/4/6 – Champions League" data-en="Week 2/4/6 – Champions League">Woche 2/4/6 – Champions League</li><li data-de="Woche 3 – Cup-Runde" data-en="Week 3 – Cup Round">Woche 3 – Cup-Runde</li><li data-de="Woche 5 – Cup Final (20.000)" data-en="Week 5 – Cup Final (20,000)">Woche 5 – Cup Final (20.000)</li></ul></div>
+      <div class="rule-block"><h3 data-de="Siegpunkte" data-en="Victory Points">Siegpunkte</h3><ul><li data-de="Liga 1. Platz → 3 Punkte" data-en="League 1st place → 3 points">Liga 1. Platz → 3 Punkte</li><li data-de="Liga 2. Platz → 2 Punkte" data-en="League 2nd place → 2 points">Liga 2. Platz → 2 Punkte</li><li data-de="Liga 3. Platz → 1 Punkt" data-en="League 3rd place → 1 point">Liga 3. Platz → 1 Punkt</li><li data-de="Champions League Sieg → 3 Punkte" data-en="Champions League win → 3 points">Champions League Sieg → 3 Punkte</li><li data-de="Cup-Sieger → 2 · Cup-Finalist → 1" data-en="Cup winner → 2 · Cup finalist → 1">Cup-Sieger → 2 · Cup-Finalist → 1</li></ul></div>
+      <div class="rule-block"><h3 data-de="Liga-Systeme" data-en="League Systems">Liga-Systeme</h3><ul><li><strong>Classical</strong> <span data-de="– 12-seitiger Würfel, 12 Kriterien" data-en="– 12-sided die, 12 criteria"> – 12-seitiger Würfel, 12 Kriterien</span></li><li><strong>Position Poker</strong> <span data-de="– 3 Paare, Sternvergleich" data-en="– 3 pairs, star comparison"> – 3 Paare, Sternvergleich</span></li><li><strong>Action Chains</strong> <span data-de="– 6W, 3 Runden" data-en="– 6-sided die, 3 rounds"> – 6W, 3 Runden</span></li></ul></div>
     </div>
   </div>
 </section>
 
-<script src="cards.js"></script>
-
-<!-- GALLERY MODAL -->
-<div id="gallery-modal" class="gal-modal" onclick="closeGalleryOnBg(event)">
-  <div class="gal-modal-inner">
-    <div class="gal-modal-header">
-      <div class="gal-modal-title">
-        <div class="gal-modal-dot" id="modal-dot"></div>
-        <span id="modal-title"></span>
-        <span class="gal-modal-counter" id="modal-counter"></span>
-      </div>
-      <button class="gal-close" onclick="closeGallery()">✕</button>
-    </div>
-    <div class="gal-carousel-wrap">
-      <button class="gal-arrow" onclick="carouselPrev()">‹</button>
-      <div class="gal-carousel">
-        <div class="gal-carousel-inner" id="gal-carousel-inner"></div>
-      </div>
-      <button class="gal-arrow" onclick="carouselNext()">›</button>
-    </div>
-    <div class="gal-dots" id="gal-dots"></div>
-  </div>
-</div>
-
+<!-- KAMPAGNE -->
 <section id="campaign">
   <div class="section-inner campaign-inner">
     <div class="section-label" data-de="Kampagne" data-en="Campaign">Kampagne</div>
@@ -458,19 +573,20 @@ footer p{color:rgba(255,255,255,0.2);font-size:0.78rem;letter-spacing:1px}
   </div>
 </section>
 
+<!-- COMMUNITY -->
 <section id="contact">
   <div class="section-inner">
     <div class="section-label" data-de="Community" data-en="Community">Community</div>
     <h2 class="social-title" data-de="Folge dem Spiel" data-en="Follow the Game">Folge dem Spiel</h2>
     <p class="section-desc" data-de="Highlights, Einblicke hinter die Kulissen und Launch-Updates – direkt auf deinem Feed." data-en="Highlights, behind-the-scenes insights and launch updates – straight to your feed.">Highlights, Einblicke hinter die Kulissen und Launch-Updates – direkt auf deinem Feed.</p>
     <div class="social-cards">
-      <a href="https://www.tiktok.com/@volley_ballers" class="social-card tiktok" target="_blank">
+      <a href="https://www.tiktok.com/@volley_ballers" class="social-card tiktok" target="_blank" rel="noopener">
         <div class="social-icon">TT</div>
         <div><div class="social-name">TikTok</div><div class="social-handle">@Volley_ballers</div></div>
         <div class="social-desc" data-de="Volleyball-Highlights, Spielszenen und Einblicke in die Entwicklung von Tactical Volley." data-en="Volleyball highlights, game footage and insights into the development of Tactical Volley.">Volleyball-Highlights, Spielszenen und Einblicke in die Entwicklung von Tactical Volley.</div>
         <div class="social-cta" data-de="Jetzt folgen →" data-en="Follow now →">Jetzt folgen →</div>
       </a>
-      <a href="#" class="social-card instagram" target="_blank">
+      <a href="#" class="social-card instagram" target="_blank" rel="noopener">
         <div class="social-icon">IG</div>
         <div><div class="social-name">Instagram</div><div class="social-handle">@tacticalvolley</div></div>
         <div class="social-desc" data-de="Karten-Previews, Spielmechanik-Sneak-Peeks und Neuigkeiten zum Kampagnen-Start." data-en="Card previews, gameplay sneak-peeks and news about the campaign launch.">Karten-Previews, Spielmechanik-Sneak-Peeks und Neuigkeiten zum Kampagnen-Start.</div>
@@ -480,163 +596,182 @@ footer p{color:rgba(255,255,255,0.2);font-size:0.78rem;letter-spacing:1px}
   </div>
 </section>
 
+<!-- FOOTER -->
 <footer>
   <div class="footer-logo">Tactical Volley</div>
   <p data-de="© 2025 Lukas Widmer · Alle Rechte vorbehalten" data-en="© 2025 Lukas Widmer · All rights reserved">© 2025 Lukas Widmer · Alle Rechte vorbehalten</p>
 </footer>
 
+<!-- GALERIE OVERLAY (volle Seite) -->
+<div class="gal-overlay" id="gal-overlay">
+  <div class="gal-header">
+    <div class="gal-title-row">
+      <div class="gal-dot" id="gal-dot"></div>
+      <span class="gal-title" id="gal-title"></span>
+      <span class="gal-counter" id="gal-counter"></span>
+    </div>
+    <button class="gal-close-btn" id="gal-close">✕</button>
+  </div>
+  <div class="gal-body">
+    <button class="gal-prev" id="gal-prev">‹</button>
+    <div class="gal-track-wrap">
+      <div class="gal-track" id="gal-track"></div>
+    </div>
+    <button class="gal-next" id="gal-next">›</button>
+  </div>
+  <div class="gal-dots" id="gal-dots"></div>
+</div>
+
 <script>
-  // Progress bar
-  const bar = document.getElementById('progressBar');
-  const obs = new IntersectionObserver(e => {
-    e.forEach(x => { if(x.isIntersecting) bar.style.width = '34%' });
-  }, {threshold: 0.3});
+'use strict';
+
+/* ── SPRACHE ── */
+let currentLang = 'de';
+
+function setLang(lang) {
+  currentLang = lang;
+  document.getElementById('btn-de').classList.toggle('active', lang === 'de');
+  document.getElementById('btn-en').classList.toggle('active', lang === 'en');
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-de]').forEach(el => {
+    const text = el.getAttribute('data-' + lang);
+    if (!text) return;
+    if (text.includes('<br>')) { el.innerHTML = text; }
+    else { el.textContent = text; }
+  });
+  const pdfLink = document.getElementById('pdf-link');
+  if (pdfLink) pdfLink.href = lang === 'en' ? 'Tactical-Volley-Rules-EN.pdf' : 'Tactical-Volley-Regeln.pdf';
+}
+
+/* ── KAMPAGNEN-BALKEN ── */
+const bar = document.getElementById('progressBar');
+if (bar) {
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) bar.style.width = '34%'; });
+  }, { threshold: 0.3 });
   obs.observe(bar);
+}
 
-  // ── GALLERY ──────────────────────────────────────────────
-  let galState = { pos: null, idx: 0, total: 0 };
+/* ── GALERIE ── */
+const overlay   = document.getElementById('gal-overlay');
+const track     = document.getElementById('gal-track');
+const dotsEl    = document.getElementById('gal-dots');
+const dotEl     = document.getElementById('gal-dot');
+const titleEl   = document.getElementById('gal-title');
+const counterEl = document.getElementById('gal-counter');
 
-  function initGalleryCounts() {
-    if (typeof CARDS === 'undefined') return;
-    Object.keys(CARDS).forEach(pos => {
-      const el = document.getElementById('count-' + pos);
-      if (el) {
-        const n = CARDS[pos].files.length;
-        el.textContent = n + ' ' + (currentLang === 'en' ? 'cards' : 'Karten');
-      }
-    });
+let gal = { idx: 0, total: 0 };
+
+function openGallery(pos) {
+  // Sicherstellen dass cards.js geladen ist
+  if (typeof CARDS === 'undefined') {
+    alert('cards.js nicht gefunden – bitte auf GitHub hochladen!');
+    return;
   }
+  const data = CARDS[pos];
+  if (!data) return;
 
-  function openGallery(pos) {
-    if (typeof CARDS === 'undefined') return;
-    const data = CARDS[pos];
-    galState.pos = pos;
-    galState.idx = 0;
-    galState.total = data.files.length;
+  gal.idx = 0;
+  gal.total = data.files.length;
 
-    // header
-    document.getElementById('modal-dot').style.background = data.color;
-    document.getElementById('modal-title').textContent =
-      currentLang === 'en' ? data.label_en : data.label_de;
+  // Header befüllen
+  dotEl.style.background = data.color;
+  titleEl.textContent = currentLang === 'en' ? data.label_en : data.label_de;
 
-    buildCarousel(data);
-    updateCarousel();
-    document.getElementById('gallery-modal').classList.add('open');
-    document.body.style.overflow = 'hidden';
-  }
+  // Karten bauen
+  track.innerHTML = '';
+  dotsEl.innerHTML = '';
 
-  function buildCarousel(data) {
-    const inner = document.getElementById('gal-carousel-inner');
-    const dotsEl = document.getElementById('gal-dots');
-    inner.innerHTML = '';
-    dotsEl.innerHTML = '';
+  data.files.forEach((file, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'gal-item';
+    wrap.onclick = () => goTo(i);
 
-    data.files.forEach((file, i) => {
-      const wrap = document.createElement('div');
-      wrap.className = 'gal-card-wrap';
-      wrap.dataset.idx = i;
-      wrap.onclick = () => { galState.idx = i; updateCarousel(); };
+    const img = document.createElement('img');
+    img.src = data.folder ? data.folder + '/' + file : file;
+    img.alt = (data.label_de || pos) + ' ' + (i + 1);
+    img.draggable = false;
+    img.onerror = function () {
+      this.style.display = 'none';
+      const ph = document.createElement('div');
+      ph.className = 'gal-placeholder';
+      ph.textContent = 'Karte ' + (i + 1);
+      wrap.appendChild(ph);
+    };
+    wrap.appendChild(img);
+    track.appendChild(wrap);
 
-      const img = document.createElement('img');
-      img.className = 'gal-card-img';
-      img.alt = data.label_de + ' ' + (i + 1);
-      img.onerror = function() {
-        this.style.display = 'none';
-        const ph = document.createElement('div');
-        ph.className = 'gal-card-placeholder';
-        ph.textContent = 'Karte ' + (i + 1);
-        wrap.appendChild(ph);
-      };
-      img.src = data.folder ? data.folder + '/' + file : file;
-      wrap.appendChild(img);
-      inner.appendChild(wrap);
-
-      // dot
-      const dot = document.createElement('button');
-      dot.className = 'gal-dot';
-      dot.onclick = () => { galState.idx = i; updateCarousel(); };
-      dotsEl.appendChild(dot);
-    });
-  }
-
-  function updateCarousel() {
-    const { idx, total } = galState;
-    const inner = document.getElementById('gal-carousel-inner');
-    const cards = inner.querySelectorAll('.gal-card-wrap');
-    const dots = document.getElementById('gal-dots').querySelectorAll('.gal-dot');
-
-    cards.forEach((c, i) => {
-      const diff = i - idx;
-      c.className = 'gal-card-wrap';
-      if (diff === 0) c.classList.add('center');
-      else if (diff === -1) c.classList.add('side');
-      else if (diff === 1) c.classList.add('side-right');
-      else if (diff <= -2) c.classList.add('far');
-      else c.classList.add('far-right');
-    });
-
-    dots.forEach((d, i) => d.classList.toggle('active', i === idx));
-
-    // slide inner so active card is centered
-    const cardW = 180 + 24; // width + gap
-    const containerW = inner.parentElement.offsetWidth;
-    const offset = (containerW / 2) - (idx * cardW) - (cardW / 2);
-    inner.style.transform = `translateX(${offset}px)`;
-
-    document.getElementById('modal-counter').textContent =
-      (idx + 1) + ' / ' + total;
-  }
-
-  function carouselPrev() {
-    if (galState.idx > 0) { galState.idx--; updateCarousel(); }
-  }
-  function carouselNext() {
-    if (galState.idx < galState.total - 1) { galState.idx++; updateCarousel(); }
-  }
-  function closeGallery() {
-    document.getElementById('gallery-modal').classList.remove('open');
-    document.body.style.overflow = '';
-  }
-  function closeGalleryOnBg(e) {
-    if (e.target === document.getElementById('gallery-modal')) closeGallery();
-  }
-
-  // keyboard navigation
-  document.addEventListener('keydown', e => {
-    if (!document.getElementById('gallery-modal').classList.contains('open')) return;
-    if (e.key === 'ArrowLeft') carouselPrev();
-    if (e.key === 'ArrowRight') carouselNext();
-    if (e.key === 'Escape') closeGallery();
+    const dot = document.createElement('button');
+    dot.className = 'gal-dot-btn';
+    dot.onclick = () => goTo(i);
+    dotsEl.appendChild(dot);
   });
 
-  // init counts on load
-  document.addEventListener('DOMContentLoaded', initGalleryCounts);
-  // ─────────────────────────────────────────────────────────
+  // Overlay öffnen
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  updateGallery();
+}
 
-  // Language switcher
-  function setLang(lang) {
-    document.getElementById('btn-de').classList.toggle('active', lang === 'de');
-    document.getElementById('btn-en').classList.toggle('active', lang === 'en');
-    document.documentElement.lang = lang;
+function goTo(idx) {
+  gal.idx = Math.max(0, Math.min(idx, gal.total - 1));
+  updateGallery();
+}
 
-    // Update all translatable elements
-    document.querySelectorAll('[data-de]').forEach(el => {
-      const text = el.getAttribute('data-' + lang);
-      if (!text) return;
-      if (text.includes('<br>')) {
-        el.innerHTML = text;
-      } else {
-        el.textContent = text;
-      }
-    });
+function updateGallery() {
+  const items = track.querySelectorAll('.gal-item');
+  const dots  = dotsEl.querySelectorAll('.gal-dot-btn');
+  const { idx, total } = gal;
 
-    // Swap PDF to correct language version
-    const pdfLink = document.getElementById('pdf-link');
-    pdfLink.href = lang === 'en' ? 'Tactical-Volley-Rules-EN.pdf' : 'Tactical-Volley-Regeln.pdf';
+  // Klassen setzen
+  items.forEach((item, i) => {
+    const d = i - idx;
+    item.className = 'gal-item';
+    if      (d === 0)  item.classList.add('is-active');
+    else if (d === -1) item.classList.add('is-near');
+    else if (d ===  1) item.classList.add('is-near-right');
+    else if (d <= -2)  item.classList.add('is-far');
+    else               item.classList.add('is-far-right');
+  });
 
-    // refresh gallery counts
-    initGalleryCounts();
-  }
+  dots.forEach((d, i) => d.classList.toggle('active', i === idx));
+
+  // Track verschieben: aktive Karte zentrieren
+  const itemW = 180 + 24; // Bildbreite + Gap
+  const shift = idx * itemW;
+  track.style.transform = `translateX(-${shift}px)`;
+
+  counterEl.textContent = (idx + 1) + ' / ' + total;
+}
+
+function closeGallery() {
+  overlay.classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+// Buttons
+document.getElementById('gal-close').onclick = closeGallery;
+document.getElementById('gal-prev').onclick  = () => goTo(gal.idx - 1);
+document.getElementById('gal-next').onclick  = () => goTo(gal.idx + 1);
+
+// Klick auf Hintergrund schliesst
+overlay.addEventListener('click', e => { if (e.target === overlay) closeGallery(); });
+
+// Tastatur
+document.addEventListener('keydown', e => {
+  if (!overlay.classList.contains('open')) return;
+  if (e.key === 'ArrowLeft')  goTo(gal.idx - 1);
+  if (e.key === 'ArrowRight') goTo(gal.idx + 1);
+  if (e.key === 'Escape')     closeGallery();
+});
+
+// Touch-Swipe
+let touchStartX = 0;
+overlay.addEventListener('touchstart', e => { touchStartX = e.changedTouches[0].clientX; }, { passive: true });
+overlay.addEventListener('touchend',   e => {
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  if (Math.abs(dx) > 50) goTo(gal.idx + (dx < 0 ? 1 : -1));
+});
 </script>
 </body>
 </html>
