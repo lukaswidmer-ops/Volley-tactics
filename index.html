@@ -385,6 +385,25 @@ footer p { color:rgba(255,255,255,0.2); font-size:0.78rem; letter-spacing:1px; }
 .gal-dot-btn.active { background:var(--orange); transform:scale(1.4); }
 
 /* ═══════════════════════════════════════
+   MOBILES MENÜ OVERLAY
+═══════════════════════════════════════ */
+.mobile-menu {
+  display:none;
+  position:fixed; inset:0; z-index:300;
+  background:rgba(8,8,8,0.98);
+  flex-direction:column;
+  justify-content:center; align-items:center;
+  gap:2.5rem;
+}
+.mobile-menu.open { display:flex; }
+.mobile-menu a {
+  font-family:'Barlow Condensed',sans-serif; font-weight:900;
+  font-size:2rem; letter-spacing:5px; text-transform:uppercase;
+  color:var(--silver); transition:color 0.2s;
+}
+.mobile-menu a:hover { color:var(--orange); }
+
+/* ═══════════════════════════════════════
    RESPONSIVE – TABLET (max 900px)
 ═══════════════════════════════════════ */
 @media(max-width:900px) {
@@ -398,30 +417,21 @@ footer p { color:rgba(255,255,255,0.2); font-size:0.78rem; letter-spacing:1px; }
 ═══════════════════════════════════════ */
 @media(max-width:768px) {
 
-  /* NAV – Hamburger */
+  /* NAV */
   nav { padding:1rem 1.5rem; }
   .nav-links { display:none; }
-  .hamburger { display:flex; }
-  .nav-links.open {
-    display:flex; flex-direction:column;
-    position:fixed; top:0; left:0; right:0; bottom:0;
-    background:rgba(8,8,8,0.98);
-    justify-content:center; align-items:center;
-    gap:2.5rem; z-index:300;
-  }
-  .nav-links.open a { font-size:1.6rem; letter-spacing:4px; }
   .hamburger {
-    display:flex; flex-direction:column; gap:5px;
-    cursor:pointer; z-index:400; padding:0.3rem;
+    display:flex; flex-direction:column; gap:6px;
+    cursor:pointer; z-index:400; padding:0.4rem;
   }
   .hamburger span {
     display:block; width:26px; height:2px;
     background:#fff; border-radius:2px;
-    transition:all 0.3s;
+    transition:all 0.3s ease;
   }
-  .hamburger.open span:nth-child(1) { transform:translateY(7px) rotate(45deg); }
-  .hamburger.open span:nth-child(2) { opacity:0; }
-  .hamburger.open span:nth-child(3) { transform:translateY(-7px) rotate(-45deg); }
+  .hamburger.open span:nth-child(1) { transform:translateY(8px) rotate(45deg); }
+  .hamburger.open span:nth-child(2) { opacity:0; transform:scaleX(0); }
+  .hamburger.open span:nth-child(3) { transform:translateY(-8px) rotate(-45deg); }
 
   /* SECTIONS */
   section { padding:3.5rem 1.2rem; }
@@ -480,17 +490,17 @@ footer p { color:rgba(255,255,255,0.2); font-size:0.78rem; letter-spacing:1px; }
 <!-- NAVIGATION -->
 <nav>
   <div class="nav-logo">Tactical Volley</div>
-  <ul class="nav-links" id="nav-links">
-    <li><a href="#about" data-de="Das Spiel" data-en="The Game" onclick="closeMenu()">Das Spiel</a></li>
-    <li><a href="#cards" data-de="Karten" data-en="Cards" onclick="closeMenu()">Karten</a></li>
-    <li><a href="#rules" data-de="Regeln" data-en="Rules" onclick="closeMenu()">Regeln</a></li>
-    <li><a href="#campaign" data-de="Kampagne" data-en="Campaign" onclick="closeMenu()">Kampagne</a></li>
-    <li><a href="#contact" data-de="Follow" data-en="Follow" onclick="closeMenu()">Follow</a></li>
+  <ul class="nav-links">
+    <li><a href="#about" data-de="Das Spiel" data-en="The Game">Das Spiel</a></li>
+    <li><a href="#cards" data-de="Karten" data-en="Cards">Karten</a></li>
+    <li><a href="#rules" data-de="Regeln" data-en="Rules">Regeln</a></li>
+    <li><a href="#campaign" data-de="Kampagne" data-en="Campaign">Kampagne</a></li>
+    <li><a href="#contact" data-de="Follow" data-en="Follow">Follow</a></li>
     <li>
       <div class="lang-toggle">
-        <button class="lang-btn active" id="btn-de" onclick="setLang('de');closeMenu()">DE</button>
+        <button class="lang-btn active" id="btn-de" onclick="setLang('de')">DE</button>
         <div class="lang-divider"></div>
-        <button class="lang-btn" id="btn-en" onclick="setLang('en');closeMenu()">EN</button>
+        <button class="lang-btn" id="btn-en" onclick="setLang('en')">EN</button>
       </div>
     </li>
   </ul>
@@ -498,6 +508,20 @@ footer p { color:rgba(255,255,255,0.2); font-size:0.78rem; letter-spacing:1px; }
     <span></span><span></span><span></span>
   </div>
 </nav>
+
+<!-- MOBILES MENÜ OVERLAY (separat vom nav) -->
+<div class="mobile-menu" id="mobile-menu">
+  <a href="#about" data-de="Das Spiel" data-en="The Game" onclick="closeMenu()">Das Spiel</a>
+  <a href="#cards" data-de="Karten" data-en="Cards" onclick="closeMenu()">Karten</a>
+  <a href="#rules" data-de="Regeln" data-en="Rules" onclick="closeMenu()">Regeln</a>
+  <a href="#campaign" data-de="Kampagne" data-en="Campaign" onclick="closeMenu()">Kampagne</a>
+  <a href="#contact" data-de="Follow" data-en="Follow" onclick="closeMenu()">Follow</a>
+  <div class="lang-toggle" style="margin-top:1rem">
+    <button class="lang-btn active" id="btn-de-mobile" onclick="setLang('de');closeMenu()">DE</button>
+    <div class="lang-divider"></div>
+    <button class="lang-btn" id="btn-en-mobile" onclick="setLang('en');closeMenu()">EN</button>
+  </div>
+</div>
 
 <!-- HERO -->
 <section class="hero">
@@ -720,14 +744,17 @@ if (history.scrollRestoration) history.scrollRestoration = 'manual';
 
 /* ── HAMBURGER MENÜ ── */
 function toggleMenu() {
-  const nav = document.getElementById('nav-links');
+  const menu   = document.getElementById('mobile-menu');
   const burger = document.getElementById('hamburger');
-  nav.classList.toggle('open');
-  burger.classList.toggle('open');
+  const isOpen = menu.classList.toggle('open');
+  burger.classList.toggle('open', isOpen);
+  // Scrollen sperren wenn Menü offen
+  document.body.style.overflow = isOpen ? 'hidden' : '';
 }
 function closeMenu() {
-  document.getElementById('nav-links').classList.remove('open');
+  document.getElementById('mobile-menu').classList.remove('open');
   document.getElementById('hamburger').classList.remove('open');
+  document.body.style.overflow = '';
 }
 
 /* ── SPRACHE ── */
@@ -735,8 +762,15 @@ let currentLang = 'de';
 
 function setLang(lang) {
   currentLang = lang;
-  document.getElementById('btn-de').classList.toggle('active', lang === 'de');
-  document.getElementById('btn-en').classList.toggle('active', lang === 'en');
+  // Beide Sprachschalter (Desktop + Mobile) synchronisieren
+  ['btn-de','btn-de-mobile'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('active', lang === 'de');
+  });
+  ['btn-en','btn-en-mobile'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('active', lang === 'en');
+  });
   document.documentElement.lang = lang;
   document.querySelectorAll('[data-de]').forEach(el => {
     const text = el.getAttribute('data-' + lang);
@@ -843,22 +877,20 @@ function updateGallery() {
 
   dots.forEach((d, i) => d.classList.toggle('active', i === idx));
 
-  // Echte Zentrierung: aktive Karte immer in der Mitte des sichtbaren Bereichs
-  const ITEM_W = 180; // Kartenbreite
-  const GAP    = 24;  // Gap zwischen Karten
-  const STEP   = ITEM_W + GAP;
+  // Tatsächliche Kartenbreite aus dem DOM lesen (funktioniert auf allen Bildschirmgrössen)
+  const activeItem = items[idx];
+  if (!activeItem) return;
 
-  // Breite des sichtbaren Bereichs (gal-track-wrap)
+  const GAP   = 24;
+  const itemW = activeItem.offsetWidth || 180;
+  const STEP  = itemW + GAP;
   const wrapW = track.parentElement.offsetWidth;
 
-  // Position des aktiven Elements (Mitte der Karte)
-  const activeCenter = idx * STEP + ITEM_W / 2;
-
-  // Verschiebung so dass aktive Karte in der Mitte des Wrappers sitzt
+  // Mitte der aktiven Karte → in die Mitte des Containers schieben
+  const activeCenter = idx * STEP + itemW / 2;
   const shift = activeCenter - wrapW / 2;
 
   track.style.transform = `translateX(${-shift}px)`;
-
   counterEl.textContent = (idx + 1) + ' / ' + total;
 }
 
