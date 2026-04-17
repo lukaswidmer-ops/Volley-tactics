@@ -151,7 +151,49 @@ footer{background:var(--dark);border-top:1px solid rgba(255,255,255,0.05);paddin
 .footer-logo{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:1.3rem;letter-spacing:4px;text-transform:uppercase;background:linear-gradient(90deg,var(--fire-red),var(--fire-gold));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 footer p{color:rgba(255,255,255,0.2);font-size:0.78rem;letter-spacing:1px}
 
+/* GALLERY */
+#gallery{background:var(--dark)}
+.gallery-positions{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin-top:3rem}
+.gal-pos-btn{background:var(--dark3);border:1px solid rgba(255,255,255,0.06);border-top:3px solid var(--c);padding:1.5rem 1.2rem;cursor:pointer;transition:transform 0.2s,box-shadow 0.2s;display:flex;flex-direction:column;gap:0.6rem}
+.gal-pos-btn:hover{transform:translateY(-4px);box-shadow:0 8px 30px rgba(0,0,0,0.4);border-color:var(--c)}
+.gal-pos-dot{width:28px;height:28px;border-radius:50%}
+.gal-pos-label{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:1.1rem;letter-spacing:2px;text-transform:uppercase;color:var(--white)}
+.gal-pos-count{font-size:0.72rem;letter-spacing:2px;text-transform:uppercase;color:var(--silver);font-weight:400}
+
+/* MODAL */
+.gal-modal{position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:999;display:none;align-items:center;justify-content:center;padding:1rem}
+.gal-modal.open{display:flex}
+.gal-modal-inner{background:var(--dark2);width:100%;max-width:820px;border:1px solid rgba(255,255,255,0.08);position:relative;padding:2rem}
+.gal-modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:2rem}
+.gal-modal-title{display:flex;align-items:center;gap:0.8rem}
+.gal-modal-dot{width:20px;height:20px;border-radius:50%;flex-shrink:0}
+.gal-modal-title > span:first-of-type{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:1.8rem;letter-spacing:3px;text-transform:uppercase}
+.gal-modal-counter{font-size:0.75rem;letter-spacing:2px;text-transform:uppercase;color:var(--silver);font-weight:400;margin-left:0.5rem}
+.gal-close{background:transparent;border:1px solid rgba(255,255,255,0.15);color:var(--silver);width:36px;height:36px;cursor:pointer;font-size:1rem;transition:all 0.2s;display:flex;align-items:center;justify-content:center}
+.gal-close:hover{border-color:var(--fire-orange);color:var(--fire-orange)}
+
+/* CAROUSEL */
+.gal-carousel-wrap{position:relative;display:flex;align-items:center;gap:1rem}
+.gal-carousel{flex:1;overflow:hidden;perspective:1200px}
+.gal-carousel-inner{display:flex;gap:1.5rem;transition:transform 0.5s cubic-bezier(0.4,0.2,0.2,1);will-change:transform;align-items:center;justify-content:center;padding:1.5rem 0}
+.gal-card-wrap{flex-shrink:0;transition:transform 0.5s,opacity 0.5s,filter 0.5s;cursor:pointer}
+.gal-card-wrap.center{transform:scale(1.12);z-index:2;opacity:1;filter:none}
+.gal-card-wrap.side{transform:scale(0.85) rotateY(12deg);opacity:0.5;filter:brightness(0.6)}
+.gal-card-wrap.side-right{transform:scale(0.85) rotateY(-12deg);opacity:0.5;filter:brightness(0.6)}
+.gal-card-wrap.far{transform:scale(0.72) rotateY(20deg);opacity:0.25;filter:brightness(0.4)}
+.gal-card-wrap.far-right{transform:scale(0.72) rotateY(-20deg);opacity:0.25;filter:brightness(0.4)}
+.gal-card-img{width:180px;height:260px;object-fit:cover;display:block;border-radius:4px}
+.gal-card-placeholder{width:180px;height:260px;background:var(--dark3);border:1px solid rgba(255,255,255,0.08);border-radius:4px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.2);font-size:0.7rem;letter-spacing:2px;text-transform:uppercase;font-family:'Barlow Condensed',sans-serif}
+
+.gal-arrow{background:transparent;border:1px solid rgba(255,255,255,0.15);color:var(--white);width:44px;height:44px;font-size:1.8rem;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;flex-shrink:0;line-height:1}
+.gal-arrow:hover{border-color:var(--fire-orange);color:var(--fire-orange)}
+
+.gal-dots{display:flex;justify-content:center;gap:6px;margin-top:1.5rem;flex-wrap:wrap}
+.gal-dot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,0.2);cursor:pointer;transition:all 0.2s;border:none;padding:0}
+.gal-dot.active{background:var(--fire-orange);transform:scale(1.3)}
+
 @media(max-width:768px){nav{padding:1rem 1.5rem}.nav-links{display:none}section{padding:4rem 1.5rem}}
+@media(max-width:600px){.gal-card-img,.gal-card-placeholder{width:130px;height:188px}.gal-modal-inner{padding:1.2rem}}
 </style>
 </head>
 <body>
@@ -162,6 +204,7 @@ footer p{color:rgba(255,255,255,0.2);font-size:0.78rem;letter-spacing:1px}
     <li><a href="#about" data-de="Das Spiel" data-en="The Game">Das Spiel</a></li>
     <li><a href="#cards" data-de="Karten" data-en="Cards">Karten</a></li>
     <li><a href="#rules" data-de="Regeln" data-en="Rules">Regeln</a></li>
+    <li><a href="#gallery" data-de="Galerie" data-en="Gallery">Galerie</a></li>
     <li><a href="#campaign" data-de="Kampagne" data-en="Campaign">Kampagne</a></li>
     <li><a href="#contact" data-de="Follow" data-en="Follow">Follow</a></li>
     <li>
@@ -374,6 +417,65 @@ footer p{color:rgba(255,255,255,0.2);font-size:0.78rem;letter-spacing:1px}
   </div>
 </section>
 
+<script src="cards.js"></script>
+
+<section id="gallery">
+  <div class="section-inner">
+    <div class="section-label" data-de="Karten-Galerie" data-en="Card Gallery">Karten-Galerie</div>
+    <h2 class="section-title" data-de="Alle Spielerkarten" data-en="All Player Cards">Alle Spielerkarten</h2>
+    <p class="section-desc" data-de="Wähle eine Position um die Karten im 3D-Karussell zu durchstöbern." data-en="Select a position to browse the cards in the 3D carousel.">Wähle eine Position um die Karten im 3D-Karussell zu durchstöbern.</p>
+    <div class="gallery-positions">
+      <div class="gal-pos-btn" onclick="openGallery('outside')" style="--c:#e84317;--cd:#2d0f0f">
+        <div class="gal-pos-dot" style="background:#e84317"></div>
+        <span class="gal-pos-label" data-de="Aussenangreifer" data-en="Outside Hitter">Aussenangreifer</span>
+        <span class="gal-pos-count" id="count-outside"></span>
+      </div>
+      <div class="gal-pos-btn" onclick="openGallery('middle')" style="--c:#16a34a;--cd:#0d2a0d">
+        <div class="gal-pos-dot" style="background:#16a34a"></div>
+        <span class="gal-pos-label" data-de="Mittelblocker" data-en="Middle Blocker">Mittelblocker</span>
+        <span class="gal-pos-count" id="count-middle"></span>
+      </div>
+      <div class="gal-pos-btn" onclick="openGallery('setter')" style="--c:#0ea5e9;--cd:#0d1a2d">
+        <div class="gal-pos-dot" style="background:#0ea5e9"></div>
+        <span class="gal-pos-label" data-de="Zuspieler" data-en="Setter">Zuspieler</span>
+        <span class="gal-pos-count" id="count-setter"></span>
+      </div>
+      <div class="gal-pos-btn" onclick="openGallery('diagonal')" style="--c:#4f46e5;--cd:#0d0e2d">
+        <div class="gal-pos-dot" style="background:#4f46e5"></div>
+        <span class="gal-pos-label" data-de="Diagonal" data-en="Diagonal">Diagonal</span>
+        <span class="gal-pos-count" id="count-diagonal"></span>
+      </div>
+      <div class="gal-pos-btn" onclick="openGallery('libero')" style="--c:#ca8a04;--cd:#2a2000">
+        <div class="gal-pos-dot" style="background:#ca8a04"></div>
+        <span class="gal-pos-label" data-de="Libero" data-en="Libero">Libero</span>
+        <span class="gal-pos-count" id="count-libero"></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- GALLERY MODAL -->
+<div id="gallery-modal" class="gal-modal" onclick="closeGalleryOnBg(event)">
+  <div class="gal-modal-inner">
+    <div class="gal-modal-header">
+      <div class="gal-modal-title">
+        <div class="gal-modal-dot" id="modal-dot"></div>
+        <span id="modal-title"></span>
+        <span class="gal-modal-counter" id="modal-counter"></span>
+      </div>
+      <button class="gal-close" onclick="closeGallery()">✕</button>
+    </div>
+    <div class="gal-carousel-wrap">
+      <button class="gal-arrow" onclick="carouselPrev()">‹</button>
+      <div class="gal-carousel">
+        <div class="gal-carousel-inner" id="gal-carousel-inner"></div>
+      </div>
+      <button class="gal-arrow" onclick="carouselNext()">›</button>
+    </div>
+    <div class="gal-dots" id="gal-dots"></div>
+  </div>
+</div>
+
 <section id="campaign">
   <div class="section-inner campaign-inner">
     <div class="section-label" data-de="Kampagne" data-en="Campaign">Kampagne</div>
@@ -426,6 +528,126 @@ footer p{color:rgba(255,255,255,0.2);font-size:0.78rem;letter-spacing:1px}
   }, {threshold: 0.3});
   obs.observe(bar);
 
+  // ── GALLERY ──────────────────────────────────────────────
+  let galState = { pos: null, idx: 0, total: 0 };
+
+  function initGalleryCounts() {
+    if (typeof CARDS === 'undefined') return;
+    Object.keys(CARDS).forEach(pos => {
+      const el = document.getElementById('count-' + pos);
+      if (el) {
+        const n = CARDS[pos].files.length;
+        el.textContent = n + ' ' + (currentLang === 'en' ? 'cards' : 'Karten');
+      }
+    });
+  }
+
+  function openGallery(pos) {
+    if (typeof CARDS === 'undefined') return;
+    const data = CARDS[pos];
+    galState.pos = pos;
+    galState.idx = 0;
+    galState.total = data.files.length;
+
+    // header
+    document.getElementById('modal-dot').style.background = data.color;
+    document.getElementById('modal-title').textContent =
+      currentLang === 'en' ? data.label_en : data.label_de;
+
+    buildCarousel(data);
+    updateCarousel();
+    document.getElementById('gallery-modal').classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function buildCarousel(data) {
+    const inner = document.getElementById('gal-carousel-inner');
+    const dotsEl = document.getElementById('gal-dots');
+    inner.innerHTML = '';
+    dotsEl.innerHTML = '';
+
+    data.files.forEach((file, i) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'gal-card-wrap';
+      wrap.dataset.idx = i;
+      wrap.onclick = () => { galState.idx = i; updateCarousel(); };
+
+      const img = document.createElement('img');
+      img.className = 'gal-card-img';
+      img.alt = data.label_de + ' ' + (i + 1);
+      img.onerror = function() {
+        this.style.display = 'none';
+        const ph = document.createElement('div');
+        ph.className = 'gal-card-placeholder';
+        ph.textContent = 'Karte ' + (i + 1);
+        wrap.appendChild(ph);
+      };
+      img.src = data.folder + '/' + file;
+      wrap.appendChild(img);
+      inner.appendChild(wrap);
+
+      // dot
+      const dot = document.createElement('button');
+      dot.className = 'gal-dot';
+      dot.onclick = () => { galState.idx = i; updateCarousel(); };
+      dotsEl.appendChild(dot);
+    });
+  }
+
+  function updateCarousel() {
+    const { idx, total } = galState;
+    const inner = document.getElementById('gal-carousel-inner');
+    const cards = inner.querySelectorAll('.gal-card-wrap');
+    const dots = document.getElementById('gal-dots').querySelectorAll('.gal-dot');
+
+    cards.forEach((c, i) => {
+      const diff = i - idx;
+      c.className = 'gal-card-wrap';
+      if (diff === 0) c.classList.add('center');
+      else if (diff === -1) c.classList.add('side');
+      else if (diff === 1) c.classList.add('side-right');
+      else if (diff <= -2) c.classList.add('far');
+      else c.classList.add('far-right');
+    });
+
+    dots.forEach((d, i) => d.classList.toggle('active', i === idx));
+
+    // slide inner so active card is centered
+    const cardW = 180 + 24; // width + gap
+    const containerW = inner.parentElement.offsetWidth;
+    const offset = (containerW / 2) - (idx * cardW) - (cardW / 2);
+    inner.style.transform = `translateX(${offset}px)`;
+
+    document.getElementById('modal-counter').textContent =
+      (idx + 1) + ' / ' + total;
+  }
+
+  function carouselPrev() {
+    if (galState.idx > 0) { galState.idx--; updateCarousel(); }
+  }
+  function carouselNext() {
+    if (galState.idx < galState.total - 1) { galState.idx++; updateCarousel(); }
+  }
+  function closeGallery() {
+    document.getElementById('gallery-modal').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+  function closeGalleryOnBg(e) {
+    if (e.target === document.getElementById('gallery-modal')) closeGallery();
+  }
+
+  // keyboard navigation
+  document.addEventListener('keydown', e => {
+    if (!document.getElementById('gallery-modal').classList.contains('open')) return;
+    if (e.key === 'ArrowLeft') carouselPrev();
+    if (e.key === 'ArrowRight') carouselNext();
+    if (e.key === 'Escape') closeGallery();
+  });
+
+  // init counts on load
+  document.addEventListener('DOMContentLoaded', initGalleryCounts);
+  // ─────────────────────────────────────────────────────────
+
   // Language switcher
   function setLang(lang) {
     document.getElementById('btn-de').classList.toggle('active', lang === 'de');
@@ -446,6 +668,9 @@ footer p{color:rgba(255,255,255,0.2);font-size:0.78rem;letter-spacing:1px}
     // Swap PDF to correct language version
     const pdfLink = document.getElementById('pdf-link');
     pdfLink.href = lang === 'en' ? 'Tactical-Volley-Rules-EN.pdf' : 'Tactical-Volley-Regeln.pdf';
+
+    // refresh gallery counts
+    initGalleryCounts();
   }
 </script>
 </body>
