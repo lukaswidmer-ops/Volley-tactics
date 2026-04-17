@@ -54,6 +54,7 @@ nav {
   backdrop-filter:blur(16px);
   border-bottom:1px solid rgba(232,67,23,0.2);
 }
+.hamburger { display:none; }
 .nav-logo {
   font-family:'Barlow Condensed',sans-serif; font-weight:900;
   font-size:1.7rem; letter-spacing:4px; text-transform:uppercase;
@@ -343,9 +344,9 @@ footer p { color:rgba(255,255,255,0.2); font-size:0.78rem; letter-spacing:1px; }
 .gal-track-wrap { overflow:hidden; width:100%; height:100%; display:flex; align-items:center; }
 .gal-track {
   display:flex; align-items:center; gap:24px;
-  padding:20px 50%;
   transition:transform 0.45s cubic-bezier(0.4,0.2,0.2,1);
   will-change:transform;
+  /* Kein padding – Zentrierung läuft über JS */
 }
 .gal-item {
   flex-shrink:0; cursor:pointer;
@@ -383,12 +384,94 @@ footer p { color:rgba(255,255,255,0.2); font-size:0.78rem; letter-spacing:1px; }
 }
 .gal-dot-btn.active { background:var(--orange); transform:scale(1.4); }
 
+/* ═══════════════════════════════════════
+   RESPONSIVE – TABLET (max 900px)
+═══════════════════════════════════════ */
+@media(max-width:900px) {
+  .cards-grid { grid-template-columns:1fr 1fr; }
+  .rules-grid { grid-template-columns:1fr; }
+  .campaign-goal { gap:1.5rem; }
+}
+
+/* ═══════════════════════════════════════
+   RESPONSIVE – MOBILE (max 768px)
+═══════════════════════════════════════ */
 @media(max-width:768px) {
+
+  /* NAV – Hamburger */
   nav { padding:1rem 1.5rem; }
   .nav-links { display:none; }
-  section { padding:4rem 1.5rem; }
-  .gal-item img, .gal-placeholder { width:130px; height:188px; }
-  .gal-header { padding:1rem 1.2rem; }
+  .hamburger { display:flex; }
+  .nav-links.open {
+    display:flex; flex-direction:column;
+    position:fixed; top:0; left:0; right:0; bottom:0;
+    background:rgba(8,8,8,0.98);
+    justify-content:center; align-items:center;
+    gap:2.5rem; z-index:300;
+  }
+  .nav-links.open a { font-size:1.6rem; letter-spacing:4px; }
+  .hamburger {
+    display:flex; flex-direction:column; gap:5px;
+    cursor:pointer; z-index:400; padding:0.3rem;
+  }
+  .hamburger span {
+    display:block; width:26px; height:2px;
+    background:#fff; border-radius:2px;
+    transition:all 0.3s;
+  }
+  .hamburger.open span:nth-child(1) { transform:translateY(7px) rotate(45deg); }
+  .hamburger.open span:nth-child(2) { opacity:0; }
+  .hamburger.open span:nth-child(3) { transform:translateY(-7px) rotate(-45deg); }
+
+  /* SECTIONS */
+  section { padding:3.5rem 1.2rem; }
+  .section-title { font-size:clamp(2rem,8vw,3rem); }
+
+  /* HERO */
+  .hero-title { font-size:clamp(4rem,18vw,7rem); }
+  .hero-sub { font-size:0.85rem; letter-spacing:2px; }
+  .hero-cta { flex-direction:column; align-items:center; }
+  .btn-primary, .btn-secondary { width:100%; max-width:300px; text-align:center; padding:1rem 1.5rem; }
+
+  /* ABOUT FLIP CARDS */
+  .cards-grid { grid-template-columns:1fr; gap:1rem; }
+  .flip-card { height:240px; }
+
+  /* PLAYER CARDS */
+  .cards-showcase { gap:0.8rem; }
+  .player-card { width:120px; height:180px; }
+
+  /* RULES */
+  .rules-grid { grid-template-columns:1fr; }
+  .title-row { flex-direction:column; align-items:flex-start; }
+
+  /* CAMPAIGN */
+  .campaign-goal { gap:1.5rem; }
+  .goal-number { font-size:3rem; }
+
+  /* SOCIAL */
+  .social-cards { grid-template-columns:1fr; }
+
+  /* FOOTER */
+  footer { padding:1.5rem; flex-direction:column; text-align:center; }
+
+  /* GALERIE */
+  .gal-header { padding:1rem; }
+  .gal-title { font-size:1.3rem; }
+  .gal-body { padding:2rem 0; }
+  .gal-prev { left:0.3rem; width:38px; height:38px; font-size:1.5rem; }
+  .gal-next { right:0.3rem; width:38px; height:38px; font-size:1.5rem; }
+  .gal-item img, .gal-placeholder { width:120px; height:174px; }
+  .gal-dots { padding:0.8rem 1rem; gap:5px; }
+}
+
+/* ═══════════════════════════════════════
+   RESPONSIVE – SMALL MOBILE (max 400px)
+═══════════════════════════════════════ */
+@media(max-width:400px) {
+  .hero-title { font-size:clamp(3rem,16vw,5rem); }
+  .player-card { width:100px; height:150px; }
+  .gal-item img, .gal-placeholder { width:100px; height:145px; }
 }
 </style>
 </head>
@@ -397,12 +480,12 @@ footer p { color:rgba(255,255,255,0.2); font-size:0.78rem; letter-spacing:1px; }
 <!-- NAVIGATION -->
 <nav>
   <div class="nav-logo">Tactical Volley</div>
-  <ul class="nav-links">
-    <li><a href="#about" data-de="Das Spiel" data-en="The Game">Das Spiel</a></li>
-    <li><a href="#cards" data-de="Karten" data-en="Cards">Karten</a></li>
-    <li><a href="#rules" data-de="Regeln" data-en="Rules">Regeln</a></li>
-    <li><a href="#campaign" data-de="Kampagne" data-en="Campaign">Kampagne</a></li>
-    <li><a href="#contact" data-de="Follow" data-en="Follow">Follow</a></li>
+  <ul class="nav-links" id="nav-links">
+    <li><a href="#about" data-de="Das Spiel" data-en="The Game" onclick="closeMenu()">Das Spiel</a></li>
+    <li><a href="#cards" data-de="Karten" data-en="Cards" onclick="closeMenu()">Karten</a></li>
+    <li><a href="#rules" data-de="Regeln" data-en="Rules" onclick="closeMenu()">Regeln</a></li>
+    <li><a href="#campaign" data-de="Kampagne" data-en="Campaign" onclick="closeMenu()">Kampagne</a></li>
+    <li><a href="#contact" data-de="Follow" data-en="Follow" onclick="closeMenu()">Follow</a></li>
     <li>
       <div class="lang-toggle">
         <button class="lang-btn active" id="btn-de" onclick="setLang('de')">DE</button>
@@ -411,6 +494,9 @@ footer p { color:rgba(255,255,255,0.2); font-size:0.78rem; letter-spacing:1px; }
       </div>
     </li>
   </ul>
+  <div class="hamburger" id="hamburger" onclick="toggleMenu()">
+    <span></span><span></span><span></span>
+  </div>
 </nav>
 
 <!-- HERO -->
@@ -632,6 +718,18 @@ footer p { color:rgba(255,255,255,0.2); font-size:0.78rem; letter-spacing:1px; }
 window.scrollTo(0, 0);
 if (history.scrollRestoration) history.scrollRestoration = 'manual';
 
+/* ── HAMBURGER MENÜ ── */
+function toggleMenu() {
+  const nav = document.getElementById('nav-links');
+  const burger = document.getElementById('hamburger');
+  nav.classList.toggle('open');
+  burger.classList.toggle('open');
+}
+function closeMenu() {
+  document.getElementById('nav-links').classList.remove('open');
+  document.getElementById('hamburger').classList.remove('open');
+}
+
 /* ── SPRACHE ── */
 let currentLang = 'de';
 
@@ -717,7 +815,9 @@ function openGallery(pos) {
   // Overlay öffnen
   overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
-  updateGallery();
+  // requestAnimationFrame damit der Browser das Overlay gerendert hat
+  // bevor wir offsetWidth lesen
+  requestAnimationFrame(() => updateGallery());
 }
 
 function goTo(idx) {
@@ -743,10 +843,21 @@ function updateGallery() {
 
   dots.forEach((d, i) => d.classList.toggle('active', i === idx));
 
-  // Track verschieben: aktive Karte zentrieren
-  const itemW = 180 + 24; // Bildbreite + Gap
-  const shift = idx * itemW;
-  track.style.transform = `translateX(-${shift}px)`;
+  // Echte Zentrierung: aktive Karte immer in der Mitte des sichtbaren Bereichs
+  const ITEM_W = 180; // Kartenbreite
+  const GAP    = 24;  // Gap zwischen Karten
+  const STEP   = ITEM_W + GAP;
+
+  // Breite des sichtbaren Bereichs (gal-track-wrap)
+  const wrapW = track.parentElement.offsetWidth;
+
+  // Position des aktiven Elements (Mitte der Karte)
+  const activeCenter = idx * STEP + ITEM_W / 2;
+
+  // Verschiebung so dass aktive Karte in der Mitte des Wrappers sitzt
+  const shift = activeCenter - wrapW / 2;
+
+  track.style.transform = `translateX(${-shift}px)`;
 
   counterEl.textContent = (idx + 1) + ' / ' + total;
 }
