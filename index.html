@@ -488,9 +488,9 @@ footer p { color:rgba(255,255,255,0.2); font-size:0.78rem; letter-spacing:1px; }
     <li><a href="#contact" data-de="Follow" data-en="Follow" onclick="closeMenu()">Follow</a></li>
     <li>
       <div class="lang-toggle">
-        <button class="lang-btn active" id="btn-de" onclick="setLang('de')">DE</button>
+        <button class="lang-btn active" id="btn-de" onclick="setLang('de');closeMenu()">DE</button>
         <div class="lang-divider"></div>
-        <button class="lang-btn" id="btn-en" onclick="setLang('en')">EN</button>
+        <button class="lang-btn" id="btn-en" onclick="setLang('en');closeMenu()">EN</button>
       </div>
     </li>
   </ul>
