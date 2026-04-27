@@ -5,14 +5,14 @@ const CARDS = {
     label_en: "Outside Hitter",
     color: "#e84317",
     colorDark: "#2d0f0f",
-    folder: "cards/outside",
+    folder: "",
     files: [
-      "outside_01.png", "outside_02.png", "outside_03.png", "outside_04.png", "outside_05.png",
-      "outside_06.png", "outside_07.png", "outside_08.png", "outside_09.png", "outside_10.png",
-      "outside_11.png", "outside_12.png", "outside_13.png", "outside_14.png", "outside_15.png",
-      "outside_16.png", "outside_17.png", "outside_18.png", "outside_19.png", "outside_20.png",
-      "outside_21.png", "outside_22.png", "outside_23.png", "outside_24.png", "outside_25.png",
-      "outside_26.png", "outside_27.png", "outside_28.png", "outside_29.png",
+      "outside_01.png.png", "outside_02.png.png", "outside_03.png.png", "outside_04.png.png", "outside_05.png.png",
+      "outside_06.png.png", "outside_07.png.png", "outside_08.png.png", "outside_09.png.png", "outside_10.png.png",
+      "outside_11.png.png", "outside_12.png.png", "outside_13.png.png", "outside_14.png.png", "outside_15.png.png",
+      "outside_16.png.png", "outside_17.png.png", "outside_18.png.png", "outside_19.png.png", "outside_20.png.png",
+      "outside_21.png.png", "outside_22.png.png", "outside_23.png.png", "outside_24.png.png", "outside_25.png.png",
+      "outside_26.png.png", "outside_27.png.png", "outside_28.png.png", "outside_29.png.png",
     ]
   },
   diagonal: {
@@ -20,12 +20,12 @@ const CARDS = {
     label_en: "Diagonal",
     color: "#4f46e5",
     colorDark: "#0d0e2d",
-    folder: "cards/diagonal",
+    folder: "Diagonal",
     files: [
-      "diagonal_01.png", "diagonal_02.png", "diagonal_03.png", "diagonal_05.png",
-      "diagonal_06.png", "diagonal_07.png", "diagonal_08.png", "diagonal_09.png", "diagonal_10.png",
-      "diagonal_11.png", "diagonal_12.png", "diagonal_13.png", "diagonal_14.png", "diagonal_15.png",
-      "diagonal_16.png", "diagonal_17.png", "diagonal_18.png", "diagonal_19.png",
+      "diagonal_01.png.png", "diagonal_02.png.png", "diagonal_03.png.png", "diagonal_05.png.png",
+      "diagonal_06.png.png", "diagonal_07.png.png", "diagonal_08.png.png", "diagonal_09.png.png", "diagonal_10.png.png",
+      "diagonal_11.png.png", "diagonal_12.png.png", "diagonal_13.png.png", "diagonal_14.png.png", "diagonal_15.png.png",
+      "diagonal_16.png.png", "diagonal_17.png.png", "diagonal_18.png.png", "diagonal_19.png.png",
     ]
   },
   libero: {
@@ -33,12 +33,12 @@ const CARDS = {
     label_en: "Libero",
     color: "#ca8a04",
     colorDark: "#2a2000",
-    folder: "cards/libero",
+    folder: "Liberos",
     files: [
-      "libero_01.png", "libero_02.png", "libero_03.png", "libero_04.png", "libero_05.png",
-      "libero_06.png", "libero_07.png", "libero_08.png", "libero_09.png", "libero_10.png",
-      "libero_11.png", "libero_12.png", "libero_13.png", "libero_14.png", "libero_15.png",
-      "libero_16.png", "libero_17.png", "libero_18.png",
+      "libero_01.png.png", "libero_02.png.png", "libero_03.png.png", "libero_04.png.png", "libero_05.png.png",
+      "libero_06.png.png", "libero_07.png.png", "libero_08.png.png", "libero_09.png.png", "libero_10.png.png",
+      "libero_11.png.png", "libero_12.png.png", "libero_13.png.png", "libero_14.png.png", "libero_15.png.png",
+      "libero_16.png.png", "libero_17.png.png", "libero_18.png.png",
     ]
   },
   middle: {
@@ -46,13 +46,13 @@ const CARDS = {
     label_en: "Middle Blocker",
     color: "#16a34a",
     colorDark: "#0d2a0d",
-    folder: "cards/middle",
+    folder: "",
     files: [
-      "middle_01.png", "middle_02.png", "middle_03.png", "middle_04.png", "middle_05.png",
-      "middle_06.png", "middle_07.png", "middle_08.png", "middle_09.png", "middle_10.png",
-      "middle_11.png", "middle_12.png", "middle_13.png", "middle_14.png", "middle_15.png",
-      "middle_16.png", "middle_17.png", "middle_18.png", "middle_19.png", "middle_20.png",
-      "middle_21.png", "middle_22.png", "middle_23.png", "middle_24.png", "middle_25.png",
+      "middle_01.png.png", "middle_02.png.png", "middle_03.png.png", "middle_04.png.png", "middle_05.png.png",
+      "middle_06.png.png", "middle_07.png.png", "middle_08.png.png", "middle_09.png.png", "middle_10.png.png",
+      "middle_11.png.png", "middle_12.png.png", "middle_13.png.png", "middle_14.png.png", "middle_15.png.png",
+      "middle_16.png.png", "middle_17.png.png", "middle_18.png.png", "middle_19.png.png", "middle_20.png.png",
+      "middle_21.png.png", "middle_22.png.png", "middle_23.png.png", "middle_24.png.png", "middle_25.png.png",
     ]
   },
   setter: {
@@ -60,12 +60,12 @@ const CARDS = {
     label_en: "Setter",
     color: "#0ea5e9",
     colorDark: "#0d1a2d",
-    folder: "cards/setter",
+    folder: "Passeur",
     files: [
-      "setter_01.png", "setter_02.png", "setter_03.png", "setter_04.png", "setter_05.png",
-      "setter_06.png", "setter_07.png", "setter_08.png", "setter_09.png", "setter_10.png",
-      "setter_11.png", "setter_12.png", "setter_13.png", "setter_14.png", "setter_15.png",
-      "setter_16.png", "setter_17.png", "setter_18.png", "setter_19.png",
+      "setter_01.png.png", "setter_02.png.png", "setter_03.png.png", "setter_04.png.png", "setter_05.png.png",
+      "setter_06.png.png", "setter_07.png.png", "setter_08.png.png", "setter_09.png.png", "setter_10.png.png",
+      "setter_11.png.png", "setter_12.png.png", "setter_13.png.png", "setter_14.png.png", "setter_15.png.png",
+      "setter_16.png.png", "setter_17.png.png", "setter_18.png.png", "setter_19.png.png",
     ]
   },
 };
