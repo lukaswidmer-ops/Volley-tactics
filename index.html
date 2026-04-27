@@ -496,6 +496,7 @@ footer p { color:rgba(255,255,255,0.2); font-size:0.78rem; letter-spacing:1px; }
     <li><a href="#rules" data-de="Regeln" data-en="Rules">Regeln</a></li>
     <li><a href="#campaign" data-de="Kampagne" data-en="Campaign">Kampagne</a></li>
     <li><a href="#contact" data-de="Follow" data-en="Follow">Follow</a></li>
+    <li><a href="#play" data-de="Spielen" data-en="Play" style="color:var(--orange); font-weight:700;">Spielen</a></li>
     <li>
       <div class="lang-toggle">
         <button class="lang-btn active" id="btn-de" onclick="setLang('de')">DE</button>
@@ -516,6 +517,7 @@ footer p { color:rgba(255,255,255,0.2); font-size:0.78rem; letter-spacing:1px; }
   <a href="#rules" data-de="Regeln" data-en="Rules" onclick="closeMenu()">Regeln</a>
   <a href="#campaign" data-de="Kampagne" data-en="Campaign" onclick="closeMenu()">Kampagne</a>
   <a href="#contact" data-de="Follow" data-en="Follow" onclick="closeMenu()">Follow</a>
+  <a href="#play" data-de="Spielen" data-en="Play" onclick="closeMenu()" style="color:var(--orange);">Spielen</a>
   <div class="lang-toggle" style="margin-top:1rem">
     <button class="lang-btn active" id="btn-de-mobile" onclick="setLang('de');closeMenu()">DE</button>
     <div class="lang-divider"></div>
@@ -709,6 +711,40 @@ footer p { color:rgba(255,255,255,0.2); font-size:0.78rem; letter-spacing:1px; }
   </div>
 </section>
 
+<!-- ONLINE GAME CTA -->
+<section id="play" style="background:linear-gradient(135deg,#0a0a0a 0%,#160708 100%); border-top:1px solid rgba(232,67,23,0.18); border-bottom:1px solid rgba(232,67,23,0.18); padding:7rem 2rem;">
+  <div class="section-inner" style="text-align:center;">
+    <div class="section-label" data-de="Online spielen" data-en="Play Online">Online spielen</div>
+    <h2 class="section-title" data-de="Volley Vendetta<br>jetzt online testen" data-en="Volley Vendetta<br>now playable online">Volley Vendetta<br>jetzt online testen</h2>
+    <p class="section-desc" style="max-width:640px; margin:0 auto 2.5rem;" data-de="Solo gegen smarte Bots oder mit Freunden im Multiplayer – direkt im Browser, ohne Installation. Spiele eine komplette Saison über 6 Wochen und versuche als Erster 8 Siegpunkte zu sammeln." data-en="Solo against smart bots or multiplayer with friends – right in your browser, no install needed. Play a full 6-week season and race to 8 victory points.">Solo gegen smarte Bots oder mit Freunden im Multiplayer – direkt im Browser, ohne Installation. Spiele eine komplette Saison über 6 Wochen und versuche als Erster 8 Siegpunkte zu sammeln.</p>
+    <button id="play-btn" class="btn-primary" style="padding:1.1rem 3.2rem; font-size:1.2rem;" data-de="Jetzt testen ▸" data-en="Play now ▸">Jetzt testen ▸</button>
+    <div style="margin-top:1.4rem; font-size:0.7rem; letter-spacing:3px; color:rgba(255,255,255,0.35); text-transform:uppercase;" data-de="Kein Download · Bilingual · Mobile-ready" data-en="No download · Bilingual · Mobile ready">Kein Download · Bilingual · Mobile-ready</div>
+  </div>
+</section>
+
+<!-- COMING SOON OVERLAY -->
+<div id="cs-overlay" style="position:fixed; inset:0; background:rgba(8,8,8,0.92); backdrop-filter:blur(14px); z-index:1000; display:none; align-items:center; justify-content:center; padding:2rem;">
+  <div style="max-width:520px; text-align:center; background:linear-gradient(180deg,#111 0%,#080808 100%); border:1px solid rgba(232,67,23,0.35); border-radius:6px; padding:3.5rem 2.5rem; position:relative;">
+    <button id="cs-close" style="position:absolute; top:1rem; right:1rem; background:transparent; border:1px solid rgba(255,255,255,0.2); color:#fff; width:36px; height:36px; border-radius:50%; font-size:1rem;" aria-label="Schliessen">✕</button>
+    <div style="font-size:3.5rem; margin-bottom:1rem; animation:cs-spin 4s linear infinite; display:inline-block;">⚙️</div>
+    <div class="section-label" data-de="In Arbeit" data-en="Work in progress">In Arbeit</div>
+    <h3 style="font-family:'Barlow Condensed',sans-serif; font-weight:900; font-size:2.4rem; letter-spacing:2px; text-transform:uppercase; line-height:1; margin-bottom:1rem; background:linear-gradient(90deg,var(--red),var(--gold)); -webkit-background-clip:text; -webkit-text-fill-color:transparent;" data-de="Coming Soon" data-en="Coming Soon">Coming Soon</h3>
+    <p style="color:var(--silver); font-size:0.95rem; line-height:1.55;" data-de="Die spielbare Online-Version wird gerade gebaut – Solo-Modus gegen Bots, Multiplayer mit Raum-Code und alle 11 Liga-Kriterien. Schau bald wieder vorbei!" data-en="The playable online version is being built – solo mode against bots, multiplayer with room codes, and all 11 league criteria. Check back soon!">Die spielbare Online-Version wird gerade gebaut – Solo-Modus gegen Bots, Multiplayer mit Raum-Code und alle 11 Liga-Kriterien. Schau bald wieder vorbei!</p>
+    <div style="margin-top:1.6rem; display:flex; gap:0.5rem; justify-content:center;">
+      <span style="width:8px; height:8px; border-radius:50%; background:var(--red); animation:cs-pulse 1.4s infinite ease-in-out;"></span>
+      <span style="width:8px; height:8px; border-radius:50%; background:var(--orange); animation:cs-pulse 1.4s infinite ease-in-out 0.2s;"></span>
+      <span style="width:8px; height:8px; border-radius:50%; background:var(--gold); animation:cs-pulse 1.4s infinite ease-in-out 0.4s;"></span>
+    </div>
+  </div>
+</div>
+<style>
+  @keyframes cs-spin { 0%{transform:rotate(0)} 100%{transform:rotate(360deg)} }
+  @keyframes cs-pulse { 0%,100%{transform:scale(0.6); opacity:0.4} 50%{transform:scale(1.2); opacity:1} }
+  #cs-overlay.open { display:flex !important; animation:cs-fade 0.25s ease-out; }
+  @keyframes cs-fade { from{opacity:0} to{opacity:1} }
+  #cs-close:hover { border-color:var(--orange); color:var(--orange); }
+</style>
+
 <!-- FOOTER -->
 <footer>
   <div class="footer-logo">Volley Vendetta</div>
@@ -781,6 +817,25 @@ function setLang(lang) {
   const pdfLink = document.getElementById('pdf-link');
   if (pdfLink) pdfLink.href = lang === 'en' ? 'Volley-Vendetta-Rules-EN.pdf' : 'Volley-Vendetta-Regeln.pdf';
 }
+
+/* ── ONLINE GAME BUTTON ── */
+// GAME_ENABLED = false  ⇒  Button öffnet das Coming-Soon-Overlay.
+// GAME_ENABLED = true   ⇒  Button öffnet game.html im neuen Tab.
+const GAME_ENABLED = false;
+const playBtn  = document.getElementById('play-btn');
+const csOverlay= document.getElementById('cs-overlay');
+const csClose  = document.getElementById('cs-close');
+function openComingSoon() { csOverlay.classList.add('open'); document.body.style.overflow = 'hidden'; }
+function closeComingSoon(){ csOverlay.classList.remove('open'); document.body.style.overflow = ''; }
+if (playBtn) {
+  playBtn.addEventListener('click', () => {
+    if (GAME_ENABLED) { window.open('game.html', '_blank', 'noopener'); }
+    else              { openComingSoon(); }
+  });
+}
+if (csClose)   csClose.addEventListener('click', closeComingSoon);
+if (csOverlay) csOverlay.addEventListener('click', e => { if (e.target === csOverlay) closeComingSoon(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && csOverlay.classList.contains('open')) closeComingSoon(); });
 
 /* ── KAMPAGNEN-BALKEN ── */
 const bar = document.getElementById('progressBar');
@@ -924,4 +979,4 @@ overlay.addEventListener('touchend',   e => {
 });
 </script>
 </body>
-</html
+</html>

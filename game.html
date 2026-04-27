@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Volley Vendetta · Online</title>
+<meta name="description" content="Volley Vendetta – die spielbare Online-Version für 3–4 Spieler.">
+<meta name="theme-color" content="#080808">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Barlow:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="game-styles.css">
+<!-- Three.js für 3D-Würfel -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" defer></script>
+<!-- Firebase (Multiplayer – wird nur initialisiert wenn Config vorhanden) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js" defer></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-database-compat.js" defer></script>
+<!-- Karten-Daten -->
+<script src="cards.js" defer></script>
+<!-- Game -->
+<script src="game.js" defer></script>
+</head>
+<body>
+  <div id="app" data-view="splash">
+    <!-- Splash / Initial Loader -->
+    <div class="splash">
+      <div class="splash-logo">
+        <span class="splash-l1">VOLLEY</span>
+        <span class="splash-l2">VENDETTA</span>
+      </div>
+      <div class="splash-spinner"></div>
+      <div class="splash-tag">Loading…</div>
+    </div>
+  </div>
+
+  <!-- Sound-Toggle (immer sichtbar oben rechts) -->
+  <button id="sound-toggle" class="sound-toggle" aria-label="Sound an/aus" title="Sound an/aus" hidden>🔊</button>
+
+  <!-- Toast-Layer -->
+  <div id="toast-layer" class="toast-layer" aria-live="polite"></div>
+
+  <!-- Konfetti-Layer für End-Game -->
+  <canvas id="confetti" class="confetti" aria-hidden="true"></canvas>
+</body>
+</html>
