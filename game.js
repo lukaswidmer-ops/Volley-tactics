@@ -543,14 +543,52 @@ function flash(kind='win') {
   requestAnimationFrame(() => { f.classList.add('show'); setTimeout(()=>f.classList.remove('show'), 700); });
 }
 function logEntry(text, kind='') {
-  const log = $('#log'); if (!log) return;
-  const e = document.createElement('div');
-  e.className = 'log-entry' + (kind ? ' ' + kind : '');
-  e.innerHTML = `<span class="ts">${new Date().toLocaleTimeString('de-CH', {hour:'2-digit',minute:'2-digit'})}</span>${text}`;
-  log.appendChild(e);
-  log.scrollTop = log.scrollHeight;
-  while (log.children.length > 80) log.removeChild(log.firstChild);
   state.game && state.game.log.push({ text, kind });
+  // Try the floating log first, fall back to inline
+  const containers = [$('#log-feed'), $('#log')].filter(Boolean);
+  if (!containers.length) return;
+  for (const log of containers) {
+    const e = document.createElement('div');
+    e.className = 'log-entry' + (kind ? ' ' + kind : '');
+    e.innerHTML = `<span class="ts">${new Date().toLocaleTimeString('de-CH', {hour:'2-digit',minute:'2-digit'})}</span>${text}`;
+    log.appendChild(e);
+    log.scrollTop = log.scrollHeight;
+    while (log.children.length > 100) log.removeChild(log.firstChild);
+  }
+}
+
+function ensureFloatingLog() {
+  let lp = document.getElementById('log-panel');
+  if (!lp) {
+    lp = document.createElement('div');
+    lp.id = 'log-panel';
+    lp.className = 'lp ' + (window.innerWidth < 800 ? 'collapsed' : 'expanded');
+    document.body.appendChild(lp);
+  }
+  if (!state.game || state.view !== 'game') { lp.style.display = 'none'; return; }
+  lp.style.display = '';
+  const expanded = lp.classList.contains('expanded');
+  lp.innerHTML = `
+    <div class="lp-head" onclick="VV.toggleLog()">
+      <span class="lp-title">📜 ${state.lang==='de'?'Live-Log':'Live log'}</span>
+      <span class="lp-toggle">${expanded?'▼':'▲'}</span>
+    </div>
+    <div class="lp-body" id="log-feed"></div>`;
+}
+function toggleLog() {
+  const lp = document.getElementById('log-panel'); if (!lp) return;
+  lp.classList.toggle('expanded');
+  lp.classList.toggle('collapsed');
+  ensureFloatingLog();
+  // restore scrollback after re-render
+  if (state.game) for (const e of state.game.log.slice(-30)) {
+    const f = document.getElementById('log-feed');
+    if (!f) break;
+    const el = document.createElement('div');
+    el.className = 'log-entry' + (e.kind?' '+e.kind:'');
+    el.innerHTML = `<span class="ts">·</span>${e.text}`;
+    f.appendChild(el);
+  }
 }
 let audioCtx = null;
 function beep(freq=440, dur=80, type='square', vol=0.05) {
@@ -572,6 +610,9 @@ function setView(v) {
   document.getElementById('app').dataset.view = v;
   render();
   window.scrollTo(0, 0);
+  // Hide floating log + panel outside game
+  const lp = document.getElementById('log-panel'); if (lp) lp.style.display = (v === 'game') ? '' : 'none';
+  const fp = document.getElementById('floating-panel'); if (fp) fp.style.display = (v === 'game') ? '' : 'none';
 }
 function setLang(l) {
   state.lang = l;
@@ -1496,7 +1537,6 @@ function renderGame() {
       <div class="gmain">
         <div class="gleft">
           <div class="stage" id="stage"></div>
-          <div class="log" id="log"></div>
         </div>
         <div class="gright">
           <div class="team" id="team-panel">${teamPanelHtml(g.players[0])}</div>
@@ -1504,6 +1544,7 @@ function renderGame() {
         </div>
       </div>
     </div>`;
+  ensureFloatingLog();
   for (const e of state.game.log.slice(-30)) logEntry(e.text, e.kind);
   refreshFloatingPanel();
 }
@@ -2718,7 +2759,7 @@ window.VV = {
   buyCard, endMarket, buyOneStar, sellBenchCard, sellStarter,
   serveOnce, continueAfterMatch,
   playAgain, toMenu,
-  toggleFloatingPanel, toggleSellMode,
+  toggleFloatingPanel, toggleSellMode, toggleLog,
   handleFloatingClick, handleFloatingBenchClick,
   exportLog, showFullHistory,
 };
