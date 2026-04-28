@@ -993,11 +993,12 @@ function makePlayer(name, color, emoji, isHuman, personality, biasPos) {
 function initSoloGame() {
   ALL_CARDS = buildAllCards();
   const human = makePlayer(state.playerName, '#facc15', '🟡', true, 'balanced', 'outside');
-  const bots = window.VV_BOTS.pickPersonas(2);
+  const bots = window.VV_BOTS.pickPersonas(3);
   const bot1 = makePlayer('Bot ' + bots[0].name, bots[0].color, bots[0].emoji, false, bots[0].personality, bots[0].biasPos);
   const bot2 = makePlayer('Bot ' + bots[1].name, bots[1].color, bots[1].emoji, false, bots[1].personality, bots[1].biasPos);
+  const bot3 = makePlayer('Bot ' + bots[2].name, bots[2].color, bots[2].emoji, false, bots[2].personality, bots[2].biasPos);
   state.game = {
-    players: [human, bot1, bot2],
+    players: [human, bot1, bot2, bot3],
     activeIdx: 0,
     week: 0,
     phase: 'draft',
@@ -1504,6 +1505,7 @@ function renderGame() {
       </div>
     </div>`;
   for (const e of state.game.log.slice(-30)) logEntry(e.text, e.kind);
+  refreshFloatingPanel();
 }
 
 function playerCardHtml(p, idx, withBars) {
@@ -1576,6 +1578,7 @@ function slotHtml(card, pos) {
 function refreshTopbar() {
   const tb = $('#topbar'); if (!tb || !state.game) return;
   tb.innerHTML = state.game.players.map((p,i)=>playerCardHtml(p,i,true)).join('');
+  refreshFloatingPanel();
 }
 function refreshBoard() {
   const b = $('#board'); if (!b || !state.game) return;
@@ -1677,8 +1680,15 @@ async function runConeRoll(player) {
 function coneRollNow() { fire('coneRollNow'); }
 function coneContinue() { fire('coneContinue'); }
 function setActiveBanner(p) {
-  // active banner could be added to topbar; for now we just toast briefly
-  if (p.isHuman) toast(T('yourturn'), 'gold', 1200);
+  // Big floating banner
+  let banner = $('#turn-banner');
+  if (!banner) { banner = document.createElement('div'); banner.id='turn-banner'; document.body.appendChild(banner); }
+  banner.className = 'turn-banner-floating ' + (p.isHuman ? 'human' : 'bot');
+  banner.innerHTML = p.isHuman
+    ? `<span class="tb-emoji">${p.emoji}</span> <span>${T('yourturn')}</span>`
+    : `<span class="tb-emoji">${p.emoji}</span> <span>${escapeHTML(p.name)}</span> <span class="thinking"><span></span><span></span><span></span></span>`;
+  banner.style.display = 'flex';
+  setTimeout(() => { banner.style.display = 'none'; }, p.isHuman ? 1600 : 1200);
 }
 
 function appendConeLog(html) {
@@ -1933,8 +1943,8 @@ async function runCupFinal(ev) {
   const loser = winner === home ? away : home;
   winner.money += ev.prize;
   winner.totalEarned += ev.prize;
-  winner.vp += 2;
-  loser.vp += 1;
+  winner.vp += 2; animateVpChange(winner, 2);
+  loser.vp += 1; animateVpChange(loser, 1);
   logEntry(`<b>${T('week_event_cupfinal')}</b> → ${escapeHTML(winner.name)} +2 VP, +${fmtMoney(ev.prize)}’ · ${escapeHTML(loser.name)} +1 VP`, 'tournament');
   flash('win');
   beep(900, 200);
@@ -2234,21 +2244,21 @@ async function runLeagueMatch() {
   const winner = await runMatchClassic(home, away, false);
   // Award league points and money per rulebook
   if (winner === home) {
-    home.money += 10000; home.totalEarned += 10000;
-    if (away.money >= 5000) { away.money -= 5000; home.money += 5000; home.totalEarned += 5000; } else { home.money += away.money; away.money = 0; }
+    home.money += 10000; home.totalEarned += 10000; animateMoneyChange(home, 10000);
+    if (away.money >= 5000) { away.money -= 5000; animateMoneyChange(away, -5000); home.money += 5000; home.totalEarned += 5000; animateMoneyChange(home, 5000); } else { home.money += away.money; away.money = 0; }
     home.matchesWon++; home.leaguePoints += 3;
-    logEntry(`${T('phase_match')}: <b>${escapeHTML(home.name)}</b> +10’ (Bank), +5’ (${escapeHTML(away.name)})`, 'win');
+    logEntry(`🏐 ${T('phase_match')}: <b>${escapeHTML(home.name)}</b> +10’ (Bank), +5’ (${escapeHTML(away.name)})`, 'win');
   } else {
-    away.money += 10000; away.totalEarned += 10000;
-    if (home.money >= 5000) { home.money -= 5000; away.money += 5000; away.totalEarned += 5000; } else { away.money += home.money; home.money = 0; }
+    away.money += 10000; away.totalEarned += 10000; animateMoneyChange(away, 10000);
+    if (home.money >= 5000) { home.money -= 5000; animateMoneyChange(home, -5000); away.money += 5000; away.totalEarned += 5000; animateMoneyChange(away, 5000); } else { away.money += home.money; home.money = 0; }
     away.matchesWon++; away.leaguePoints += 3;
-    logEntry(`${T('phase_match')}: <b>${escapeHTML(away.name)}</b> +10’ (Bank), +5’ (${escapeHTML(home.name)})`, 'loss');
+    logEntry(`🏐 ${T('phase_match')}: <b>${escapeHTML(away.name)}</b> +10’ (Bank), +5’ (${escapeHTML(home.name)})`, 'loss');
   }
-  // Third player (if exists): bye → +5'000
+  // Other players: bye → +5'000
   for (const p of g.players) {
     if (p !== home && p !== away) {
-      p.money += 5000; p.totalEarned += 5000;
-      logEntry(`${T('week_event_league')} ${state.lang==='de'?'Freilos':'Bye'} → ${escapeHTML(p.name)} +5’`);
+      p.money += 5000; p.totalEarned += 5000; animateMoneyChange(p, 5000);
+      logEntry(`🏐 ${T('week_event_league')} ${state.lang==='de'?'Freilos':'Bye'} → ${escapeHTML(p.name)} +5’`);
     }
   }
   refreshTopbar();
@@ -2260,13 +2270,15 @@ async function runLeagueMatch() {
 //  MARKET PHASE  (between weeks)
 // ────────────────────────────────────────────────────────────────
 function regenMarket() {
-  const out = []; const used = new Set();
-  while (out.length < 12) {
-    const c = choice(ALL_CARDS);
-    if (used.has(c.id)) continue;
-    used.add(c.id);
-    out.push(c);
+  // Pull from the auction deck (2-5 stars). 1-star cards have a separate always-available section.
+  const out = [];
+  const deck = state.game.auctionDeck.slice();
+  while (out.length < 8 && deck.length) {
+    out.push(deck.shift());
   }
+  // Don't permanently remove from auctionDeck — refresh each week
+  state.game.auctionDeck = state.game.auctionDeck.filter(c => !out.includes(c));
+  // Put back unused at the end so they cycle
   return out;
 }
 
@@ -2300,13 +2312,99 @@ function renderMarket() {
   const weakPos = weakestPosition(me);
   stage.innerHTML = `
     <div class="stage-h">${T('market_h')}</div>
-    <div class="stage-sub">${T('market_budget')}: <b>${fmtMoney(me.money)}</b> · ${T('market_team_strength')}: <b>★ ${teamStrength(me)}</b> · ${T('market_suggest')}: <b style="color:var(--gold)">${posLabel(weakPos)}</b></div>
+    <div class="stage-sub">${T('market_budget')}: <b id="budget-num">${fmtMoney(me.money)}</b>’ · ${T('market_team_strength')}: <b>★ ${teamStrength(me)}</b> · ${T('market_suggest')}: <b style="color:var(--gold)">${posLabel(weakPos)}</b></div>
+    <h4 class="h-cond" style="font-size:1rem; letter-spacing:2px; margin-top:1rem; color:var(--silver);">${state.lang==='de'?'Markt — 2★ bis 5★':'Market — 2★ to 5★'}</h4>
     <div class="market" id="market-grid">${state.game.market.map(c => marketCardHtml(c, me, { suggestedPos: weakPos })).join('')}</div>
-    <div style="margin-top:0.6rem; font-size:0.78rem; color:var(--silver);">${state.lang==='de'?'Bench':'Bench'}: ${me.bench.length} · ${state.lang==='de'?'Klick auf eigene Karte zum Verkaufen':'Click your own card to sell'}</div>`;
+    <h4 class="h-cond" style="font-size:1rem; letter-spacing:2px; margin-top:1.4rem; color:var(--silver);">${state.lang==='de'?'1-Stern-Markt — immer kaufbar':'1-Star Market — always available'}</h4>
+    <div class="market market-1star">${oneStarMarketHtml(me, weakPos)}</div>
+    ${me.bench.length ? `<h4 class="h-cond" style="font-size:1rem; letter-spacing:2px; margin-top:1.4rem; color:var(--silver);">${state.lang==='de'?'Bench / Ersatz':'Bench / Substitutes'}</h4><div class="bench-grid">${me.bench.map(c => benchCardHtml(c, me)).join('')}</div>`:''}`;
   const actions = $('#actions'); if (!actions) return;
   actions.innerHTML = `<h3>${T('phase_buy')}</h3>
     ${speedToggleHtml()}
     <button class="action-btn pulse" onclick="VV.endMarket()">${T('finish_buying')}</button>`;
+}
+
+function oneStarMarketHtml(me, weakPos) {
+  return POSITIONS.map(pos => {
+    const c = (ALL_CARDS.filter(x => x.stars === 1 && x.pos === pos)[0]) || null;
+    if (!c) return '';
+    const canAfford = me.money >= 10000;
+    const suggested = pos === weakPos;
+    return `<div class="mc ${canAfford?'':'poor'} ${suggested?'suggested':''}" data-tip="1★ ${posLabel(pos)} · 10’000">
+      <img class="mc-img" src="${c.url}" alt="" loading="lazy">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span class="mc-pos" style="background:${posColor(pos)}">${posShort(pos)}</span>
+        <span class="mc-stars">★</span>
+      </div>
+      <div class="mc-price">${fmtMoney(10000)}</div>
+      <button class="mc-buy" onclick="VV.buyOneStar('${pos}')" ${canAfford?'':'disabled'}>${canAfford?T('market_buy'):T('market_sold')}</button>
+    </div>`;
+  }).join('');
+}
+
+function benchCardHtml(c, me) {
+  const sellPrice = Math.floor(c.stars * 10000 / 2);
+  return `<div class="bc">
+    <img src="${c.url}" alt="" class="bc-img" loading="lazy">
+    <div class="bc-meta">
+      <span class="mc-pos" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
+      <span class="mc-stars">${'★'.repeat(c.stars)}</span>
+    </div>
+    <button class="bc-sell" onclick="VV.sellBenchCard('${c.id}')" data-tip="${T('market_sell_t')}">💰 ${T('market_sell')} ${fmtMoney(sellPrice)}’</button>
+  </div>`;
+}
+
+function buyOneStar(pos) {
+  const me = state.game.players[0];
+  if (me.money < 10000) { toast(state.lang==='de'?'Zu teuer':'Too expensive', 'bad'); return; }
+  const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === pos);
+  if (!opts.length) return;
+  const c = choice(opts);
+  const cur = me.team[pos];
+  if (cur && cur.stars >= c.stars) {
+    if (cur) me.bench.push(cur);
+  }
+  me.team[pos] = c;
+  me.money -= 10000;
+  animateMoneyChange(me, -10000);
+  toast(state.lang==='de'?`Gekauft: ${c.name}`:`Bought: ${c.name}`, 'good');
+  beep(880, 60);
+  refreshTopbar(); refreshTeamPanel(); renderMarket(); refreshFloatingPanel();
+  logEntry(`💰 ${state.lang==='de'?'Gekauft':'Bought'}: ${c.name} (1★) -10’000’`, 'win');
+}
+
+function sellBenchCard(id) {
+  const me = state.game.players[0];
+  const idx = me.bench.findIndex(c => c.id === id);
+  if (idx < 0) return;
+  const c = me.bench[idx];
+  const price = Math.floor(c.stars * 10000 / 2);
+  if (!confirm(state.lang==='de'?`${c.name} für ${fmtMoney(price)}’ verkaufen?`:`Sell ${c.name} for ${fmtMoney(price)}?`)) return;
+  me.bench.splice(idx, 1);
+  me.money += price;
+  animateMoneyChange(me, +price);
+  toast(`+${fmtMoney(price)}’`, 'gold');
+  beep(820, 80);
+  logEntry(`💰 ${state.lang==='de'?'Verkauft':'Sold'}: ${c.name} +${fmtMoney(price)}’`, 'win');
+  refreshTopbar(); refreshTeamPanel(); renderMarket(); refreshFloatingPanel();
+}
+
+function sellStarter(pos) {
+  const me = state.game.players[0];
+  const c = me.team[pos]; if (!c) return;
+  const price = Math.floor(c.stars * 10000 / 2);
+  if (!confirm(state.lang==='de'?`${c.name} für ${fmtMoney(price)}’ verkaufen?`:`Sell ${c.name} for ${fmtMoney(price)}?`)) return;
+  // Replace from bench if available, else clear
+  const replIdx = me.bench.findIndex(b => b.pos === pos);
+  if (replIdx >= 0) me.team[pos] = me.bench.splice(replIdx, 1)[0];
+  else me.team[pos] = null;
+  me.money += price;
+  animateMoneyChange(me, +price);
+  toast(`+${fmtMoney(price)}’`, 'gold');
+  logEntry(`💰 ${state.lang==='de'?'Verkauft':'Sold'}: ${c.name} +${fmtMoney(price)}’`, 'win');
+  state.sellMode = false;
+  refreshTopbar(); refreshTeamPanel(); refreshFloatingPanel();
+  if (state.view === 'game') renderMarket();
 }
 
 function marketCardHtml(c, player, opts) {
@@ -2341,7 +2439,15 @@ function buyCard(id) {
   refreshTopbar(); refreshTeamPanel();
   renderMarket();
 }
-function endMarket() { fire('endMarket'); }
+function endMarket() {
+  // Return unsold market cards to the auction deck (back of deck)
+  const g = state.game;
+  if (g && g.market && g.market.length) {
+    for (const c of g.market) g.auctionDeck.push(c);
+    g.market = [];
+  }
+  fire('endMarket');
+}
 function weakestPosition(p) {
   let min = POSITIONS[0], minS = Infinity;
   for (const k of POSITIONS) { const s = (p.team[k]&&p.team[k].stars)||0; if (s < minS) { minS = s; min = k; } }
@@ -2361,7 +2467,7 @@ async function runSeasonEnd() {
   const moneyAward = [0, 20000, 30000, 50000];
   for (let i = 0; i < ranked.length; i++) {
     const p = ranked[i];
-    p.vp += vpAward[i] || 0;
+    const _delta_vp = vpAward[i] || 0; p.vp += _delta_vp; if (_delta_vp) animateVpChange(p, _delta_vp);
     p.money += moneyAward[i] || 0;
     p.totalEarned += moneyAward[i] || 0;
     logEntry(`${T('standings_title')} ${i+1}. ${escapeHTML(p.name)} → +${vpAward[i]||0} VP, +${fmtMoney(moneyAward[i]||0)}’`, 'tournament');
@@ -2413,6 +2519,8 @@ function renderEnd() {
       <div class="end-actions">
         <button class="btn btn-primary btn-large" onclick="VV.playAgain()">${T('end_play_again')}</button>
         <button class="btn btn-secondary btn-large" onclick="VV.toMenu()">${T('end_back_menu')}</button>
+        <button class="btn btn-ghost" onclick="VV.showFullHistory()">📜 ${state.lang==='de'?'Komplette Historie':'Full history'}</button>
+        <button class="btn btn-ghost" onclick="VV.exportLog()">📥 ${state.lang==='de'?'Log als .txt':'Log as .txt'}</button>
       </div>
     </div>`;
   startConfetti(8000);
@@ -2451,6 +2559,152 @@ function render() {
   }
 }
 
+
+// ────────────────────────────────────────────────────────────────
+//  ANIMATED MONEY / VP / COUNTERS
+// ────────────────────────────────────────────────────────────────
+function animateMoneyChange(player, delta) {
+  // Add a small floating "+X" or "-X" near the topbar player card
+  const topbar = $('#topbar'); if (!topbar) return;
+  const idx = state.game.players.indexOf(player);
+  const card = topbar.children[idx];
+  if (!card) return;
+  const fl = document.createElement('div');
+  fl.className = 'money-float ' + (delta >= 0 ? 'pos' : 'neg');
+  fl.textContent = (delta >= 0 ? '+' : '') + fmtMoney(delta) + '’';
+  card.appendChild(fl);
+  setTimeout(() => fl.remove(), 1600);
+}
+function animateVpChange(player, delta) {
+  const topbar = $('#topbar'); if (!topbar) return;
+  const idx = state.game.players.indexOf(player);
+  const card = topbar.children[idx];
+  if (!card) return;
+  const fl = document.createElement('div');
+  fl.className = 'vp-float';
+  fl.textContent = (delta >= 0 ? '+' : '') + delta + ' VP';
+  card.appendChild(fl);
+  setTimeout(() => fl.remove(), 1800);
+  beep(900, 120);
+}
+
+// ────────────────────────────────────────────────────────────────
+//  FLOATING TEAM PANEL (always visible bottom-right)
+// ────────────────────────────────────────────────────────────────
+function ensureFloatingPanel() {
+  let fp = $('#floating-panel');
+  if (!fp) {
+    fp = document.createElement('div');
+    fp.id = 'floating-panel';
+    fp.className = 'fp collapsed';
+    document.body.appendChild(fp);
+    fp.addEventListener('click', e => {
+      if (e.target.closest('.fp-sell-btn') || e.target.closest('.fp-card')) return;
+      // toggle expand
+      fp.classList.toggle('expanded');
+      fp.classList.toggle('collapsed');
+    });
+    document.addEventListener('click', e => {
+      if (fp.classList.contains('expanded') && !fp.contains(e.target)) {
+        fp.classList.add('collapsed'); fp.classList.remove('expanded');
+      }
+    });
+  }
+  return fp;
+}
+function refreshFloatingPanel() {
+  if (!state.game || state.view !== 'game') {
+    const fp = $('#floating-panel'); if (fp) fp.style.display = 'none';
+    return;
+  }
+  const fp = ensureFloatingPanel();
+  fp.style.display = '';
+  const me = state.game.players[0];
+  const expanded = fp.classList.contains('expanded');
+  const sellMode = !!state.sellMode;
+  fp.innerHTML = `
+    <div class="fp-head">
+      <div class="fp-title">${state.lang==='de'?'Mein Team':'My Team'} · <span style="color:var(--gold)">★ ${teamStrength(me)}</span></div>
+      <div class="fp-controls">
+        <button class="fp-sell-btn ${sellMode?'on':''}" data-tip="${state.lang==='de'?'Verkaufs-Modus':'Sell mode'}" onclick="event.stopPropagation(); VV.toggleSellMode()">🔴</button>
+      </div>
+    </div>
+    <div class="fp-court">
+      ${POSITIONS.map(pos => {
+        const c = me.team[pos];
+        return `<div class="fp-card pos-${pos} ${sellMode?'sellable':''}" style="border-color:${posColor(pos)};" data-pos="${pos}" onclick="event.stopPropagation(); VV.handleFloatingClick('${pos}')">
+          ${c ? `<img src="${c.url}" alt="" loading="lazy"><div class="fp-stars">${'★'.repeat(c.stars)}</div>` : `<div class="fp-empty">?</div>`}
+          <span class="fp-pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
+        </div>`;
+      }).join('')}
+    </div>
+    ${expanded ? `<div class="fp-bench">
+      <div class="fp-bench-h">${state.lang==='de'?'Bench / Ersatz':'Bench / Substitutes'} (${me.bench.length})</div>
+      <div class="fp-bench-grid">
+        ${me.bench.map(c => `
+          <div class="fp-card bench ${sellMode?'sellable':''}" data-id="${c.id}" onclick="event.stopPropagation(); VV.handleFloatingBenchClick('${c.id}')">
+            <img src="${c.url}" alt="" loading="lazy">
+            <div class="fp-stars">${'★'.repeat(c.stars)}</div>
+            <span class="fp-pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
+          </div>`).join('') || `<span style="font-size:0.7rem; color:var(--silver);">—</span>`}
+      </div>
+    </div>` : ''}
+    <div class="fp-foot">${state.lang==='de'?'Klick zum Erweitern':'Click to expand'}</div>`;
+}
+function toggleFloatingPanel() {
+  const fp = ensureFloatingPanel();
+  fp.classList.toggle('expanded');
+  fp.classList.toggle('collapsed');
+}
+function toggleSellMode() {
+  state.sellMode = !state.sellMode;
+  refreshFloatingPanel();
+  toast(state.sellMode ? (state.lang==='de'?'Verkaufs-Modus aktiv — klicke auf eine Karte':'Sell mode active — click a card') : (state.lang==='de'?'Verkaufs-Modus aus':'Sell mode off'), state.sellMode?'gold':'good', 1800);
+}
+function handleFloatingClick(pos) {
+  if (state.sellMode) sellStarter(pos);
+}
+function handleFloatingBenchClick(id) {
+  if (state.sellMode) sellBenchCard(id);
+}
+
+// ────────────────────────────────────────────────────────────────
+//  EXPORT GAME LOG
+// ────────────────────────────────────────────────────────────────
+function exportLog() {
+  if (!state.game) return;
+  const lines = ['Volley Vendetta — Game Log', new Date().toISOString(), ''];
+  for (const e of state.game.log) {
+    // strip HTML
+    const text = e.text.replace(/<[^>]+>/g, '');
+    lines.push(text);
+  }
+  const blob = new Blob([lines.join('\n')], { type:'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `volley-vendetta-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.txt`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 500);
+}
+function showFullHistory() {
+  if (!state.game) return;
+  const div = document.createElement('div'); div.className = 'modal-popup';
+  div.innerHTML = `
+    <div class="modal-card" style="max-width:680px; max-height:85vh; display:flex; flex-direction:column;">
+      <div class="modal-h">${state.lang==='de'?'Komplette Spiel-Historie':'Full game log'}</div>
+      <div class="full-log" style="flex:1; overflow-y:auto; text-align:left; padding:0.6rem; background:rgba(0,0,0,0.4); border:1px solid var(--line); border-radius:3px; font-size:0.82rem;">
+        ${state.game.log.map(e => `<div class="log-entry ${e.kind||''}"><span class="ts">·</span>${e.text}</div>`).join('')}
+      </div>
+      <div style="display:flex; gap:0.6rem; margin-top:0.8rem;">
+        <button class="btn btn-secondary" onclick="VV.exportLog()">📥 ${state.lang==='de'?'Als .txt herunterladen':'Download as .txt'}</button>
+        <button class="btn btn-primary" onclick="this.closest('.modal-popup').remove()">${state.lang==='de'?'Schliessen':'Close'}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(div);
+  setTimeout(() => div.classList.add('open'), 10);
+}
+
+
 // ────────────────────────────────────────────────────────────────
 //  PUBLIC API
 // ────────────────────────────────────────────────────────────────
@@ -2461,9 +2715,12 @@ window.VV = {
   draftDraw, draftRedraw, draftPick1, draftFinish,
   rollStartingDice,
   coneRollNow, coneContinue,
-  buyCard, endMarket,
+  buyCard, endMarket, buyOneStar, sellBenchCard, sellStarter,
   serveOnce, continueAfterMatch,
   playAgain, toMenu,
+  toggleFloatingPanel, toggleSellMode,
+  handleFloatingClick, handleFloatingBenchClick,
+  exportLog, showFullHistory,
 };
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

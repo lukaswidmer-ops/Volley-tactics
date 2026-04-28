@@ -400,3 +400,64 @@ button, a, input, select { font-family:inherit; }
   .draft-steps { gap:0.3rem; }
   .draft-step { padding:0.3rem 0.6rem; font-size:0.72rem; }
 }
+
+/* Floating panel bottom-right */
+.fp { position:fixed; right:1rem; bottom:1rem; z-index:90; background:linear-gradient(180deg,#0e0e0f,#080808); border:1px solid var(--line); border-radius:6px; box-shadow:0 12px 40px rgba(0,0,0,0.6); transition:width 0.25s, max-height 0.25s; cursor:pointer; max-width:90vw; }
+.fp.collapsed { width:280px; max-height:200px; }
+.fp.expanded  { width:340px; max-height:78vh; overflow-y:auto; cursor:default; }
+.fp-head { display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0.7rem; border-bottom:1px solid var(--line); }
+.fp-title { font-size:0.78rem; letter-spacing:1.5px; text-transform:uppercase; font-weight:700; }
+.fp-controls { display:flex; gap:0.3rem; }
+.fp-sell-btn { background:transparent; border:1px solid rgba(255,255,255,0.15); color:#ef4444; width:30px; height:30px; border-radius:50%; font-size:0.85rem; cursor:pointer; transition:background 0.15s; }
+.fp-sell-btn:hover { background:rgba(239,68,68,0.15); }
+.fp-sell-btn.on { background:#ef4444; color:#fff; box-shadow:0 0 12px rgba(239,68,68,0.5); }
+.fp-court { display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; padding:0.5rem; }
+.fp-card { aspect-ratio:55/80; border:1px solid var(--line); border-radius:3px; background:rgba(255,255,255,0.02); position:relative; overflow:hidden; transition:transform 0.3s ease, box-shadow 0.2s; }
+.fp-card img { width:100%; height:100%; object-fit:cover; }
+.fp-card .fp-pos-tag { position:absolute; top:2px; left:2px; font-size:0.55rem; padding:1px 4px; color:#fff; border-radius:1px; font-weight:700; letter-spacing:1px; }
+.fp-card .fp-stars { position:absolute; bottom:1px; left:0; right:0; text-align:center; color:var(--gold); font-size:0.65rem; text-shadow:0 1px 2px #000; }
+.fp-card.sellable { box-shadow:0 0 0 2px #ef4444; }
+.fp-card.sellable:hover { transform:scale(1.04); }
+.fp-card.rotating { animation:rot 0.5s ease-in-out; }
+.fp-card .fp-empty { width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,0.18); font-size:1.2rem; }
+@keyframes rot { 0%{transform:scale(0.9) rotate(-6deg)} 60%{transform:scale(1.05) rotate(3deg)} 100%{transform:scale(1) rotate(0)} }
+.fp-bench { padding:0.5rem; border-top:1px solid var(--line); }
+.fp-bench-h { font-size:0.65rem; letter-spacing:2px; color:var(--silver); text-transform:uppercase; margin-bottom:0.3rem; }
+.fp-bench-grid { display:grid; grid-template-columns:repeat(5, 1fr); gap:3px; }
+.fp-card.bench { aspect-ratio:55/80; }
+.fp-foot { padding:0.4rem; text-align:center; font-size:0.65rem; color:rgba(255,255,255,0.35); letter-spacing:1.5px; text-transform:uppercase; border-top:1px solid var(--line); }
+.fp.expanded .fp-foot { display:none; }
+
+/* Money / VP floats */
+.money-float { position:absolute; right:0.4rem; top:1.6rem; font-size:0.85rem; font-weight:800; pointer-events:none; animation:floatUp 1.4s ease-out forwards; }
+.money-float.pos { color:var(--good); }
+.money-float.neg { color:var(--bad); }
+.vp-float { position:absolute; left:0.4rem; top:1.6rem; font-size:0.95rem; font-weight:900; color:var(--gold); text-shadow:0 0 8px rgba(245,158,11,0.6); pointer-events:none; animation:floatUp 1.6s ease-out forwards; }
+@keyframes floatUp { 0%{opacity:0; transform:translateY(8px)} 20%{opacity:1; transform:translateY(0)} 100%{opacity:0; transform:translateY(-26px)} }
+.player-card { position:relative; }
+
+/* Big turn banner */
+.turn-banner-floating { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:200; padding:1.2rem 2.6rem; border-radius:6px; font-family:'Barlow Condensed',sans-serif; font-weight:900; font-size:1.5rem; letter-spacing:3px; text-transform:uppercase; display:flex; gap:0.8rem; align-items:center; box-shadow:0 8px 30px rgba(0,0,0,0.5); animation:bannerFly 1.4s cubic-bezier(0.2,0.8,0.2,1.2); pointer-events:none; }
+.turn-banner-floating.human { background:linear-gradient(135deg,var(--red),var(--orange)); color:#fff; }
+.turn-banner-floating.bot   { background:linear-gradient(135deg,#1a1a1a,#333); color:var(--silver); }
+.turn-banner-floating .tb-emoji { font-size:1.3rem; }
+.turn-banner-floating .thinking { display:inline-flex; gap:3px; }
+.turn-banner-floating .thinking span { width:5px; height:5px; background:currentColor; border-radius:50%; animation:think 1.2s infinite; }
+.turn-banner-floating .thinking span:nth-child(2) { animation-delay:0.2s; }
+.turn-banner-floating .thinking span:nth-child(3) { animation-delay:0.4s; }
+@keyframes bannerFly { 0%{opacity:0; transform:translate(-50%,-50%) scale(0.6)} 30%{opacity:1; transform:translate(-50%,-50%) scale(1.05)} 70%{opacity:1; transform:translate(-50%,-50%) scale(1)} 100%{opacity:0; transform:translate(-50%,-50%) scale(0.95)} }
+
+/* Bench grid + 1-star market */
+.bench-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:0.6rem; padding:0.4rem 0; }
+.bc { background:rgba(255,255,255,0.03); border:1px solid var(--line); border-radius:4px; overflow:hidden; padding:0.5rem; }
+.bc-img { width:100%; aspect-ratio:55/80; object-fit:cover; border-radius:2px; background:rgba(255,255,255,0.04); }
+.bc-meta { display:flex; justify-content:space-between; align-items:center; margin-top:0.4rem; }
+.bc-sell { width:100%; padding:0.45rem; margin-top:0.4rem; background:rgba(239,68,68,0.18); color:#fff; border:1px solid rgba(239,68,68,0.5); border-radius:2px; font-weight:700; font-size:0.72rem; letter-spacing:1px; cursor:pointer; }
+.bc-sell:hover { background:rgba(239,68,68,0.32); }
+.market-1star .mc-pos { background:var(--silver) !important; }
+
+@media (max-width: 800px) {
+  .fp.collapsed { width:200px; }
+  .fp.expanded  { width:90vw; max-height:60vh; }
+  .turn-banner-floating { font-size:1rem; padding:0.8rem 1.5rem; }
+}
