@@ -307,3 +307,96 @@ button { font-family:inherit; cursor:pointer; }
 
 /* Focus order */
 button, a, input, select { font-family:inherit; }
+
+/* ─── Board (week timeline with cone) ─── */
+.board-row { padding:0.6rem 1rem; }
+.board { display:flex; gap:0.4rem; overflow-x:auto; padding:0.6rem; background:rgba(255,255,255,0.02); border:1px solid var(--line); border-radius:6px; -webkit-overflow-scrolling:touch; }
+.week-block { flex-shrink:0; min-width:170px; padding:0.5rem; border:1px solid var(--line); border-radius:4px; background:rgba(255,255,255,0.02); }
+.week-block.current { box-shadow:0 0 0 1px var(--orange); background:rgba(232,67,23,0.05); }
+.week-head { font-family:'Barlow Condensed',sans-serif; font-weight:900; letter-spacing:2px; font-size:0.85rem; color:var(--silver); margin-bottom:0.4rem; display:flex; gap:0.4rem; align-items:center; }
+.week-head .we-ev { font-size:0.65rem; padding:1px 6px; background:rgba(245,158,11,0.15); color:var(--gold); border-radius:2px; letter-spacing:1px; }
+.week-tiles { display:grid; grid-template-columns:repeat(8, 1fr); gap:3px; }
+.tile { aspect-ratio:1; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.04); border:1px solid transparent; border-radius:2px; font-size:0.7rem; color:var(--silver); position:relative; }
+.tile.league { background:rgba(232,67,23,0.18); color:var(--red); border-color:rgba(232,67,23,0.35); font-size:0.85rem; }
+.tile.tournament { background:rgba(245,158,11,0.16); color:var(--gold); border-color:rgba(245,158,11,0.35); font-size:0.85rem; }
+.tile.passed { opacity:0.45; }
+.tile.cone { background:linear-gradient(135deg,#000,#1a1a1a); color:#fff; border-color:var(--gold); box-shadow:0 0 12px rgba(245,158,11,0.4); animation:tileBounce 1.4s ease-in-out infinite; }
+.tile .cone-marker { font-size:1rem; }
+@keyframes tileBounce { 0%,100%{transform:scale(1)} 50%{transform:scale(1.12)} }
+
+/* ─── Draft progress / cards ─── */
+.draft-steps { display:flex; flex-wrap:wrap; gap:0.4rem; }
+.draft-step { display:flex; gap:0.4rem; align-items:center; padding:0.4rem 0.85rem; background:rgba(255,255,255,0.04); border:1px solid var(--line); border-radius:3px; font-size:0.8rem; color:var(--silver); }
+.draft-step.active { border-color:var(--orange); color:#fff; box-shadow:0 0 0 1px var(--orange); }
+.draft-step.done { background:rgba(34,197,94,0.10); border-color:rgba(34,197,94,0.4); color:var(--good); }
+.draft-step .step-num { font-weight:700; }
+.draft-step .step-check { font-family:'Barlow Condensed',sans-serif; font-weight:800; font-size:0.95rem; }
+.draft-cards { display:grid; grid-template-columns:repeat(auto-fill, minmax(110px, 1fr)); gap:0.5rem; }
+.draft-card { position:relative; background:rgba(255,255,255,0.03); border:1px solid var(--line); border-radius:3px; overflow:hidden; }
+.draft-card img { width:100%; aspect-ratio:55/80; object-fit:cover; }
+.draft-card .pos-tag { position:absolute; top:3px; left:3px; }
+.draft-card .draft-stars { position:absolute; bottom:2px; left:0; right:0; text-align:center; color:var(--gold); font-size:0.75rem; text-shadow:0 1px 2px rgba(0,0,0,0.8); }
+
+/* ─── Opening auction ─── */
+.auction-card { display:flex; flex-direction:column; gap:0.6rem; }
+.auction-meta { display:flex; justify-content:space-between; font-size:0.85rem; color:var(--silver); }
+.auction-card-row { display:flex; gap:1.2rem; align-items:center; }
+.ac-img { width:140px; aspect-ratio:55/80; object-fit:cover; border-radius:3px; flex-shrink:0; box-shadow:0 6px 18px rgba(0,0,0,0.5); }
+.ac-info { flex:1; min-width:0; display:flex; flex-direction:column; gap:0.4rem; }
+.ac-pos { display:inline-block; font-size:0.7rem; padding:2px 8px; color:#fff; border-radius:2px; letter-spacing:1px; font-weight:700; }
+.ac-stars { font-size:1.3rem; color:var(--gold); }
+.ac-bid { font-size:0.95rem; }
+.auction-input-row { display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; padding:0.6rem 0; }
+.auction-input-row input { max-width:160px; }
+.auction-feed { max-height:140px; overflow-y:auto; padding:0.5rem; background:rgba(0,0,0,0.4); border:1px solid var(--line); border-radius:3px; font-size:0.85rem; }
+.af-line { padding:2px 0; border-bottom:1px dashed rgba(255,255,255,0.05); animation:slideIn 0.25s ease-out; }
+.af-line:last-child { border-bottom:none; }
+
+/* ─── Cup rolls ─── */
+.cup-roll { padding:0.4rem 0.7rem; background:rgba(255,255,255,0.03); border:1px solid var(--line); border-radius:3px; }
+
+/* ─── Match: rally feed + criterion pills ─── */
+.rally-feed { display:flex; flex-direction:column; gap:0.4rem; max-height:170px; overflow-y:auto; margin-top:0.6rem; }
+.crit-pill { display:inline-block; padding:2px 8px; font-size:0.72rem; letter-spacing:1px; border:1px solid var(--line); border-radius:99px; }
+.crit-pill.home { background:rgba(34,197,94,0.10); color:var(--good); border-color:rgba(34,197,94,0.4); }
+.crit-pill.away { background:rgba(239,68,68,0.10); color:var(--bad); border-color:rgba(239,68,68,0.4); }
+.crit-pill.tie  { color:var(--silver); }
+
+/* ─── Court mini diagram ─── */
+.court-mini { display:flex; flex-direction:column; gap:2px; padding:4px; background:rgba(255,255,255,0.03); border:1px solid var(--line); border-radius:3px; max-width:170px; margin:0 auto; }
+.court-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:2px; }
+.court-cell { padding:3px 4px; font-size:0.6rem; color:#fff; text-align:center; border-radius:1px; letter-spacing:0.5px; font-weight:700; }
+
+/* ─── Cone log ─── */
+.cone-log-line { padding:2px 0; font-size:0.85rem; animation:slideIn 0.25s ease-out; }
+
+/* ─── Event card (in stage) ─── */
+.event-card { margin-top:0.6rem; padding:1rem; border:1px solid var(--line); border-radius:4px; background:rgba(232,67,23,0.06); display:flex; flex-direction:column; gap:0.4rem; }
+.event-icon { font-size:2.5rem; line-height:1; }
+.event-h { font-family:'Barlow Condensed',sans-serif; font-weight:900; font-size:1.4rem; letter-spacing:2px; text-transform:uppercase; }
+.event-p { color:var(--silver); font-size:0.88rem; line-height:1.45; }
+
+/* ─── Modal popup ─── */
+.modal-popup { position:fixed; inset:0; background:rgba(8,8,8,0.85); backdrop-filter:blur(8px); z-index:1000; display:none; align-items:center; justify-content:center; padding:2rem; }
+.modal-popup.open { display:flex; animation:cs-fade 0.2s ease-out; }
+.modal-card { max-width:480px; text-align:center; background:linear-gradient(180deg,#111 0%,#080808 100%); border:1px solid rgba(232,67,23,0.35); border-radius:6px; padding:2.4rem 2rem; }
+.modal-card .modal-icon { font-size:3rem; margin-bottom:0.6rem; }
+.modal-card .modal-h { font-family:'Barlow Condensed',sans-serif; font-weight:900; font-size:1.8rem; letter-spacing:2px; text-transform:uppercase; margin-bottom:0.8rem; background:linear-gradient(90deg,var(--red),var(--gold)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+.modal-card .modal-p { color:var(--silver); font-size:0.92rem; line-height:1.5; margin-bottom:1.2rem; }
+.modal-card .btn { width:100%; }
+@keyframes cs-fade { from{opacity:0} to{opacity:1} }
+
+/* ─── Disabled card overlay ─── */
+.slot.disabled { filter:grayscale(0.7) brightness(0.55); }
+.slot .dis-overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:1.6rem; pointer-events:none; }
+
+/* ─── Sound toggle bottom-right ─── */
+@media (max-width: 800px) {
+  .week-block { min-width:140px; }
+  .week-tiles { grid-template-columns:repeat(8, 1fr); }
+  .auction-card-row { flex-direction:column; align-items:center; text-align:center; }
+  .ac-img { width:110px; }
+  .court-mini { max-width:140px; }
+  .draft-steps { gap:0.3rem; }
+  .draft-step { padding:0.3rem 0.6rem; font-size:0.72rem; }
+}

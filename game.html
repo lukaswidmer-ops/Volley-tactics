@@ -11,17 +11,19 @@
 <link rel="stylesheet" href="game-styles.css">
 <!-- Three.js für 3D-Würfel -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" defer></script>
-<!-- Firebase (Multiplayer – wird nur initialisiert wenn Config vorhanden) -->
+<!-- Firebase (compat) — wird nur initialisiert wenn Config vorhanden -->
 <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js" defer></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-database-compat.js" defer></script>
 <!-- Karten-Daten -->
 <script src="cards.js" defer></script>
-<!-- Game -->
+<!-- Module: Bots, Firebase-Wrapper -->
+<script src="game-bots.js" defer></script>
+<script src="game-firebase.js" defer></script>
+<!-- Game core -->
 <script src="game.js" defer></script>
 </head>
 <body>
   <div id="app" data-view="splash">
-    <!-- Splash / Initial Loader -->
     <div class="splash">
       <div class="splash-logo">
         <span class="splash-l1">VOLLEY</span>
@@ -31,14 +33,8 @@
       <div class="splash-tag">Loading…</div>
     </div>
   </div>
-
-  <!-- Sound-Toggle (immer sichtbar oben rechts) -->
   <button id="sound-toggle" class="sound-toggle" aria-label="Sound an/aus" title="Sound an/aus" hidden>🔊</button>
-
-  <!-- Toast-Layer -->
   <div id="toast-layer" class="toast-layer" aria-live="polite"></div>
-
-  <!-- Konfetti-Layer für End-Game -->
   <canvas id="confetti" class="confetti" aria-hidden="true"></canvas>
 </body>
 </html>
