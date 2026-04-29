@@ -1544,16 +1544,16 @@ function renderGame() {
         </div>
       </div>
       <div class="gbot">
-        <div class="actions" id="actions"><div class="stage" id="stage"></div></div>
+        <div class="actions" id="actions">
+          <div class="stage" id="stage"></div>
+          <div class="action-buttons" id="action-buttons"></div>
+        </div>
         <div class="dice-panel" id="dice-panel">
           <div class="dice-panel-label" id="dice-panel-label">🎲 D3</div>
           <div class="dice-panel-result" id="dice-panel-result">—</div>
           <button class="dice-panel-btn" id="dice-panel-btn" disabled onclick="VV.dicePanel_roll()">Würfeln</button>
         </div>
-        <div class="gbot-right">
-          <div class="log" id="log"></div>
-          <div class="action-buttons-panel" id="action-buttons"></div>
-        </div>
+        <div class="log" id="log"></div>
       </div>
     </div>`;
   ensureFloatingLog();
@@ -2001,29 +2001,29 @@ async function runEventSpace(type, player) {
   }
 }
 function showEventPopup(eventInfo, player, type) {
-  // Remove any existing event popup
+  // Remove any existing event popup first
   const existing = document.getElementById('event-popup');
   if (existing) existing.remove();
   const div = document.createElement('div');
   div.id = 'event-popup';
-  div.className = 'event-popup-overlay';
+  div.className = 'event-popup-banner ' + (type || '');
   div.innerHTML = `
-    <div class="event-popup-card">
-      <div class="event-popup-icon">${eventInfo.icon}</div>
-      <div class="event-popup-h">${eventInfo.h}</div>
-      <div class="event-popup-p">${eventInfo.p}</div>
-      <div class="event-popup-player">
-        <span style="color:${player.color}">${player.emoji}</span> 
-        <b>${escapeHTML(player.name)}</b>
-      </div>
-      <div id="event-detail" class="event-popup-detail"></div>
-    </div>`;
+    <div class="epb-icon">${eventInfo.icon}</div>
+    <div class="epb-text">
+      <div class="epb-title">${eventInfo.h}</div>
+      <div class="epb-player"><span style="color:${player.color}">${player.emoji}</span> ${escapeHTML(player.name)}</div>
+    </div>
+    <div id="event-detail" class="epb-detail"></div>`;
   document.body.appendChild(div);
+  // Trigger animation
   setTimeout(() => div.classList.add('open'), 10);
 }
 function hideEventPopup() {
   const ep = document.getElementById('event-popup');
-  if (ep) { ep.classList.remove('open'); setTimeout(() => ep.remove(), 200); }
+  if (ep) { 
+    ep.classList.add('closing'); 
+    setTimeout(() => ep.remove(), 350); 
+  }
 }
 
 async function _runEventSpaceInner(type, player) {
@@ -2546,13 +2546,13 @@ async function runMatchClassic(home, away, isTournament) {
       // Human normal speed: wait for click (no auto-timeout)
       await waitFor('serveOnce');
     } else if (isHuman && state.speed === 'fast') {
-      // Human fast: still wait but auto after 1.2s if no click
-      await waitFor('serveOnce', 1200);
+      // Human fast: still wait but auto after 1.5s if no click
+      await waitFor('serveOnce', 1500);
     } else if (state.speed === 'auto') {
-      await sleep(150);
+      await sleep(200);
     } else {
       // Bot vs bot match — pace based on speed
-      await sleep(state.speed === 'normal' ? 1000 : state.speed === 'fast' ? 500 : 200);
+      await sleep(state.speed === 'normal' ? 1800 : state.speed === 'fast' ? 800 : 200);
     }
     const dice = await performDiceRoll(12);
     M.rolls.push(dice);
@@ -2560,13 +2560,16 @@ async function runMatchClassic(home, away, isTournament) {
     M.events.push(result);
     if (result.winner === 'home') M.homePoints++;
     else if (result.winner === 'away') M.awayPoints++;
-    // rotation: winning team rotates
     if (result.winner === 'home') M.rotationHome = (M.rotationHome + 1) % 6;
     else if (result.winner === 'away') M.rotationAway = (M.rotationAway + 1) % 6;
     M.iRoll++;
     paint(); setActionUI();
     refreshTopbar();
     beep(result.winner === 'home' ? 740 : result.winner === 'away' ? 480 : 540, 60);
+    // Pause AFTER each rally so player can read the result
+    if (state.speed !== 'auto') {
+      await sleep(state.speed === 'fast' ? 500 : 1200);
+    }
   }
 
   // Determine winner by points; tie → coin flip
