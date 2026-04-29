@@ -63,9 +63,9 @@ const i18n = {
     starting_roll: 'Würfeln',
     starting_winner: '%s beginnt!',
 
-    pos_outside: 'Aussenangreifer', pos_middle: 'Mittelblocker', pos_setter: 'Setter',
+    pos_outside: 'Aussenangreifer 1', pos_outside2: 'Aussenangreifer 2', pos_middle: 'Mittelblocker', pos_setter: 'Setter',
     pos_diagonal: 'Diagonal', pos_libero: 'Libero',
-    pos_short_outside: 'OH', pos_short_middle: 'MB', pos_short_setter: 'S',
+    pos_short_outside: 'OH1', pos_short_outside2: 'OH2', pos_short_middle: 'MB', pos_short_setter: 'S',
     pos_short_diagonal: 'OPP', pos_short_libero: 'L',
 
     week: 'Woche', of: 'von',
@@ -228,9 +228,9 @@ const i18n = {
     starting_roll: 'Roll',
     starting_winner: '%s starts!',
 
-    pos_outside: 'Outside', pos_middle: 'Middle', pos_setter: 'Setter',
+    pos_outside: 'Outside 1', pos_outside2: 'Outside 2', pos_middle: 'Middle', pos_setter: 'Setter',
     pos_diagonal: 'Diagonal', pos_libero: 'Libero',
-    pos_short_outside: 'OH', pos_short_middle: 'MB', pos_short_setter: 'S',
+    pos_short_outside: 'OH1', pos_short_outside2: 'OH2', pos_short_middle: 'MB', pos_short_setter: 'S',
     pos_short_diagonal: 'OPP', pos_short_libero: 'L',
 
     week: 'Week', of: 'of',
@@ -662,8 +662,8 @@ function fire(name, val) {
 // ────────────────────────────────────────────────────────────────
 //  Position helpers
 // ────────────────────────────────────────────────────────────────
-const POSITIONS = ['outside','middle','setter','diagonal','libero'];
-const POS_COLORS = { outside:'#e84317', middle:'#16a34a', setter:'#0ea5e9', diagonal:'#4f46e5', libero:'#ca8a04' };
+const POSITIONS = ['outside','outside2','middle','setter','diagonal','libero'];
+const POS_COLORS = { outside:'#e84317', outside2:'#e84317', middle:'#16a34a', setter:'#0ea5e9', diagonal:'#4f46e5', libero:'#ca8a04' };
 function posShort(p) { return T('pos_short_'+p); }
 function posLabel(p) { return T('pos_'+p); }
 function posColor(p) { return POS_COLORS[p]; }
@@ -672,7 +672,7 @@ function teamStrength(p) {
   return POSITIONS.reduce((s,k) => s + ((p.team[k] && !p.team[k].disabled ? p.team[k].stars : 0)), 0);
 }
 function teamFront(p) { return ['outside','middle','setter'].reduce((s,k) => s + ((p.team[k]&&!p.team[k].disabled?p.team[k].stars:0)),0); }
-function teamBack(p)  { return ((p.team.libero&&!p.team.libero.disabled?p.team.libero.stars:0)) + ((p.team.diagonal&&!p.team.diagonal.disabled?p.team.diagonal.stars:0)) + ((p.team.outside&&!p.team.outside.disabled?p.team.outside.stars:0)/2); }
+function teamBack(p)  { return ((p.team.libero&&!p.team.libero.disabled?p.team.libero.stars:0)) + ((p.team.diagonal&&!p.team.diagonal.disabled?p.team.diagonal.stars:0)) + ((p.team.outside&&!p.team.outside.disabled?p.team.outside.stars:0)/2) + ((p.team.outside2&&!p.team.outside2.disabled?p.team.outside2.stars:0)/2); }
 function teamBlock(p) { return ['outside','middle'].reduce((s,k) => s + ((p.team[k]&&!p.team[k].disabled?p.team[k].stars:0)),0); }
 
 
@@ -884,7 +884,7 @@ function makePlayer(name, color, emoji, isHuman, personality, biasPos) {
   return {
     id: uid(), name, color, emoji, isHuman: !!isHuman, personality: personality || 'balanced', biasPos: biasPos || 'outside',
     money: 80000, vp: 0,
-    team: { outside:null, middle:null, setter:null, diagonal:null, libero:null },
+    team: { outside:null, outside2:null, middle:null, setter:null, diagonal:null, libero:null },
     bench: [],
     suspended: [], // [{ card, pos, reason }] — players sidelined by Red Card / Injury / VNL until next league match
     matchesWon: 0, totalEarned: 0,
@@ -967,7 +967,7 @@ function setupTeamPanelHtml(p) {
       <div class="vb-row-label" style="margin-top:0.4rem">${state.lang==='de'?'Hinten':'Back'}</div>
       <div class="vb-row vb-row-3">
         ${setupSlotHtml(s.diagonal, 'diagonal')}
-        ${setupSlotHtml(s.outside,  'outside')}
+        ${setupSlotHtml(s.outside2, 'outside2')}
         ${setupSlotHtml(s.libero,   'libero')}
       </div>
     </div>
@@ -1109,12 +1109,15 @@ function deckPoolForStars(stars) {
 }
 
 function placeIntoTeamOrBench(p, card) {
-  if (!p.team[card.pos]) {
-    p.team[card.pos] = card;
-  } else if (p.team[card.pos].stars < card.stars) {
+  // For outside hitters, fill outside first then outside2
+  let slotPos = card.pos;
+  if (card.pos === 'outside' && p.team.outside && !p.team.outside2) slotPos = 'outside2';
+  if (!p.team[slotPos]) {
+    p.team[slotPos] = card;
+  } else if (p.team[slotPos] && p.team[slotPos].stars < card.stars) {
     // upgrade — old goes to bench
-    p.bench.push(p.team[card.pos]);
-    p.team[card.pos] = card;
+    p.bench.push(p.team[slotPos]);
+    p.team[slotPos] = card;
   } else {
     p.bench.push(card);
   }
@@ -1137,7 +1140,7 @@ function draftRedraw() {
   const all = [...Object.values(me.team).filter(Boolean), ...me.bench];
   for (const c of all) state.game._draftDeck.push(c);
   state.game._draftDeck.sort(()=>Math.random()-0.5);
-  me.team = { outside:null, middle:null, setter:null, diagonal:null, libero:null };
+  me.team = { outside:null, outside2:null, middle:null, setter:null, diagonal:null, libero:null };
   me.bench = [];
   renderDraft();
 }
@@ -1446,7 +1449,8 @@ function weekEventByWeek(w) {
     { type: 'cup',       day: 4, prize: 20000, weekIdx: 3 },
     { type: 'cl',        day: 4, prize: 20000, weekIdx: 4 },
     { type: 'cupfinal',  day: 4, prize: 20000, weekIdx: 5 },
-    { type: 'clfinal',   day: 4, prize: 35000, weekIdx: 6 },
+    { type: 'cl',        day: 4, prize: 20000, weekIdx: 6 },
+    { type: 'clfinal',   day: 4, prize: 35000, weekIdx: 7 },
   ][w] || null;
 }
 
@@ -1458,14 +1462,16 @@ function dayInWeekOf(day) { return ((day - 1) % 8) + 1; }
 // Random event for non-special days
 const EVENT_TYPES = ['red', 'transfer', 'action', 'vnl', 'injury'];
 function eventTypeForDay(dayInWeek) {
-  // Fixed board positions per rulebook:
-  // 1=injury, 2=transfer, 3=action(skip), 4=tournament, 5=action(skip), 6=redcard, 7=injury, 8=league
+  // Board columns per rulebook symbols:
+  // 1=Red Card (suspension), 2=Transfer (arrow), 3=Action Card, 
+  // 4=Tournament (handled by resolveDay before this), 5=VNL/Flag, 
+  // 6=Action Card, 7=Injury (cross), 8=League (handled by resolveDay)
   switch(dayInWeek) {
-    case 1: return 'injury';
+    case 1: return 'red';
     case 2: return 'transfer';
     case 3: return 'action';
-    case 5: return 'action';
-    case 6: return 'red';
+    case 5: return 'vnl';
+    case 6: return 'action';
     case 7: return 'injury';
     default: return 'action';
   }
@@ -1645,7 +1651,7 @@ function teamPanelHtml(p) {
       <div class="vb-row-label">${state.lang==='de'?'Hinten':'Back'}</div>
       <div class="vb-row vb-row-3">
         ${teamSlotHtml(s.diagonal, 'diagonal')}
-        ${teamSlotHtml(s.outside,  'outside')}
+        ${teamSlotHtml(s.outside2, 'outside2')}
         ${teamSlotHtml(s.libero,   'libero')}
       </div>
     </div>
@@ -2388,8 +2394,9 @@ async function runMatchClassic(home, away, isTournament) {
   else winner = Math.random() < 0.5 ? home : away;
 
   // Show summary
-  await showMatchSummary(M, winner);
-  flash(winner === home ? 'win' : 'loss');
+  await showMatchSummary(M, winner, isDraw);
+  if (isDraw) flash('draw');
+  else flash(winner === home ? 'win' : 'loss');
   return winner;
 }
 
@@ -2432,7 +2439,7 @@ async function resolveCriterion(dice, M) {
       winner = a > b ? 'home' : a < b ? 'away' : 'tie'; break;
     }
     case 8:  kind='out_dia'; {
-      const a = home.team.outside?.stars||0;
+      const a = home.team.outside2?.stars||0; // outside2 is back-row OH
       const b = away.team.diagonal?.stars||0;
       winner = a > b ? 'home' : a < b ? 'away' : 'tie'; break;
     }
@@ -2488,12 +2495,12 @@ function randomPlayerName(p) {
   return top ? top.name.replace('#','') : escapeHTML(p.name);
 }
 
-async function showMatchSummary(M, winner) {
+async function showMatchSummary(M, winner, isDraw=false) {
   const stage = $('#stage');
   const lang = state.lang;
   const summary = `${escapeHTML(M.home.name)} ${M.homePoints}:${M.awayPoints} ${escapeHTML(M.away.name)}`;
   stage.innerHTML = `
-    <div class="stage-h">${winner === M.home ? '🏆 ' : ''}${escapeHTML(winner.name)} ${state.lang==='de'?'gewinnt':'wins'}</div>
+    <div class="stage-h">${isDraw ? '🤝 Draw' : (winner===M.home?'🏆 ':'')+escapeHTML(winner.name)+' '+(state.lang==='de'?'gewinnt':'wins')}</div>
     <div class="stage-sub">${summary}</div>
     <div style="margin-top:1rem; display:flex; gap:0.4rem; flex-wrap:wrap; max-width:640px;">
       ${M.events.map(e => `<span class="crit-pill ${e.winner}">#${e.dice} ${T('crit_'+e.kind)}</span>`).join('')}
@@ -2570,16 +2577,21 @@ async function runLeagueMatch() {
   const winner = await runMatchClassic(home, away, false);
   if (me.isHuman) restoreBoardPanel();
   // Award league points and money per rulebook
-  if (winner === home) {
+  if (winner === null) {
+    // Draw: both +5k from bank, +1 LP
+    home.money += 5000; home.totalEarned += 5000; home.leaguePoints += 1; animateMoneyChange(home, 5000);
+    away.money += 5000; away.totalEarned += 5000; away.leaguePoints += 1; animateMoneyChange(away, 5000);
+    logEntry(`🏐 ${T('phase_match')}: 🤝 Draw — ${escapeHTML(home.name)} & ${escapeHTML(away.name)} je +5k · +1 LP`, 'win');
+  } else if (winner === home) {
     home.money += 10000; home.totalEarned += 10000; animateMoneyChange(home, 10000);
     if (away.money >= 5000) { away.money -= 5000; animateMoneyChange(away, -5000); home.money += 5000; home.totalEarned += 5000; animateMoneyChange(home, 5000); } else { home.money += away.money; away.money = 0; }
     home.matchesWon++; home.leaguePoints += 3;
-    logEntry(`🏐 ${T('phase_match')}: <b>${escapeHTML(home.name)}</b> +10’ (Bank), +5’ (${escapeHTML(away.name)})`, 'win');
+    logEntry(`🏐 ${T('phase_match')}: <b>${escapeHTML(home.name)}</b> +10k (Bank) +5k · +3 LP`, 'win');
   } else {
     away.money += 10000; away.totalEarned += 10000; animateMoneyChange(away, 10000);
     if (home.money >= 5000) { home.money -= 5000; animateMoneyChange(home, -5000); away.money += 5000; away.totalEarned += 5000; animateMoneyChange(away, 5000); } else { away.money += home.money; home.money = 0; }
     away.matchesWon++; away.leaguePoints += 3;
-    logEntry(`🏐 ${T('phase_match')}: <b>${escapeHTML(away.name)}</b> +10’ (Bank), +5’ (${escapeHTML(home.name)})`, 'loss');
+    logEntry(`🏐 ${T('phase_match')}: <b>${escapeHTML(away.name)}</b> +10k (Bank) +5k · +3 LP`, 'loss');
   }
   // Other players: bye → +5'000
   for (const p of g.players) {
