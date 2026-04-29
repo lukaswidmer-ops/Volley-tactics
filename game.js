@@ -475,7 +475,7 @@ const T = (k) => (i18n[state.lang] && i18n[state.lang][k]) || k;
 const fmt = (str, ...args) => { let i=0; return str.replace(/%[ds]|%(\d+)/g, () => args[i++]); };
 const fmtMoney = n => (n||0).toLocaleString('de-CH').replace(/,/g,'’');
 const choice = arr => arr[Math.floor(Math.random()*arr.length)];
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+const sleep = ms => new Promise(r => setTimeout(r, (state && state.skipping) ? 0 : ms));
 const range = n => Array.from({length:n}, (_,i)=>i);
 function hash(str) { let h=0; for (let i=0;i<str.length;i++) h=((h<<5)-h)+str.charCodeAt(i); return Math.abs(h); }
 function speedMs(ms) {
@@ -529,6 +529,7 @@ const state = {
   mode: null,
   speed: localStorage.getItem('vv_speed') || 'normal',
   game: null,
+  skipping: false,
 };
 
 // ────────────────────────────────────────────────────────────────
@@ -569,14 +570,22 @@ function ensureFloatingLog() {
   if (lp) lp.style.display = 'none';
 }
 function skipAll() {
-  // Fire all possible waiters to unstick the game loop
+  // Activate global skip mode — all sleeps/waits resolve immediately for 3s
+  state.skipping = true;
+  // Fire ALL known waiters to unstick game loop
   ['coneRollNow','coneContinue','continueAfterMatch','serveOnce','endMarket',
-   'auctionBid','auctionPass'].forEach(e => fire(e));
-  // Also click any OK/continue buttons in modals
-  document.querySelectorAll('.modal-popup .btn, #locked-ok, #action-ok-btn').forEach(b => b.click());
+   'auctionBid','auctionPass','transferBid','transferPass'].forEach(e => fire(e));
+  // Resolve any inline transfer bids
+  const tpb = document.getElementById('transfer-pass-btn');
+  if (tpb) tpb.click();
+  // Auto-close all modals
+  document.querySelectorAll('.modal-popup').forEach(m => m.remove());
   // Reset dice button
   const dpBtn = document.getElementById('dice-panel-btn');
   if (dpBtn) { dpBtn.disabled = true; dpBtn.classList.remove('pulse'); }
+  // Turn off skip mode after 3 seconds — gives the loop time to fast-forward
+  setTimeout(() => { state.skipping = false; }, 3000);
+  toast(state.lang==='de' ? '⏭ Überspringen…' : '⏭ Skipping…', 'gold', 1500);
 }
 
 function toggleLog() {
@@ -647,11 +656,19 @@ function setSpeed(s) {
 
 // Wait/fire helpers
 const _waiters = {};
+// Global skip state — when true, all sleeps/waits resolve immediately
+state.skipping = false;
+function skipMs(ms) { return state.skipping ? 0 : ms; }
+
 function waitFor(name, autoMs) {
   return new Promise(resolve => {
+    // If skipping, resolve immediately
+    if (state.skipping) { setTimeout(resolve, 0); return; }
     if (!name) { setTimeout(resolve, autoMs||1); return; }
     _waiters[name] = resolve;
     if (autoMs) setTimeout(() => { if (_waiters[name]) { delete _waiters[name]; resolve(); } }, autoMs);
+    // Safety net: if someone forgets timeout, max wait 30s for ANY waiter
+    setTimeout(() => { if (_waiters[name]) { delete _waiters[name]; resolve(); } }, 30000);
   });
 }
 function fire(name, val) {
@@ -685,30 +702,37 @@ function performDiceRoll(type) {
 }
 
 function animateDicePanel(type, finalValue) {
-  // Update label
   const lbl = document.getElementById('dice-panel-label');
   if (lbl) lbl.textContent = '🎲 D' + type;
   const res = document.getElementById('dice-panel-result');
   const btn = document.getElementById('dice-panel-btn');
   if (btn) btn.disabled = true;
   if (!res) return Promise.resolve();
+  // If skipping, finish instantly
+  if (state.skipping) {
+    res.textContent = finalValue;
+    res.className = 'dice-panel-result landed';
+    const numEl = document.getElementById('dice-num');
+    if (numEl) numEl.textContent = finalValue;
+    return Promise.resolve();
+  }
   return new Promise(resolve => {
     res.className = 'dice-panel-result shuffling';
     const dur = speedMs(900);
-    const start = performance.now();
     const interval = setInterval(() => {
+      if (state.skipping) { clearInterval(interval); finish(); return; }
       res.textContent = Math.floor(Math.random() * type) + 1;
     }, 80);
-    setTimeout(() => {
+    function finish() {
       clearInterval(interval);
       res.textContent = finalValue;
       res.className = 'dice-panel-result landed';
-      // Also update old dice-num if present
       const numEl = document.getElementById('dice-num');
-      if (numEl) { numEl.textContent = finalValue; }
+      if (numEl) numEl.textContent = finalValue;
       beep(680 + finalValue * 15, 90);
       resolve();
-    }, dur);
+    }
+    setTimeout(finish, dur);
   });
 }
 
@@ -1314,7 +1338,9 @@ async function runAuctionForCard(card, idx, total) {
       } else {
         await sleep(speedMs(700));
         const opps = order.filter(o => o !== p);
-        const decision = window.VV_BOTS.shouldBid(p, card, currentBid, minNext, opps);
+        let decision;
+        try { decision = window.VV_BOTS.shouldBid(p, card, currentBid, minNext, opps); }
+        catch(err) { console.error('Bot bid crash:', err); decision = {pass:true}; }
         if (decision.pass) {
           passes.add(p.id);
           appendAuctionFeed(`${p.emoji} ${escapeHTML(p.name)} → ${T('auction_pass')}`);
@@ -1360,7 +1386,12 @@ function appendAuctionFeed(html) {
 
 function humanBidPrompt(p, card, minNext) {
   return new Promise(resolve => {
+    if (state.skipping) { resolve({ pass: true }); return; }
     const inputDiv = $('#auction-input');
+    if (!inputDiv) { resolve({ pass: true }); return; }
+    // Safety: auto-pass after 60s
+    const safety = setTimeout(() => resolve({ pass: true }), 60000);
+    const wrap = (v) => { clearTimeout(safety); resolve(v); };
     const sugg = Math.min(p.money, minNext);
     inputDiv.innerHTML = `
       <div class="auction-input-row">
@@ -1373,9 +1404,9 @@ function humanBidPrompt(p, card, minNext) {
     $('#bid-do').onclick = () => {
       const v = parseInt($('#bid-input').value || '0', 10);
       inputDiv.innerHTML = '';
-      resolve({ bid: v });
+      wrap({ bid: v });
     };
-    $('#bid-pass').onclick = () => { inputDiv.innerHTML = ''; resolve({ pass: true }); };
+    $('#bid-pass').onclick = () => { inputDiv.innerHTML = ''; wrap({ pass: true }); };
     $('#bid-input').focus();
     $('#bid-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('#bid-do').click(); });
   });
@@ -1785,6 +1816,14 @@ async function runSeason() {
 
 // One cone-roll turn for a player
 async function runConeRoll(player) {
+  try { return await _runConeRollInner(player); }
+  catch(err) {
+    console.error('runConeRoll crash:', err);
+    logEntry('⚠ ' + (err.message || 'Error in turn — skipping'), 'loss');
+    return;
+  }
+}
+async function _runConeRollInner(player) {
   const g = state.game;
   setActiveBanner(player);
   const stage = $('#stage');
@@ -1875,6 +1914,14 @@ function appendConeLog(html) {
 
 // Resolve what happens on landing on `day` for `triggerPlayer`
 async function resolveDay(day, triggerPlayer) {
+  try { return await _resolveDayInner(day, triggerPlayer); }
+  catch(err) {
+    console.error('resolveDay crash:', err);
+    logEntry('⚠ Event error — skipped', 'loss');
+    return;
+  }
+}
+async function _resolveDayInner(day, triggerPlayer) {
   const g = state.game;
   const w = weekOfDay(day);
   const dInW = dayInWeekOf(day);
@@ -1902,6 +1949,14 @@ async function resolveDay(day, triggerPlayer) {
 //  EVENT SPACES
 // ────────────────────────────────────────────────────────────────
 async function runEventSpace(type, player) {
+  try { return await _runEventSpaceInner(type, player); }
+  catch(err) {
+    console.error('runEventSpace crash:', err);
+    logEntry('⚠ Event error: ' + type, 'loss');
+    return;
+  }
+}
+async function _runEventSpaceInner(type, player) {
   const stage = $('#stage');
   const map = {
     red:      { h:T('cone_event_red'),      p:T('cone_event_red_p'),      icon:'🟥' },
@@ -1983,8 +2038,12 @@ async function applyTransfer(player) {
 
 function inlineTransferBid(card, currentHigh, minBid, player) {
   return new Promise(resolve => {
+    if (state.skipping) { resolve({pass:true}); return; }
     const detail = document.getElementById('event-detail');
     if (!detail) { resolve({pass:true}); return; }
+    // Safety: auto-pass after 60 seconds
+    const safetyTimer = setTimeout(() => { resolve({pass:true}); }, 60000);
+    const wrappedResolve = (v) => { clearTimeout(safetyTimer); resolve(v); };
     const sugg = Math.max(minBid, currentHigh + 2000);
     detail.innerHTML = `
       <div style="margin-top:0.5rem; font-size:0.8rem; color:var(--silver)">
@@ -2005,11 +2064,11 @@ function inlineTransferBid(card, currentHigh, minBid, player) {
     document.getElementById('transfer-bid-btn').onclick = () => {
       const v = parseInt(document.getElementById('transfer-bid-input').value||'0',10);
       detail.innerHTML = '';
-      resolve({bid:v});
+      wrappedResolve({bid:v});
     };
     document.getElementById('transfer-pass-btn').onclick = () => {
       detail.innerHTML = '';
-      resolve({pass:true});
+      wrappedResolve({pass:true});
     };
     const inp = document.getElementById('transfer-bid-input');
     if (inp) { inp.focus(); inp.onkeydown = e => { if(e.key==='Enter') document.getElementById('transfer-bid-btn').click(); }; }
@@ -2269,6 +2328,7 @@ async function runCLFinal(ev) {
 
 function showLockedFeaturePopup(title) {
   return new Promise(resolve => {
+    if (state.skipping) { resolve(); return; }
     const div = document.createElement('div');
     div.className = 'modal-popup';
     div.innerHTML = `
@@ -2628,7 +2688,9 @@ async function runMarketPhase() {
   // Bots act first, then human's turn (to give clear "your turn" feel)
   for (const bot of g.players.filter(p => !p.isHuman)) {
     await sleep(speedMs(450));
-    const pick = window.VV_BOTS.pickMarketBuy(bot, g.market);
+    let pick;
+    try { pick = window.VV_BOTS.pickMarketBuy(bot, g.market); }
+    catch(err) { console.error('Bot market crash:', err); pick = null; }
     if (pick) {
       const cur = bot.team[pick.pos];
       bot.team[pick.pos] = pick;

@@ -6,6 +6,8 @@
 (function () {
 'use strict';
 
+const POSITIONS = ['outside','outside2','middle','setter','diagonal','libero'];
+
 const PERSONAS = [
   { name: 'Karch',    color: '#0ea5e9', emoji: '🔵', personality: 'aggressive', biasPos: 'outside' },
   { name: 'Giba',     color: '#16a34a', emoji: '🟢', personality: 'balanced',   biasPos: 'middle'  },
@@ -20,65 +22,73 @@ function pickPersonas(n) {
   return pool.slice(0, n);
 }
 
-// Auction bidding logic.
-// Inputs: bot (player object), card (the card up for auction),
-//         currentBid (current highest bid number, may be 0 if none),
-//         currentHigh (player object holding current high bid, or null),
-//         minBid (current minimum bid)
-// Returns: { bid: number, pass: boolean }
+// Map a card's pos to the slot the bot would actually fill.
+// For outside cards: try outside first, then outside2.
+function targetSlotFor(bot, cardPos) {
+  if (cardPos === 'outside') {
+    if (!bot.team.outside) return 'outside';
+    if (!bot.team.outside2) return 'outside2';
+    // both filled — would replace weaker
+    const s1 = bot.team.outside.stars || 0;
+    const s2 = bot.team.outside2.stars || 0;
+    return s1 <= s2 ? 'outside' : 'outside2';
+  }
+  return cardPos;
+}
+
 function shouldBid(bot, card, currentBid, minBid, opponents) {
+  if (!bot || !card) return { pass: true };
   if (bot.money < minBid) return { pass: true };
   const stars = card.stars;
-  const fairValue = stars * 11000;       // bot's fair-value estimate
-  const cap = Math.min(bot.money * 0.8, fairValue + 5000); // never overbid
-  // Bots prefer their bias position and weakest position
-  const weakStars = (bot.team[card.pos] && bot.team[card.pos].stars) || 0;
+  const fairValue = stars * 11000;
+  const cap = Math.min(bot.money * 0.8, fairValue + 5000);
+  // Determine which slot this would target
+  const slot = targetSlotFor(bot, card.pos);
+  const weakStars = (bot.team[slot] && bot.team[slot].stars) || 0;
   let bias = 0;
   if (card.pos === bot.biasPos) bias += 8000;
-  if (weakStars < stars) bias += (stars - weakStars) * 4000; // upgrade incentive
-  // Personality
+  if (weakStars < stars) bias += (stars - weakStars) * 4000;
   if (bot.personality === 'aggressive') bias += 4000;
   if (bot.personality === 'defensive')  bias -= 4000;
   const willingness = cap + bias;
   if (minBid > willingness) return { pass: true };
-  // Bid a small increment over the min — bots don't snipe at the cap unless pushed
   const inc = stars >= 4 ? 5000 : 2000;
   let bid = Math.max(minBid, currentBid + inc);
   bid = Math.min(bid, willingness, bot.money);
-  // round to nearest 1000
   bid = Math.round(bid / 1000) * 1000;
   if (bid <= currentBid) return { pass: true };
   return { bid };
 }
 
-// Market upgrade decision (between weeks)
 function pickMarketBuy(bot, market) {
-  const order = ['outside','middle','setter','diagonal','libero'];
-  let bestPos = order[0], minStars = Infinity;
-  for (const k of order) {
+  if (!bot || !market || !market.length) return null;
+  // Find weakest position (treat outside slots independently)
+  let bestPos = 'outside', minStars = Infinity;
+  for (const k of POSITIONS) {
     const s = (bot.team[k] && bot.team[k].stars) || 0;
     if (s < minStars) { minStars = s; bestPos = k; }
   }
-  const candidates = market.filter(c => c.pos === bestPos && c.price <= bot.money && c.stars > minStars);
+  // Map slot back to card.pos for matching
+  const cardPosNeeded = bestPos === 'outside2' ? 'outside' : bestPos;
+  const candidates = market.filter(c => c.pos === cardPosNeeded && c.price <= bot.money && c.stars > minStars);
   candidates.sort((a,b) => b.stars - a.stars);
   if (candidates.length && Math.random() < 0.85) return candidates[0];
   return null;
 }
 
-// At season end: pick the card to protect (always protect highest star value)
 function pickProtect(bot) {
-  const cards = ['outside','middle','setter','diagonal','libero']
+  if (!bot) return null;
+  const cards = POSITIONS
     .map(k => ({ pos:k, card: bot.team[k] }))
     .filter(x => x.card);
-  cards.sort((a,b) => b.card.stars - a.card.stars);
+  cards.sort((a,b) => (b.card.stars||0) - (a.card.stars||0));
   return cards[0] ? cards[0].pos : null;
 }
 
-// Steal phase: pick the best upgrade
 function pickSteal(bot, fromPlayer) {
-  const order = ['outside','middle','setter','diagonal','libero'];
+  if (!bot || !fromPlayer) return null;
   let best = null, bestDelta = 0;
-  for (const k of order) {
+  for (const k of POSITIONS) {
     const myStars  = (bot.team[k] && bot.team[k].stars) || 0;
     const theirStars = (fromPlayer.team[k] && fromPlayer.team[k].stars) || 0;
     const delta = theirStars - myStars;
@@ -89,10 +99,12 @@ function pickSteal(bot, fromPlayer) {
 
 window.VV_BOTS = {
   PERSONAS,
+  POSITIONS,
   pickPersonas,
   shouldBid,
   pickMarketBuy,
   pickProtect,
   pickSteal,
+  targetSlotFor,
 };
 })();
