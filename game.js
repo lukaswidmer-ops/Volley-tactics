@@ -851,8 +851,42 @@ async function rollDice(type, value) {
 
 function performDiceRoll(type) {
   const value = roll(type);
-  // For our pseudo-d3 (tetrahedron with 4 faces), if rolled 4 (which we mapped to dup of 1), reroll once
-  return rollDice(type, value).then(() => value);
+  return animateDicePanel(type, value).then(() => value);
+}
+
+function animateDicePanel(type, finalValue) {
+  // Update label
+  const lbl = document.getElementById('dice-panel-label');
+  if (lbl) lbl.textContent = '🎲 D' + type;
+  const res = document.getElementById('dice-panel-result');
+  const btn = document.getElementById('dice-panel-btn');
+  if (btn) btn.disabled = true;
+  if (!res) return Promise.resolve();
+  return new Promise(resolve => {
+    res.className = 'dice-panel-result shuffling';
+    const dur = speedMs(900);
+    const start = performance.now();
+    const interval = setInterval(() => {
+      res.textContent = Math.floor(Math.random() * type) + 1;
+    }, 80);
+    setTimeout(() => {
+      clearInterval(interval);
+      res.textContent = finalValue;
+      res.className = 'dice-panel-result landed';
+      // Also update old dice-num if present
+      const numEl = document.getElementById('dice-num');
+      if (numEl) { numEl.textContent = finalValue; }
+      beep(680 + finalValue * 15, 90);
+      resolve();
+    }, dur);
+  });
+}
+
+// dicePanel_roll: called by the dice panel button — fires the current waiter
+function dicePanel_roll() {
+  const btn = document.getElementById('dice-panel-btn');
+  if (btn && btn.disabled) return;
+  fire('coneRollNow');
 }
 
 
@@ -1054,6 +1088,53 @@ function initSoloGame() {
 // ────────────────────────────────────────────────────────────────
 //  BLIND DRAFT (Setup Step 2 from rulebook)
 // ────────────────────────────────────────────────────────────────
+function setupTeamPanelHtml(p) {
+  const s = p.team;
+  const bench = p.bench || [];
+  const positions = ['outside','middle','setter','diagonal','libero'];
+  return `
+    <div style="font-size:0.68rem; letter-spacing:3px; text-transform:uppercase; color:var(--silver); margin-bottom:0.6rem; display:flex; justify-content:space-between;">
+      <span>🏐 ${state.lang==='de'?'Mein Team':'My Team'}</span>
+      <span style="color:var(--gold)">★ ${teamStrength(p)} · ${fmtMoney(p.money)}'</span>
+    </div>
+    <div class="vb-formation" style="margin-bottom:0.5rem;">
+      <div class="vb-net-line"></div>
+      <div class="vb-row-label">${state.lang==='de'?'Vorne':'Front'}</div>
+      <div class="vb-row vb-row-3">
+        ${setupSlotHtml(s.middle,   'middle')}
+        ${setupSlotHtml(s.outside,  'outside')}
+        ${setupSlotHtml(s.setter,   'setter')}
+      </div>
+      <div class="vb-row-label" style="margin-top:0.4rem">${state.lang==='de'?'Hinten':'Back'}</div>
+      <div class="vb-row vb-row-3">
+        ${setupSlotHtml(s.diagonal, 'diagonal')}
+        ${setupSlotHtml(s.outside,  'outside')}
+        ${setupSlotHtml(s.libero,   'libero')}
+      </div>
+    </div>
+    ${bench.length ? `<div style="font-size:0.6rem; letter-spacing:2px; text-transform:uppercase; color:rgba(255,255,255,0.3); margin-bottom:0.3rem">Bench (${bench.length})</div>
+    <div style="display:flex; flex-wrap:wrap; gap:0.25rem;">
+      ${bench.map(c=>`<div class="slot" style="width:40px;" data-tip="${escapeHTML(c.name)}·${c.stars}★">
+        <span class="pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
+        <img src="${c.url}" alt=""><div class="stars">${'★'.repeat(c.stars)}</div>
+      </div>`).join('')}
+    </div>` : ''}`;
+}
+
+function setupSlotHtml(card, pos) {
+  if (!card) return `<div class="slot empty vb-team-slot" data-tip="${posLabel(pos)}"><span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span></div>`;
+  return `<div class="slot vb-team-slot" data-tip="${escapeHTML(card.name)} · ${card.stars}★">
+    <span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
+    <img src="${card.url}" alt=""><div class="stars">${'★'.repeat(card.stars)}</div>
+  </div>`;
+}
+
+function refreshSetupTeamPanel() {
+  const tp = document.getElementById('setup-team-panel');
+  if (!tp || !state.game) return;
+  tp.innerHTML = setupTeamPanelHtml(state.game.players[0]);
+}
+
 function renderDraft() {
   const app = $('#app');
   const g = state.game;
@@ -1070,15 +1151,18 @@ function renderDraft() {
         <span class="lang-pill ${state.lang==='en'?'active':''}" onclick="VV.setLang('en')">EN</span>
       </div>
     </div>
-    <div style="padding:1.5rem; max-width:1000px; margin:0 auto;">
-      <h2 class="h-cond" style="font-size:2rem; margin-bottom:0.3rem;">${T('draft_h')}</h2>
-      <div style="color:var(--silver); margin-bottom:1.4rem;">${T('draft_p')}</div>
-      <div class="draft-progress">${draftProgressHtml(me)}</div>
-      <div class="draft-actions" id="draft-actions" style="margin-top:1.4rem;">${draftActionsHtml(stage, me)}</div>
-      <div style="margin-top:2rem;">
-        <h3 class="h-cond" style="font-size:1.1rem; margin-bottom:0.6rem;">${T('your')} · ${escapeHTML(me.name)} · ${fmtMoney(me.money)}</h3>
-        <div class="draft-cards" id="draft-cards">${draftHandHtml(me)}</div>
+    <div style="padding:1.5rem; display:grid; grid-template-columns:1fr 280px; gap:1.5rem; max-width:1200px; margin:0 auto;">
+      <div>
+        <h2 class="h-cond" style="font-size:2rem; margin-bottom:0.3rem;">${T('draft_h')}</h2>
+        <div style="color:var(--silver); margin-bottom:1.4rem;">${T('draft_p')}</div>
+        <div class="draft-progress">${draftProgressHtml(me)}</div>
+        <div class="draft-actions" id="draft-actions" style="margin-top:1.4rem;">${draftActionsHtml(stage, me)}</div>
+        <div style="margin-top:2rem;">
+          <h3 class="h-cond" style="font-size:1.1rem; margin-bottom:0.6rem;">${T('your')} · ${escapeHTML(me.name)} · ${fmtMoney(me.money)}</h3>
+          <div class="draft-cards" id="draft-cards">${draftHandHtml(me)}</div>
+        </div>
       </div>
+      <div class="setup-team-panel" id="setup-team-panel">${setupTeamPanelHtml(me)}</div>
     </div>`;
 }
 
@@ -1280,11 +1364,14 @@ async function renderAuction() {
         <span class="lang-pill ${state.lang==='en'?'active':''}" onclick="VV.setLang('en')">EN</span>
       </div>
     </div>
-    <div style="padding:1.5rem; max-width:1000px; margin:0 auto;">
-      <h2 class="h-cond" style="font-size:2rem; margin-bottom:0.3rem;">${T('auction_h')}</h2>
-      <div style="color:var(--silver); margin-bottom:1.4rem;">${T('auction_sub')}</div>
-      <div class="topbar" id="topbar">${state.game.players.map((p,i)=>playerCardHtml(p,i,false)).join('')}</div>
-      <div id="auction-stage" class="stage" style="margin-top:1rem;"></div>
+    <div style="padding:1.5rem; display:grid; grid-template-columns:1fr 280px; gap:1.5rem; max-width:1200px; margin:0 auto;">
+      <div>
+        <h2 class="h-cond" style="font-size:2rem; margin-bottom:0.3rem;">${T('auction_h')}</h2>
+        <div style="color:var(--silver); margin-bottom:1.4rem;">${T('auction_sub')}</div>
+        <div class="topbar" id="topbar">${state.game.players.map((p,i)=>playerCardHtml(p,i,false)).join('')}</div>
+        <div id="auction-stage" class="stage" style="margin-top:1rem;"></div>
+      </div>
+      <div class="setup-team-panel" id="setup-team-panel">${setupTeamPanelHtml(state.game.players[0])}</div>
     </div>`;
   // Run the 6-card auction
   await runOpeningAuction();
@@ -1387,6 +1474,7 @@ async function runAuctionForCard(card, idx, total) {
   if (currentHigh) {
     currentHigh.money -= currentBid;
     placeIntoTeamOrBench(currentHigh, card);
+    refreshSetupTeamPanel();
     appendAuctionFeed(`<b style="color:var(--gold)">${fmt(T('auction_won'), escapeHTML(currentHigh.name), fmtMoney(currentBid))}</b>`);
     beep(900, 120);
   } else {
@@ -1543,6 +1631,11 @@ function renderGame() {
       </div>
       <div class="gbot">
         <div class="actions" id="actions"><div class="stage" id="stage"></div></div>
+        <div class="dice-panel" id="dice-panel">
+          <div class="dice-panel-label" id="dice-panel-label">🎲 D3</div>
+          <div class="dice-panel-result" id="dice-panel-result">—</div>
+          <button class="dice-panel-btn" id="dice-panel-btn" disabled onclick="VV.dicePanel_roll()">Würfeln</button>
+        </div>
         <div class="log" id="log"></div>
       </div>
     </div>`;
@@ -1823,9 +1916,16 @@ async function runConeRoll(player) {
   actions.innerHTML = `<h3>${T('phase_event')}</h3>
     ${speedToggleHtml()}
     <button id="cone-roll-btn" class="action-btn pulse" data-tip="${T('cone_roll')}" onclick="VV.coneRollNow()">🎲 ${T('cone_roll')}</button>`;
+  // Update dice panel
+  const dpBtn = document.getElementById('dice-panel-btn');
+  const dpLbl = document.getElementById('dice-panel-label');
+  if (dpLbl) dpLbl.textContent = '🎲 D3';
   if (player.isHuman && state.speed !== 'auto') {
+    if (dpBtn) { dpBtn.disabled = false; dpBtn.classList.add('pulse'); dpBtn.textContent = '🎲 Würfeln'; }
     await waitFor('coneRollNow');
+    if (dpBtn) { dpBtn.disabled = true; dpBtn.classList.remove('pulse'); }
   } else {
+    if (dpBtn) dpBtn.disabled = true;
     await sleep(speedMs(700));
   }
   const v = await performDiceRoll(3);
@@ -2981,7 +3081,7 @@ window.VV = {
   startSolo, openMultiplayer, createRoom, showJoinForm,
   draftDraw, draftRedraw, draftPick1, draftFinish,
   rollStartingDice,
-  coneRollNow, coneContinue,
+  coneRollNow, coneContinue, dicePanel_roll,
   buyCard, endMarket, buyOneStar, sellBenchCard, sellStarter,
   serveOnce, continueAfterMatch,
   playAgain, toMenu,

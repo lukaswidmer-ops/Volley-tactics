@@ -139,16 +139,6 @@ button { font-family:inherit; cursor:pointer; }
   overflow: hidden;
 }
 /* Zone 4+5 — Bottom: actions + log (fixed height) */
-.gbot {
-  flex-shrink: 0;
-  display: grid;
-  grid-template-columns: 280px 1fr;
-  gap: 0.6rem;
-  padding: 0 0.6rem 0.6rem;
-  height: 20vh;
-  min-height: 130px;
-  max-height: 200px;
-}
 .player-card { flex-shrink:0; width:160px; padding:0.5rem 0.75rem; background:rgba(255,255,255,0.03); border:1px solid var(--line); border-radius:3px; position:relative; transition:border-color 0.2s, background 0.2s; }
 .player-card.active { border-color:var(--orange); background:rgba(232,67,23,0.06); box-shadow:0 0 0 1px var(--orange); }
 .player-card.active::before { content:""; position:absolute; inset:-1px; border-radius:3px; pointer-events:none; box-shadow:0 0 18px rgba(232,67,23,0.45); animation:halo 1.6s ease-in-out infinite; }
@@ -346,17 +336,85 @@ button { font-family:inherit; cursor:pointer; }
 .vb-bench-slot:hover { transform: translateY(-2px); opacity: 1; }
 .vb-bench-slot.sellable:hover { box-shadow: 0 0 0 2px var(--red); }
 
-/* Bottom zone: actions + log */
+/* Bottom zone: actions | dice | log */
 .gbot {
   flex-shrink: 0;
   display: grid;
-  grid-template-columns: 300px 1fr;
-  gap: 0.75rem;
-  padding: 0 0.75rem 0.75rem;
+  grid-template-columns: 260px 160px 1fr;
+  gap: 0.6rem;
+  padding: 0 0.6rem 0.6rem;
   max-height: 22vh;
   min-height: 140px;
   overflow: hidden;
 }
+/* Dice panel */
+.dice-panel {
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg,#0e0e0f,#080808);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.dice-panel-label {
+  flex-shrink: 0;
+  font-size: 0.62rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--silver);
+  text-align: center;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+.dice-panel-result {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 900;
+  font-size: 2.8rem;
+  color: var(--gold);
+  letter-spacing: 2px;
+  min-height: 0;
+}
+.dice-panel-result.shuffling {
+  animation: diceShuff 0.08s infinite;
+  color: var(--silver);
+}
+@keyframes diceShuff {
+  0%   { transform: scale(1.1) rotate(-3deg); }
+  50%  { transform: scale(0.95) rotate(3deg); }
+  100% { transform: scale(1.1) rotate(-3deg); }
+}
+.dice-panel-result.landed {
+  animation: diceLand 0.3s cubic-bezier(0.2,1.4,0.5,1);
+  color: var(--gold);
+}
+@keyframes diceLand {
+  0%   { transform: scale(1.5); opacity: 0.5; }
+  100% { transform: scale(1);   opacity: 1; }
+}
+.dice-panel-btn {
+  flex-shrink: 0;
+  margin: 0.4rem;
+  padding: 0.4rem;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  border-radius: 3px;
+  border: 1px solid var(--orange);
+  background: rgba(232,67,23,0.10);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s;
+  text-align: center;
+}
+.dice-panel-btn:hover:not(:disabled) { background: rgba(232,67,23,0.25); }
+.dice-panel-btn:disabled { opacity: 0.3; cursor: not-allowed; border-color: var(--line); }
+.dice-panel-btn.pulse { animation: pulseBtn 1.2s ease-in-out infinite; }
 .actions {
   display: flex;
   flex-direction: column;
@@ -946,4 +1004,15 @@ button, a, input, select { font-family:inherit; }
      never overlap. When the drawer expands, it slides over the panel. */
   .fp { right:0.5rem; bottom:50px; }
   .fp.collapsed { width:160px; max-height:180px; }
+}
+
+/* Setup team panel (draft + auction) */
+.setup-team-panel {
+  position: sticky;
+  top: 1rem;
+  background: linear-gradient(180deg,#0e0e0f,#080808);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.85rem;
+  align-self: start;
 }
