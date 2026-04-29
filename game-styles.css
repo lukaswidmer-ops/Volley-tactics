@@ -237,27 +237,88 @@ button { font-family:inherit; cursor:pointer; }
   gap: 0.75rem;
 }
 
-/* Volleyball formation — 3 rows: row1=2 back, row2=3 front, libero row */
+/* Volleyball formation layout */
+.vb-sell-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.3rem 0;
+  margin-bottom: 0.4rem;
+  border-bottom: 1px solid var(--line);
+}
+.vb-sell-toggle {
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 0.25rem 0.7rem;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.04);
+  color: var(--silver);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.vb-sell-toggle.on {
+  border-color: var(--red);
+  color: var(--red);
+  background: rgba(232,67,23,0.12);
+}
 .vb-formation {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0;
+}
+.vb-net-line {
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+  margin: 0.35rem 0;
+  position: relative;
+}
+.vb-net-line::after {
+  content: 'NET';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 0.55rem;
+  letter-spacing: 3px;
+  color: rgba(255,255,255,0.2);
+  background: #0e0e0f;
+  padding: 0 6px;
+}
+.vb-row-label {
+  font-size: 0.58rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.3);
+  margin-bottom: 0.25rem;
 }
 .vb-row {
   display: flex;
   gap: 0.4rem;
   justify-content: center;
 }
-.vb-row-label {
-  font-size: 0.58rem;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: rgba(255,255,255,0.25);
-  text-align: center;
-  margin-bottom: 0.15rem;
+.vb-row-3 { /* front row: 3 players */
+  justify-content: center;
+}
+.vb-row-2 { /* back row: 2 players centered */
+  justify-content: center;
+}
+.vb-team-slot {
+  width: calc(33% - 0.3rem);
+  max-width: 110px;
+  aspect-ratio: 55/80;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+.vb-team-slot:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+.vb-team-slot.sellable:hover { box-shadow: 0 0 0 2px var(--red); }
+.vb-row-2 .vb-team-slot {
+  width: calc(40% - 0.3rem);
 }
 .vb-bench {
-  margin-top: 0.5rem;
+  margin-top: 0.6rem;
   border-top: 1px solid var(--line);
   padding-top: 0.5rem;
 }
@@ -265,29 +326,25 @@ button { font-family:inherit; cursor:pointer; }
   font-size: 0.58rem;
   letter-spacing: 2px;
   text-transform: uppercase;
-  color: rgba(255,255,255,0.25);
+  color: rgba(255,255,255,0.3);
   margin-bottom: 0.3rem;
 }
 .vb-bench-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: 0.3rem;
 }
-.slot {
-  width: calc(20% - 0.35rem);
+.vb-bench-slot {
+  width: calc(20% - 0.25rem);
+  min-width: 48px;
+  max-width: 70px;
   aspect-ratio: 55/80;
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  background: rgba(255,255,255,0.02);
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  flex-shrink: 0;
+  cursor: pointer;
+  transition: transform 0.1s;
+  opacity: 0.85;
 }
-.vb-slot-wide { width: calc(25% - 0.35rem); }
-.vb-slot-narrow { width: calc(16% - 0.3rem); }
+.vb-bench-slot:hover { transform: translateY(-2px); opacity: 1; }
+.vb-bench-slot.sellable:hover { box-shadow: 0 0 0 2px var(--red); }
 
 /* Bottom zone: actions + log */
 .gbot {
@@ -543,10 +600,28 @@ button, a, input, select { font-family:inherit; }
 }
 .vv-board-img {
   position:absolute; inset:0;
-  background-image:url('perfektes-spielbrett.jpg');
-  background-size:contain;
-  background-repeat:no-repeat;
-  background-position:center;
+  width:100%; height:100%;
+  object-fit:cover;
+  display:block;
+  user-select:none;
+  pointer-events:none;
+}
+/* Board container must stay square for cone % coords to be exact */
+.gpanel-board-inner {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+}
+.gpanel-board-inner .vv-board {
+  /* Force square based on the smaller dimension */
+  width: min(100%, calc(100vh - 380px));
+  height: min(100%, calc(100vh - 380px));
+  aspect-ratio: 1 / 1;
+  flex-shrink: 0;
 }
 .board-cone {
   position:absolute;

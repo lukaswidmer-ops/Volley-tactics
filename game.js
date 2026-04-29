@@ -1598,7 +1598,7 @@ function boardHtml(g) {
   const dInW = ((g.coneDay - 1) % 8) + 1;
   const ev = weekEventByWeek(w);
   return `<div class="vv-board" data-day="${g.coneDay}" data-week="${w}">
-    <div class="vv-board-img"></div>
+    <img class="vv-board-img" src="perfektes-spielbrett.jpg" alt="" draggable="false">
     <div class="board-cone" style="left:${leftPct}%; top:${topPct}%;" data-tip="${T('week')} ${w} · ${state.lang==='de'?'Tag':'Day'} ${dInW}">
       <svg viewBox="0 0 50 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
         <ellipse cx="25" cy="58" rx="14" ry="3.4" fill="rgba(0,0,0,0.55)"/>
@@ -1616,36 +1616,69 @@ function boardHtml(g) {
 }
 
 function teamPanelHtml(p) {
+  // Volleyball rotation: 6 positions in court order
+  // Front row (left→right): pos4=OH, pos3=MB, pos2=OPP
+  // Back row  (left→right): pos5=OH2(empty slot), pos6=Libero, pos1=Setter
+  // In our 5-player setup: Front: [outside, middle, diagonal], Back: [setter, libero]
+  // Standard rotation: OH ↔ OH (opposite sides), MB ↔ Libero (sub), OPP ↔ S (opposite)
   const s = p.team;
   const bench = p.bench || [];
+  const sellMode = !!state.sellMode;
+  
+  function teamSlotHtml(card, pos) {
+    if (!card) return `<div class="slot empty vb-team-slot" data-tip="${posLabel(pos)}"><span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span></div>`;
+    const dis = card.disabled ? 'disabled' : '';
+    const sub = card._isSub ? 'is-sub' : '';
+    return `<div class="slot vb-team-slot ${dis} ${sub} ${sellMode?'sellable':''}" 
+      data-tip="${escapeHTML(card.name)} · ${card.stars}★${card.disabled?' · '+(card.disabledReason||''):''}${sub?' · '+T('sub_tooltip'):''}"
+      onclick="VV.handleFloatingClick('${pos}')">
+      <span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
+      <img src="${card.url}" alt="">
+      <div class="stars">${'★'.repeat(card.stars)}</div>
+      ${card.disabled?'<div class="dis-overlay">⛔</div>':''}
+      ${card._isSub?`<div class="sub-badge">${T('sub_label')}</div>`:''}
+    </div>`;
+  }
+  
+  function benchSlotHtml(c) {
+    return `<div class="slot vb-bench-slot ${sellMode?'sellable':''}" 
+      data-tip="${escapeHTML(c.name)} · ${c.stars}★ · ${posLabel(c.pos)}${c.disabled?' · ⛔':''}"
+      onclick="VV.handleFloatingBenchClick('${c.id}')">
+      <span class="pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
+      <img src="${c.url}" alt="">
+      <div class="stars">${'★'.repeat(c.stars)}</div>
+      ${c.disabled?'<div class="dis-overlay">⛔</div>':''}
+    </div>`;
+  }
+
   return `
+    <div class="vb-sell-bar">
+      <span style="font-size:0.7rem;color:var(--silver)">${state.lang==='de'?'Klicke Karte zum Verkaufen':'Click card to sell'}</span>
+      <button class="vb-sell-toggle ${sellMode?'on':''}" onclick="VV.toggleSellMode()">
+        🔴 ${sellMode?(state.lang==='de'?'Verkauf AN':'Sell ON'):(state.lang==='de'?'Verkaufen':'Sell')}
+      </button>
+    </div>
     <div class="vb-formation">
-      <div class="vb-row-label">${state.lang==='de'?'▲ Vorderreihe':'▲ Front Row'}</div>
-      <div class="vb-row">
-        ${slotHtml(s.middle,   'middle')}
-        ${slotHtml(s.setter,   'setter')}
-        ${slotHtml(s.diagonal, 'diagonal')}
+      <div class="vb-row-label">${state.lang==='de'?'▲ Angriff (Vorne)':'▲ Attack (Front)'}</div>
+      <div class="vb-row vb-row-3">
+        ${teamSlotHtml(s.outside,  'outside')}
+        ${teamSlotHtml(s.middle,   'middle')}
+        ${teamSlotHtml(s.diagonal, 'diagonal')}
       </div>
-      <div class="vb-row-label" style="margin-top:0.4rem">${state.lang==='de'?'▼ Hinterreihe':'▼ Back Row'}</div>
-      <div class="vb-row">
-        ${slotHtml(s.outside,  'outside')}
-        ${slotHtml(s.libero,   'libero')}
+      <div class="vb-net-line"></div>
+      <div class="vb-row-label">${state.lang==='de'?'▼ Annahme (Hinten)':'▼ Reception (Back)'}</div>
+      <div class="vb-row vb-row-2">
+        ${teamSlotHtml(s.setter,   'setter')}
+        ${teamSlotHtml(s.libero,   'libero')}
       </div>
     </div>
-    ${bench.length ? `
     <div class="vb-bench">
-      <div class="vb-bench-label">⬇ ${state.lang==='de'?'Ersatzspieler':'Bench'} (${bench.length})</div>
+      <div class="vb-bench-label">⬇ ${state.lang==='de'?'Ersatz':'Bench'} (${bench.length})</div>
       <div class="vb-bench-row">
-        ${bench.map(c => `<div class="slot vb-slot-narrow" data-tip="${escapeHTML(c.name)} · ${c.stars}★ · ${posLabel(c.pos)}${c.disabled?' · ⛔':''}">
-          <span class="pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
-          <img src="${c.url}" alt="">
-          <div class="stars">${'★'.repeat(c.stars)}</div>
-          ${c.disabled?'<div class="dis-overlay">⛔</div>':''}
-        </div>`).join('')}
+        ${bench.map(c => benchSlotHtml(c)).join('') || `<span style="font-size:0.7rem;color:rgba(255,255,255,0.3)">${state.lang==='de'?'Keine Ersatzspieler':'No bench players'}</span>`}
       </div>
-    </div>` : ''}`;
+    </div>`;
 }
-
 function slotHtml(card, pos) {
   if (!card) return `<div class="slot empty" data-tip="${posLabel(pos)}"><span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span></div>`;
   const dis = card.disabled ? 'disabled' : '';
@@ -1805,8 +1838,8 @@ async function runConeRoll(player) {
     actions.innerHTML = `<h3>${T('phase_event')}</h3>
       ${speedToggleHtml()}
       <button class="action-btn pulse" onclick="VV.coneContinue()">${T('cone_continue')}</button>`;
-    if (state.speed === 'auto') setTimeout(()=>fire('coneContinue'), speedMs(400));
-    await waitFor('coneContinue');
+    if (state.speed === 'auto' || !player.isHuman) setTimeout(()=>fire('coneContinue'), speedMs(400));
+    await waitFor('coneContinue', !player.isHuman ? speedMs(2000) : 0);
   }
 }
 
@@ -2835,12 +2868,11 @@ function ensureFloatingPanel() {
   return fp;
 }
 function refreshFloatingPanel() {
-  if (!state.game || state.view !== 'game') {
-    const fp = $('#floating-panel'); if (fp) fp.style.display = 'none';
-    return;
-  }
-  const fp = ensureFloatingPanel();
-  fp.style.display = '';
+  // Floating panel is disabled — team management is in the permanent gpanel-team
+  const fp = $('#floating-panel'); if (fp) fp.style.display = 'none';
+  return;
+  const fp2 = ensureFloatingPanel();
+  fp2.style.display = '';
   const me = state.game.players[0];
   const expanded = fp.classList.contains('expanded');
   const sellMode = !!state.sellMode;
@@ -2886,14 +2918,14 @@ function toggleFloatingPanel() {
 }
 function toggleSellMode() {
   state.sellMode = !state.sellMode;
-  refreshFloatingPanel();
+  refreshTeamPanel(); refreshFloatingPanel();
   toast(state.sellMode ? (state.lang==='de'?'Verkaufs-Modus aktiv — klicke auf eine Karte':'Sell mode active — click a card') : (state.lang==='de'?'Verkaufs-Modus aus':'Sell mode off'), state.sellMode?'gold':'good', 1800);
 }
 function handleFloatingClick(pos) {
-  if (state.sellMode) sellStarter(pos);
+  if (state.sellMode) { sellStarter(pos); refreshTeamPanel(); }
 }
 function handleFloatingBenchClick(id) {
-  if (state.sellMode) sellBenchCard(id);
+  if (state.sellMode) { sellBenchCard(id); refreshTeamPanel(); }
 }
 
 // ────────────────────────────────────────────────────────────────
