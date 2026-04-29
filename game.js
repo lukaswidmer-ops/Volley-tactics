@@ -705,7 +705,12 @@ function animateDicePanel(type, finalValue) {
 function dicePanel_roll() {
   const btn = document.getElementById('dice-panel-btn');
   if (btn && btn.disabled) return;
-  fire('coneRollNow');
+  // Fire whichever waiter is currently active
+  if (_waiters['serveOnce'])        { fire('serveOnce'); return; }
+  if (_waiters['coneRollNow'])      { fire('coneRollNow'); return; }
+  if (_waiters['coneContinue'])     { fire('coneContinue'); return; }
+  if (_waiters['continueAfterMatch']){ fire('continueAfterMatch'); return; }
+  if (_waiters['endMarket'])        { fire('endMarket'); return; }
 }
 
 
@@ -1765,14 +1770,20 @@ async function runConeRoll(player) {
     actions.innerHTML = `<h3>${T('phase_event')}</h3>
       ${speedToggleHtml()}
       <button class="action-btn pulse" onclick="VV.coneContinue()">${T('cone_continue')}</button>`;
-    // Always auto-fire for bots; for human only wait in normal speed
-    if (!player.isHuman || state.speed === 'auto') {
+    // Update dice panel for "Weiter" 
+    const dpBtnC = document.getElementById('dice-panel-btn');
+    const dpLblC = document.getElementById('dice-panel-label');
+    if (dpLblC) dpLblC.textContent = '🎲 D3';
+    if (!player.isHuman || state.speed === 'auto' || state.speed === 'fast') {
+      if (dpBtnC) { dpBtnC.disabled = true; dpBtnC.classList.remove('pulse'); }
       setTimeout(()=>fire('coneContinue'), speedMs(400));
-    } else if (state.speed === 'fast') {
-      setTimeout(()=>fire('coneContinue'), speedMs(300));
+    } else {
+      // Normal speed human: show "Weiter" button in dice panel
+      if (dpBtnC) { dpBtnC.disabled = false; dpBtnC.classList.add('pulse'); dpBtnC.textContent = '▶ Weiter'; }
     }
-    // Always include a safety timeout so the game never hangs
-    await waitFor('coneContinue', speedMs(2000));
+    // Always 2s max safety timeout
+    await waitFor('coneContinue', 2000);
+    if (dpBtnC) { dpBtnC.disabled = true; dpBtnC.classList.remove('pulse'); dpBtnC.textContent = '🎲 Würfeln'; }
   }
 }
 
@@ -2223,15 +2234,26 @@ async function runMatchClassic(home, away, isTournament) {
     $('#rally-feed').scrollTop = $('#rally-feed').scrollHeight;
   }
   function setActionUI() {
+    const isHumanMatch = home === state.game.players[0] || away === state.game.players[0];
     actions.innerHTML = `<h3>${T('phase_match')}</h3>
       ${speedToggleHtml()}
       <button id="serve-btn" class="action-btn pulse" data-tip="${T('serve_t')}" onclick="VV.serveOnce()">🏐 ${T('serve')}</button>`;
+    // Enable dice panel button for serve
+    const dpBtn = document.getElementById('dice-panel-btn');
+    const dpLbl = document.getElementById('dice-panel-label');
+    if (dpLbl) dpLbl.textContent = '🎲 D12';
+    if (dpBtn && isHumanMatch && state.speed !== 'auto') {
+      dpBtn.disabled = false; dpBtn.classList.add('pulse'); dpBtn.textContent = '🏐 Aufschlag';
+    } else if (dpBtn) {
+      dpBtn.disabled = true; dpBtn.classList.remove('pulse');
+    }
   }
   paint(); setActionUI();
 
   const totalRolls = () => M.totalRolls + M.crunchExtra;
   while (M.iRoll < totalRolls() && !M.ended) {
-    if (state.speed !== 'auto') await waitFor('serveOnce', speedMs(state.speed === 'auto' ? 240 : 0));
+    const isHuman = home === state.game.players[0] || away === state.game.players[0];
+    if (state.speed !== 'auto' && isHuman) await waitFor('serveOnce', speedMs(2000));
     else await sleep(speedMs(220));
     const dice = await performDiceRoll(12);
     M.rolls.push(dice);
@@ -2368,7 +2390,13 @@ async function showMatchSummary(M, winner) {
     <div style="margin-top:1rem; text-align:center;">
       <button class="btn btn-primary" onclick="VV.continueAfterMatch()">${T('next_match')}</button>
     </div>`;
-  await waitFor('continueAfterMatch', speedMs(state.speed === 'auto' ? 600 : 0));
+  // Enable dice button for "continue after match"
+  const dpBtn2 = document.getElementById('dice-panel-btn');
+  const dpLbl2 = document.getElementById('dice-panel-label');
+  if (dpLbl2) dpLbl2.textContent = '🎲 Weiter';
+  if (dpBtn2 && state.speed !== 'auto') { dpBtn2.disabled = false; dpBtn2.classList.add('pulse'); dpBtn2.textContent = '✅ Weiter'; }
+  await waitFor('continueAfterMatch', speedMs(state.speed === 'auto' ? 600 : 2000));
+  if (dpBtn2) { dpBtn2.disabled = true; dpBtn2.classList.remove('pulse'); dpBtn2.textContent = '🎲 Würfeln'; }
   restoreBoardPanel();
 }
 
@@ -2491,7 +2519,13 @@ async function runMarketPhase() {
     refreshTopbar();
     renderMarket();
   }
+  // Enable dice button as "Fertig" for market phase
+  const dpBtnM = document.getElementById('dice-panel-btn');
+  const dpLblM = document.getElementById('dice-panel-label');
+  if (dpLblM) dpLblM.textContent = '🛒 Markt';
+  if (dpBtnM && state.speed !== 'auto') { dpBtnM.disabled = false; dpBtnM.classList.add('pulse'); dpBtnM.textContent = '✅ Fertig'; }
   await waitFor('endMarket', speedMs(state.speed === 'auto' ? 600 : 0));
+  if (dpBtnM) { dpBtnM.disabled = true; dpBtnM.classList.remove('pulse'); dpBtnM.textContent = '🎲 Würfeln'; }
 }
 
 function renderMarket() {
