@@ -173,6 +173,20 @@ button { font-family:inherit; cursor:pointer; }
   border: 1px solid var(--line);
   border-radius: 6px;
 }
+/* Stage (event text) sits below the board image */
+.gpanel-board .stage {
+  flex-shrink: 0;
+  padding: 0.4rem 0.75rem 0.5rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.8rem;
+  overflow-y: auto;
+  max-height: 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.gpanel-board .stage-h { font-size: 0.95rem; }
+.gpanel-board .stage-sub { font-size: 0.75rem; }
 .gpanel-board-header {
   flex-shrink: 0;
   padding: 0.5rem 0.85rem;
@@ -647,39 +661,20 @@ button, a, input, select { font-family:inherit; }
 .vv-board {
   position:relative;
   width:100%;
-  height:100%;
-  max-height:100%;
   aspect-ratio:1 / 1;
   background:rgba(0,0,0,0.25);
   border:1px solid var(--line);
-  border-radius:4px;
+  border-radius:6px;
   overflow:hidden;
   box-shadow:0 8px 24px rgba(0,0,0,0.5);
 }
 .vv-board-img {
   position:absolute; inset:0;
+  background-image:url('perfektes-spielbrett.jpg');
+  background-size:contain;
+  background-repeat:no-repeat;
+  background-position:center;
   width:100%; height:100%;
-  object-fit:cover;
-  display:block;
-  user-select:none;
-  pointer-events:none;
-}
-/* Board container must stay square for cone % coords to be exact */
-.gpanel-board-inner {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.5rem;
-}
-.gpanel-board-inner .vv-board {
-  /* Force square based on the smaller dimension */
-  width: min(100%, calc(100vh - 380px));
-  height: min(100%, calc(100vh - 380px));
-  aspect-ratio: 1 / 1;
-  flex-shrink: 0;
 }
 .board-cone {
   position:absolute;

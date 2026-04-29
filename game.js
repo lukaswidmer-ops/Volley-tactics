@@ -613,7 +613,26 @@ function setLang(l) {
   document.documentElement.lang = l;
   render();
 }
-function setSpeed(s) { state.speed = s; localStorage.setItem('vv_speed', s); render(); }
+function setSpeed(s) {
+  state.speed = s;
+  localStorage.setItem('vv_speed', s);
+  // Re-render speed toggle buttons only — never re-render the full page
+  // as that destroys the running async game loop
+  document.querySelectorAll('.speed-toggle-wrap .lang-pill').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('onclick').includes("'"+s+"'"));
+  });
+  // If switching to auto, fire any pending waiters so the loop continues
+  if (s === 'auto') {
+    fire('coneRollNow');
+    fire('coneContinue');
+    fire('continueAfterMatch');
+    fire('serveOnce');
+    fire('endMarket');
+  }
+  // Update dice panel button state
+  const dpBtn = document.getElementById('dice-panel-btn');
+  if (dpBtn && s === 'auto') { dpBtn.disabled = true; dpBtn.classList.remove('pulse'); }
+}
 
 // Wait/fire helpers
 const _waiters = {};
@@ -1419,7 +1438,8 @@ function renderGame() {
             <span>🗺️ ${state.lang==='de'?'Spielbrett':'Game Board'}</span>
             <span id="board-week-label" style="color:var(--gold)"></span>
           </div>
-          <div class="gpanel-board-inner" id="board">${boardHtml(g)}</div>
+          <div class="gpanel-board-inner" id="board-img">${boardHtml(g)}</div>
+          <div class="stage" id="stage"></div>
         </div>
         <div class="gpanel-team">
           <div class="gpanel-team-header">
@@ -1430,7 +1450,7 @@ function renderGame() {
         </div>
       </div>
       <div class="gbot">
-        <div class="actions" id="actions"><div class="stage" id="stage"></div></div>
+        <div class="actions" id="actions"></div>
         <div class="dice-panel" id="dice-panel">
           <div class="dice-panel-label" id="dice-panel-label">🎲 D3</div>
           <div class="dice-panel-result" id="dice-panel-result">—</div>
@@ -1599,7 +1619,7 @@ function refreshTopbar() {
   refreshFloatingPanel();
 }
 function refreshBoard() {
-  const b = $('#board'); if (!b || !state.game) return;
+  const b = $('#board-img'); if (!b || !state.game) return;
   // Smart update: if the board exists already, only nudge the cone position
   // and the info-pill so the CSS transition can play smoothly between stops.
   // Full re-render only when the board element is missing.
@@ -1634,7 +1654,7 @@ function refreshTeamPanel() {
   if (sl) sl.textContent = '★ ' + teamStrength(state.game.players[0]);
 }
 function showOpponentBoard(opponent) {
-  const boardInner = $('#board');
+  const boardInner = $('#board-img');
   if (!boardInner) return;
   boardInner.innerHTML = `
     <div class="opp-panel">
@@ -1650,7 +1670,7 @@ function showOpponentBoard(opponent) {
     </div>`;
 }
 function restoreBoardPanel() {
-  const boardInner = $('#board');
+  const boardInner = $('#board-img');
   if (!boardInner || !state.game) return;
   boardInner.innerHTML = boardHtml(state.game);
 }
@@ -1745,8 +1765,14 @@ async function runConeRoll(player) {
     actions.innerHTML = `<h3>${T('phase_event')}</h3>
       ${speedToggleHtml()}
       <button class="action-btn pulse" onclick="VV.coneContinue()">${T('cone_continue')}</button>`;
-    if (state.speed === 'auto' || !player.isHuman) setTimeout(()=>fire('coneContinue'), speedMs(400));
-    await waitFor('coneContinue', !player.isHuman ? speedMs(2000) : 0);
+    // Always auto-fire for bots; for human only wait in normal speed
+    if (!player.isHuman || state.speed === 'auto') {
+      setTimeout(()=>fire('coneContinue'), speedMs(400));
+    } else if (state.speed === 'fast') {
+      setTimeout(()=>fire('coneContinue'), speedMs(300));
+    }
+    // Always include a safety timeout so the game never hangs
+    await waitFor('coneContinue', speedMs(2000));
   }
 }
 
