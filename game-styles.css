@@ -201,7 +201,8 @@ button { font-family:inherit; cursor:pointer; }
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.5rem;
+  padding: 0.4rem;
+  background: #080808;
 }
 
 /* Right: team management panel */
@@ -432,7 +433,8 @@ button { font-family:inherit; cursor:pointer; }
   background: linear-gradient(180deg,#0e0e0f,#080808);
   border: 1px solid var(--line);
   border-radius: 6px;
-  overflow-y: auto;
+  overflow: hidden;
+  min-height: 0;
 }
 .actions h3 { font-size:0.68rem; letter-spacing:3px; text-transform:uppercase; color:var(--silver); margin-bottom:0.2rem; flex-shrink:0; }
 .stage { flex:1; display:flex; flex-direction:column; gap:0.5rem; overflow-y:auto; min-height:0; }
@@ -513,9 +515,7 @@ button { font-family:inherit; cursor:pointer; }
 .slot.flying { animation:cardFly 0.7s cubic-bezier(0.2,0.8,0.2,1.2); }
 @keyframes cardFly { 0%{transform:scale(0.4) translateY(-50px); opacity:0} 60%{transform:scale(1.1); opacity:1} 100%{transform:scale(1); opacity:1} }
 
-/* Action panel */
-.actions { display:flex; flex-direction:column; gap:0.5rem; padding:0.85rem; background:linear-gradient(180deg,#0e0e0f,#080808); border:1px solid var(--line); border-radius:6px; }
-.actions h3 { font-size:0.7rem; letter-spacing:3px; text-transform:uppercase; color:var(--silver); margin-bottom:0.2rem; }
+/* Action panel (defined above in gbot section) */
 .action-btn { padding:0.85rem 1rem; background:rgba(255,255,255,0.03); border:1px solid var(--line); color:#fff; font-family:inherit; font-weight:600; text-align:left; border-radius:3px; display:flex; justify-content:space-between; align-items:center; transition:background 0.15s, border-color 0.15s; }
 .action-btn:hover:not(:disabled) { background:rgba(232,67,23,0.10); border-color:var(--orange); }
 .action-btn:disabled { opacity:0.4; cursor:not-allowed; }

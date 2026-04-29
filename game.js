@@ -885,6 +885,30 @@ function makePlayer(name, color, emoji, isHuman, personality, biasPos) {
 
 function initSoloGame() {
   ALL_CARDS = buildAllCards();
+  // Ensure VV_BOTS is available (fallback if game-bots.js not loaded)
+  if (!window.VV_BOTS) {
+    const PERSONAS_FB = [
+      { name:'Karch',color:'#0ea5e9',emoji:'🔵',personality:'aggressive',biasPos:'outside' },
+      { name:'Giba',color:'#16a34a',emoji:'🟢',personality:'balanced',biasPos:'middle' },
+      { name:'Zaitsev',color:'#a855f7',emoji:'🟣',personality:'defensive',biasPos:'libero' },
+      { name:'Earvin',color:'#e84317',emoji:'🔴',personality:'aggressive',biasPos:'diagonal' },
+      { name:'Wilfredo',color:'#facc15',emoji:'🟡',personality:'balanced',biasPos:'setter' },
+      { name:'Saeid',color:'#f97316',emoji:'🟠',personality:'aggressive',biasPos:'outside' },
+    ];
+    window.VV_BOTS = {
+      pickPersonas: n => PERSONAS_FB.slice().sort(()=>Math.random()-0.5).slice(0,n),
+      shouldBid: (bot,card,currentBid,minBid) => {
+        if (bot.money < minBid) return {pass:true};
+        const val = card.stars*11000; const bid = Math.min(minBid+2000, val, bot.money);
+        return bid > currentBid ? {bid:Math.round(bid/1000)*1000} : {pass:true};
+      },
+      pickMarketBuy: (bot,market) => {
+        const pos = Object.entries(bot.team).sort((a,b)=>((a[1]&&a[1].stars)||0)-((b[1]&&b[1].stars)||0))[0][0];
+        const c = market.filter(c=>c.pos===pos&&c.price<=bot.money).sort((a,b)=>b.stars-a.stars)[0];
+        return c && Math.random()<0.85 ? c : null;
+      },
+    };
+  }
   const human = makePlayer(state.playerName, '#facc15', '🟡', true, 'balanced', 'outside');
   const bots = window.VV_BOTS.pickPersonas(3);
   const bot1 = makePlayer('Bot ' + bots[0].name, bots[0].color, bots[0].emoji, false, bots[0].personality, bots[0].biasPos);
@@ -1750,7 +1774,8 @@ async function runConeRoll(player) {
     if (dpBtn) { dpBtn.disabled = true; dpBtn.classList.remove('pulse'); }
   } else {
     if (dpBtn) dpBtn.disabled = true;
-    await sleep(speedMs(700));
+    // Give player time to see what bot is doing
+    await sleep(state.speed === 'fast' ? speedMs(400) : state.speed === 'auto' ? speedMs(80) : 1200);
   }
   const v = await performDiceRoll(3);
   const advance = v >= 3 ? 2 : 1;     // rule: 1=+1, 2=+1, 3=+2
@@ -1775,7 +1800,8 @@ async function runConeRoll(player) {
     if (dpLblC) dpLblC.textContent = '🎲 D3';
     if (!player.isHuman || state.speed === 'auto' || state.speed === 'fast') {
       if (dpBtnC) { dpBtnC.disabled = true; dpBtnC.classList.remove('pulse'); }
-      setTimeout(()=>fire('coneContinue'), speedMs(400));
+      const botDelay = (!player.isHuman && state.speed === 'normal') ? 1000 : speedMs(400);
+      setTimeout(()=>fire('coneContinue'), botDelay);
     } else {
       // Normal speed human: show "Weiter" button in dice panel
       if (dpBtnC) { dpBtnC.disabled = false; dpBtnC.classList.add('pulse'); dpBtnC.textContent = '▶ Weiter'; }
@@ -2054,7 +2080,14 @@ async function runTournament(ev) {
   const g = state.game;
   if (ev.type === 'cup')      return runCupSemis(ev);
   if (ev.type === 'cupfinal') return runCupFinal(ev);
-  if (ev.type === 'supercup') return runSuperCup(ev);
+  if (ev.type === 'supercup') {
+    // SuperCup only from Season 2 onwards
+    if ((state.game.season || 1) < 2) {
+      appendConeLog(state.lang==='de' ? '⚽ SuperCup startet ab Saison 2' : '⚽ SuperCup starts from Season 2');
+      return;
+    }
+    return runSuperCup(ev);
+  }
   if (ev.type === 'cl')       return runCLGroup(ev);
   if (ev.type === 'clfinal')  return runCLFinal(ev);
 }
