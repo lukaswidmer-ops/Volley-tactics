@@ -1544,13 +1544,16 @@ function renderGame() {
         </div>
       </div>
       <div class="gbot">
-        <div class="actions" id="actions"><div class="stage" id="stage"></div><div class="action-buttons" id="action-buttons"></div></div>
+        <div class="actions" id="actions"><div class="stage" id="stage"></div></div>
         <div class="dice-panel" id="dice-panel">
           <div class="dice-panel-label" id="dice-panel-label">🎲 D3</div>
           <div class="dice-panel-result" id="dice-panel-result">—</div>
           <button class="dice-panel-btn" id="dice-panel-btn" disabled onclick="VV.dicePanel_roll()">Würfeln</button>
         </div>
-        <div class="log" id="log"></div>
+        <div class="gbot-right">
+          <div class="log" id="log"></div>
+          <div class="action-buttons-panel" id="action-buttons"></div>
+        </div>
       </div>
     </div>`;
   ensureFloatingLog();
@@ -1750,16 +1753,49 @@ function refreshTeamPanel() {
 function showOpponentBoard(opponent) {
   const boardInner = $('#board-img');
   if (!boardInner) return;
+  const s = opponent.team;
+  const bench = opponent.bench || [];
+  function oppSlot(card, pos) {
+    if (!card) return `<div class="slot empty vb-team-slot" data-tip="${posLabel(pos)}"><span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span></div>`;
+    const dis = card.disabled ? 'disabled' : '';
+    return `<div class="slot vb-team-slot ${dis}" data-tip="${escapeHTML(card.name)} · ${card.stars}★">
+      <span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
+      <img src="${card.url}" alt="">
+      <div class="stars">${'★'.repeat(card.stars)}</div>
+      ${card.disabled?'<div class="dis-overlay">⛔</div>':''}
+    </div>`;
+  }
   boardInner.innerHTML = `
     <div class="opp-panel">
       <div class="opp-panel-title">⚔️ ${escapeHTML(opponent.name)}</div>
       <div style="font-size:0.7rem;color:var(--silver);text-align:center;margin-bottom:0.4rem">★ ${teamStrength(opponent)} · ${fmtMoney(opponent.money)}'</div>
-      <div class="opp-team-grid">
-        ${['middle','setter','diagonal','outside','libero'].map(pos => slotHtml(opponent.team[pos], pos)).join('')}
+      <div class="vb-formation opp-formation">
+        <div class="vb-net-line"></div>
+        <div class="vb-pos-labels"><span>4</span><span>3</span><span>2</span></div>
+        <div class="vb-row-label">${state.lang==='de'?'Vorne':'Front'}</div>
+        <div class="vb-row vb-row-3">
+          ${oppSlot(s.middle,   'middle')}
+          ${oppSlot(s.outside,  'outside')}
+          ${oppSlot(s.setter,   'setter')}
+        </div>
+        <div class="vb-pos-labels" style="margin-top:0.5rem"><span>5</span><span>6</span><span>1</span></div>
+        <div class="vb-row-label">${state.lang==='de'?'Hinten':'Back'}</div>
+        <div class="vb-row vb-row-3">
+          ${oppSlot(s.diagonal, 'diagonal')}
+          ${oppSlot(s.outside2, 'outside2')}
+          ${oppSlot(s.libero,   'libero')}
+        </div>
       </div>
-      ${(opponent.bench||[]).length ? `<div style="font-size:0.65rem;color:var(--silver);margin-top:0.5rem;letter-spacing:2px;text-transform:uppercase">Bench</div>
-      <div style="display:flex;gap:0.3rem;flex-wrap:wrap;margin-top:0.2rem">
-        ${(opponent.bench||[]).map(c=>`<div class="slot vb-slot-narrow" data-tip="${escapeHTML(c.name)} · ${c.stars}★"><span class="pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span><img src="${c.url}" alt=""><div class="stars">${'★'.repeat(c.stars)}</div></div>`).join('')}
+      ${bench.length ? `
+      <div class="vb-bench" style="margin-top:0.5rem">
+        <div class="vb-bench-label">⬇ ${state.lang==='de'?'Ersatz':'Bench'} (${bench.length})</div>
+        <div class="vb-bench-row">
+          ${bench.map(c=>`<div class="slot vb-bench-slot" data-tip="${escapeHTML(c.name)} · ${c.stars}★ · ${posLabel(c.pos)}">
+            <span class="pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
+            <img src="${c.url}" alt="">
+            <div class="stars">${'★'.repeat(c.stars)}</div>
+          </div>`).join('')}
+        </div>
       </div>` : ''}
     </div>`;
 }
@@ -1850,7 +1886,7 @@ async function _runConeRollInner(player) {
   } else {
     if (dpBtn) dpBtn.disabled = true;
     // Give player time to see what bot is doing
-    await sleep(state.speed === 'fast' ? speedMs(400) : state.speed === 'auto' ? speedMs(80) : 1200);
+    await sleep(state.speed === 'auto' ? 100 : state.speed === 'fast' ? 700 : 1500);
   }
   const v = await performDiceRoll(3);
   const advance = v >= 3 ? 2 : 1;     // rule: 1=+1, 2=+1, 3=+2
@@ -1870,9 +1906,15 @@ async function _runConeRollInner(player) {
     const dpLblC = document.getElementById('dice-panel-label');
     if (dpLblC) dpLblC.textContent = '🎲 D3';
     if (!player.isHuman || state.speed === 'auto' || state.speed === 'fast') {
-      // Bot or fast/auto: continue automatically after a short pause
+      // Bot or fast/auto: continue automatically after a pause
       if (dpBtnC) { dpBtnC.disabled = true; dpBtnC.classList.remove('pulse'); }
-      await sleep(!player.isHuman && state.speed === 'normal' ? 800 : speedMs(300));
+      let pause = 300;
+      if (!player.isHuman) {
+        if (state.speed === 'normal') pause = 1500;
+        else if (state.speed === 'fast') pause = 700;
+        else pause = 100; // auto
+      }
+      await sleep(pause);
     } else {
       // Human normal speed: show Weiter button, wait for click
       const ab2 = $('#action-buttons') || actions;
@@ -1958,6 +2000,32 @@ async function runEventSpace(type, player) {
     return;
   }
 }
+function showEventPopup(eventInfo, player, type) {
+  // Remove any existing event popup
+  const existing = document.getElementById('event-popup');
+  if (existing) existing.remove();
+  const div = document.createElement('div');
+  div.id = 'event-popup';
+  div.className = 'event-popup-overlay';
+  div.innerHTML = `
+    <div class="event-popup-card">
+      <div class="event-popup-icon">${eventInfo.icon}</div>
+      <div class="event-popup-h">${eventInfo.h}</div>
+      <div class="event-popup-p">${eventInfo.p}</div>
+      <div class="event-popup-player">
+        <span style="color:${player.color}">${player.emoji}</span> 
+        <b>${escapeHTML(player.name)}</b>
+      </div>
+      <div id="event-detail" class="event-popup-detail"></div>
+    </div>`;
+  document.body.appendChild(div);
+  setTimeout(() => div.classList.add('open'), 10);
+}
+function hideEventPopup() {
+  const ep = document.getElementById('event-popup');
+  if (ep) { ep.classList.remove('open'); setTimeout(() => ep.remove(), 200); }
+}
+
 async function _runEventSpaceInner(type, player) {
   // Ensure stage exists — re-create inside actions if it was overwritten
   let stage = $('#stage');
@@ -1984,14 +2052,14 @@ async function _runEventSpaceInner(type, player) {
   };
   const e = map[type];
   // Render event card (only if stage exists)
+  // Show event as central popup overlay
+  showEventPopup(e, player, type);
+  // Also keep small note in stage if it exists
   if (stage) {
-    stage.innerHTML += `
-      <div class="event-card">
-        <div class="event-icon">${e.icon}</div>
-        <div class="event-h">${e.h}</div>
-        <div class="event-p">${e.p} · <span style="color:var(--silver);">${escapeHTML(player.name)}</span></div>
-        <div id="event-detail"></div>
-      </div>`;
+    const li = document.createElement('div');
+    li.className = 'stage-event-mini';
+    li.innerHTML = `${e.icon} <b>${e.h}</b> · ${escapeHTML(player.name)}`;
+    stage.appendChild(li);
   }
   flash(type === 'action' ? 'win' : 'loss');
   beep(type === 'action' ? 760 : 320, 120);
@@ -2001,6 +2069,7 @@ async function _runEventSpaceInner(type, player) {
   if (type === 'vnl')      await applyVnlEvent(player);
   if (type === 'injury')   await applyInjury(player);
   await sleep(speedMs(800));
+  hideEventPopup();
 }
 
 const POS_ORDER_BY_DICE = ['outside','middle','setter','diagonal','libero']; // pos by 6-die roll: 1=back-right=libero traditionally; we map 1..5 to our 5 starters and 6=back-mid (diagonal if alone)
@@ -2028,10 +2097,36 @@ async function applyTransfer(player) {
   while (order[0] !== player) order.push(order.shift());
   let high = 0, highP = null;
 
-  // Bots bid silently
+  // Show transfer card in event detail
+  const detail = document.getElementById('event-detail');
+  if (detail) {
+    detail.innerHTML = `
+      <div style="margin-top:0.5rem; padding:0.6rem; background:rgba(255,255,255,0.04); border-radius:4px;">
+        <div style="font-size:1.05rem; font-weight:700; color:#fff;">${escapeHTML(card.name)}</div>
+        <div style="color:var(--gold); margin:0.2rem 0;">${'★'.repeat(card.stars)}</div>
+        <div style="font-size:0.8rem; color:var(--silver);">${posLabel(card.pos)} · Min: ${fmtMoney(minBid)}'</div>
+      </div>
+      <div id="transfer-bot-bids" style="margin-top:0.4rem; font-size:0.78rem; text-align:left;"></div>`;
+  }
+
+  // Bots bid one by one with visible delay so player can follow
   for (const p of order.filter(p => !p.isHuman)) {
     if (p.money < minBid) continue;
-    const dec = window.VV_BOTS.shouldBid(p, card, high, Math.max(minBid, high+1000), order);
+    let dec;
+    try { dec = window.VV_BOTS.shouldBid(p, card, high, Math.max(minBid, high+1000), order); }
+    catch(err) { console.error('Bot bid crash:', err); dec = {pass:true}; }
+    const bidsDiv = document.getElementById('transfer-bot-bids');
+    if (bidsDiv) {
+      const line = document.createElement('div');
+      line.style.cssText = 'padding:0.15rem 0;';
+      if (dec.pass) {
+        line.innerHTML = `<span style="color:${p.color}">${p.emoji}</span> ${escapeHTML(p.name)} — <span style="color:var(--silver)">passt</span>`;
+      } else {
+        line.innerHTML = `<span style="color:${p.color}">${p.emoji}</span> ${escapeHTML(p.name)} — <b style="color:var(--gold)">${fmtMoney(dec.bid)}'</b>`;
+      }
+      bidsDiv.appendChild(line);
+    }
+    await sleep(state.speed === 'auto' ? 100 : state.speed === 'fast' ? 500 : 900);
     if (!dec.pass && dec.bid > high) { high = dec.bid; highP = p; }
   }
 
@@ -2447,10 +2542,17 @@ async function runMatchClassic(home, away, isTournament) {
   const totalRolls = () => M.totalRolls + M.crunchExtra;
   while (M.iRoll < totalRolls() && !M.ended) {
     const isHuman = home.isHuman || away.isHuman;
-    if (state.speed !== 'auto' && isHuman) {
-      await waitFor('serveOnce', speedMs(2000));
+    if (isHuman && state.speed === 'normal') {
+      // Human normal speed: wait for click (no auto-timeout)
+      await waitFor('serveOnce');
+    } else if (isHuman && state.speed === 'fast') {
+      // Human fast: still wait but auto after 1.2s if no click
+      await waitFor('serveOnce', 1200);
+    } else if (state.speed === 'auto') {
+      await sleep(150);
     } else {
-      await sleep(speedMs(isHuman ? 400 : 180));
+      // Bot vs bot match — pace based on speed
+      await sleep(state.speed === 'normal' ? 1000 : state.speed === 'fast' ? 500 : 200);
     }
     const dice = await performDiceRoll(12);
     M.rolls.push(dice);
@@ -2593,7 +2695,17 @@ async function showMatchSummary(M, winner, isDraw=false) {
   const dpLbl2 = document.getElementById('dice-panel-label');
   if (dpLbl2) dpLbl2.textContent = '🎲 Weiter';
   if (dpBtn2 && state.speed !== 'auto') { dpBtn2.disabled = false; dpBtn2.classList.add('pulse'); dpBtn2.textContent = '✅ Weiter'; }
-  await waitFor('continueAfterMatch', state.speed === 'auto' ? speedMs(600) : state.speed === 'fast' ? 600 : 0);
+  // Bot vs bot: auto-continue after pause; Human: wait for click
+  const humanInMatch = M.home.isHuman || M.away.isHuman;
+  if (state.speed === 'auto') {
+    await waitFor('continueAfterMatch', 600);
+  } else if (!humanInMatch) {
+    // Bot vs bot — auto-continue but give player time to see result
+    await waitFor('continueAfterMatch', state.speed === 'fast' ? 1500 : 2500);
+  } else {
+    // Human in match — wait for click
+    await waitFor('continueAfterMatch');
+  }
   if (dpBtn2) { dpBtn2.disabled = true; dpBtn2.classList.remove('pulse'); dpBtn2.textContent = '🎲 Würfeln'; }
   restoreBoardPanel();
 }
