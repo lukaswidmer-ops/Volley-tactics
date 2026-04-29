@@ -1008,7 +1008,7 @@ function renderDraft() {
       <div class="gh-lang">
         <span class="lang-pill ${state.lang==='de'?'active':''}" onclick="VV.setLang('de')">DE</span>
         <span class="lang-pill ${state.lang==='en'?'active':''}" onclick="VV.setLang('en')">EN</span>
-        <span class="skip-pill" onclick="VV.skipAll()" title="Skip / Unstuck">⏭</span>
+
       </div>
     </div>
     <div style="padding:1.5rem; display:grid; grid-template-columns:1fr 280px; gap:1.5rem; max-width:1200px; margin:0 auto;">
@@ -1222,7 +1222,7 @@ async function renderAuction() {
       <div class="gh-lang">
         <span class="lang-pill ${state.lang==='de'?'active':''}" onclick="VV.setLang('de')">DE</span>
         <span class="lang-pill ${state.lang==='en'?'active':''}" onclick="VV.setLang('en')">EN</span>
-        <span class="skip-pill" onclick="VV.skipAll()" title="Skip / Unstuck">⏭</span>
+
       </div>
     </div>
     <div style="padding:1.5rem; display:grid; grid-template-columns:1fr 280px; gap:1.5rem; max-width:1200px; margin:0 auto;">
@@ -1392,7 +1392,7 @@ function renderStarting() {
       <div class="gh-lang">
         <span class="lang-pill ${state.lang==='de'?'active':''}" onclick="VV.setLang('de')">DE</span>
         <span class="lang-pill ${state.lang==='en'?'active':''}" onclick="VV.setLang('en')">EN</span>
-        <span class="skip-pill" onclick="VV.skipAll()" title="Skip / Unstuck">⏭</span>
+
       </div>
     </div>
     <div style="padding:1.5rem; max-width:900px; margin:0 auto; text-align:center;">
@@ -1457,6 +1457,19 @@ function dayInWeekOf(day) { return ((day - 1) % 8) + 1; }
 
 // Random event for non-special days
 const EVENT_TYPES = ['red', 'transfer', 'action', 'vnl', 'injury'];
+function eventTypeForDay(dayInWeek) {
+  // Fixed board positions per rulebook:
+  // 1=injury, 2=transfer, 3=action(skip), 4=tournament, 5=action(skip), 6=redcard, 7=injury, 8=league
+  switch(dayInWeek) {
+    case 1: return 'injury';
+    case 2: return 'transfer';
+    case 3: return 'action';
+    case 5: return 'action';
+    case 6: return 'red';
+    case 7: return 'injury';
+    default: return 'action';
+  }
+}
 function randomEventType() { return choice(EVENT_TYPES); }
 
 function renderGame() {
@@ -1470,10 +1483,11 @@ function renderGame() {
       <div class="gh-lang">
         <span class="lang-pill ${state.lang==='de'?'active':''}" onclick="VV.setLang('de')">DE</span>
         <span class="lang-pill ${state.lang==='en'?'active':''}" onclick="VV.setLang('en')">EN</span>
-        <span class="skip-pill" onclick="VV.skipAll()" title="Skip / Unstuck">⏭</span>
+
       </div>
     </div>
     <div class="game">
+      <button class="skip-fixed-btn" onclick="VV.skipAll()" title="Skip / Unstuck">⏭ Skip</button>
       <div class="topbar" id="topbar">${g.players.map((p,i)=>playerCardHtml(p,i,true)).join('')}</div>
       <div class="phase-bar" id="phase-bar"></div>
       <div class="gmid">
@@ -1873,8 +1887,8 @@ async function resolveDay(day, triggerPlayer) {
     restoreDisabledCards(true);
     return;
   }
-  // Otherwise: random event for the trigger player only
-  const evType = randomEventType();
+  // Event based on board position (day in week)
+  const evType = eventTypeForDay(dInW);
   await runEventSpace(evType, triggerPlayer);
 }
 
@@ -1998,8 +2012,10 @@ function inlineTransferBid(card, currentHigh, minBid, player) {
 
 
 async function applyActionCard(player) {
-  appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🎴 ${T('cone_event_action')}`);
-  await showActionCardPopup();
+  // Action card field: nothing happens, next player can roll
+  appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🎴 ${state.lang==='de'?'Aktionskarte — nichts passiert':'Action card — nothing happens'}`);
+  // Only show popup in physical game context; in digital just log and continue
+  await sleep(speedMs(400));
 }
 
 function showActionCardPopup() {
@@ -2264,7 +2280,8 @@ function showLockedFeaturePopup(title) {
       div.remove();
       resolve();
     });
-    if (state.speed === 'auto') setTimeout(() => { if (document.body.contains(div)) { div.remove(); resolve(); } }, 1200);
+    // Auto-close for all non-normal speeds
+    if (state.speed !== 'normal') setTimeout(() => { if (document.body.contains(div)) { div.remove(); resolve(); } }, speedMs(1000));
   });
 }
 
