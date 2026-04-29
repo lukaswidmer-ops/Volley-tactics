@@ -309,8 +309,73 @@ button { font-family:inherit; cursor:pointer; }
 button, a, input, select { font-family:inherit; }
 
 /* ─── Board (week timeline with cone) ─── */
-.board-row { padding:0.6rem 1rem; }
-.board { display:flex; gap:0.4rem; overflow-x:auto; padding:0.6rem; background:rgba(255,255,255,0.02); border:1px solid var(--line); border-radius:6px; -webkit-overflow-scrolling:touch; }
+.board-row { padding:0.6rem 1rem; display:flex; justify-content:center; }
+.board { display:block; width:100%; max-width:720px; background:transparent; border:none; padding:0; }
+
+/* ─── Real-arena board with positioned cone ─── */
+.vv-board {
+  position:relative;
+  width:100%;
+  aspect-ratio:1 / 1;
+  background:rgba(0,0,0,0.25);
+  border:1px solid var(--line);
+  border-radius:6px;
+  overflow:hidden;
+  box-shadow:0 8px 24px rgba(0,0,0,0.5);
+}
+.vv-board-img {
+  position:absolute; inset:0;
+  background-image:url('perfektes-spielbrett.jpg');
+  background-size:contain;
+  background-repeat:no-repeat;
+  background-position:center;
+}
+.board-cone {
+  position:absolute;
+  width:5.6%;
+  /* aspect ratio of the cone svg = 50/64 ≈ 0.78 → height computed via aspect-ratio */
+  aspect-ratio:50 / 64;
+  transform:translate(-50%, -68%);
+  pointer-events:none;
+  z-index:5;
+  filter:drop-shadow(0 4px 8px rgba(0,0,0,0.7));
+  /* Smooth slide between stops; keep it short so the per-day pacing in
+     advanceConeTo (~220ms sleep) stays in sync. */
+  transition:left 0.42s cubic-bezier(0.4, 1.4, 0.5, 1),
+             top  0.42s cubic-bezier(0.4, 1.4, 0.5, 1);
+  animation:coneIdle 1.6s ease-in-out infinite;
+}
+.board-cone svg { width:100%; height:100%; display:block; }
+@keyframes coneIdle {
+  0%, 100% { transform:translate(-50%, -68%); }
+  50%      { transform:translate(-50%, -72%); }
+}
+.vv-board-info {
+  position:absolute; left:50%; bottom:1%;
+  transform:translateX(-50%);
+  display:flex; gap:0.6rem;
+  background:rgba(0,0,0,0.7);
+  padding:3px 10px;
+  border-radius:99px;
+  font-family:'Barlow Condensed',sans-serif;
+  font-weight:700;
+  font-size:0.72rem;
+  letter-spacing:1.5px;
+  text-transform:uppercase;
+  color:#fff;
+  border:1px solid rgba(255,255,255,0.12);
+  z-index:6;
+  pointer-events:none;
+}
+.vv-board-info .vbi-week { color:var(--gold); }
+.vv-board-info .vbi-day  { color:var(--silver); }
+.vv-board-info .vbi-ev   { color:var(--orange); font-weight:900; }
+@media (max-width: 800px) {
+  .board { max-width:100%; }
+  .vv-board-info { font-size:0.6rem; padding:2px 7px; gap:0.4rem; }
+  .board-cone { width:6.5%; }
+}
+
 .week-block { flex-shrink:0; min-width:170px; padding:0.5rem; border:1px solid var(--line); border-radius:4px; background:rgba(255,255,255,0.02); }
 .week-block.current { box-shadow:0 0 0 1px var(--orange); background:rgba(232,67,23,0.05); }
 .week-head { font-family:'Barlow Condensed',sans-serif; font-weight:900; letter-spacing:2px; font-size:0.85rem; color:var(--silver); margin-bottom:0.4rem; display:flex; gap:0.4rem; align-items:center; }
@@ -365,7 +430,31 @@ button, a, input, select { font-family:inherit; }
 /* ─── Court mini diagram ─── */
 .court-mini { display:flex; flex-direction:column; gap:2px; padding:4px; background:rgba(255,255,255,0.03); border:1px solid var(--line); border-radius:3px; max-width:170px; margin:0 auto; }
 .court-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:2px; }
-.court-cell { padding:3px 4px; font-size:0.6rem; color:#fff; text-align:center; border-radius:1px; letter-spacing:0.5px; font-weight:700; }
+.court-cell { padding:3px 4px; font-size:0.6rem; color:#fff; text-align:center; border-radius:1px; letter-spacing:0.5px; font-weight:700; transition:transform 0.2s ease; }
+/* Auto Libero-Swap: when the MB rotates to the back row, the Libero
+   subs in. The cell briefly flashes with a white outline and pulses to
+   make the swap visible. */
+.court-cell.is-libero-sub {
+  position:relative;
+  animation:liberoSwapIn 0.6s ease-out, liberoSwapPulse 1.8s ease-in-out 0.6s infinite;
+  box-shadow:0 0 0 1px rgba(255,255,255,0.85), 0 0 8px rgba(255,255,255,0.4);
+}
+.court-cell.is-libero-sub::after {
+  content:"↔"; position:absolute; top:-7px; right:-2px;
+  background:#080808; color:#fff; border:1px solid rgba(255,255,255,0.85);
+  border-radius:50%;
+  width:13px; height:13px; line-height:11px;
+  font-size:0.55rem; font-weight:900;
+}
+@keyframes liberoSwapIn {
+  0%   { transform:scale(0.6) rotate(-8deg); opacity:0; }
+  60%  { transform:scale(1.15) rotate(3deg); opacity:1; }
+  100% { transform:scale(1) rotate(0); opacity:1; }
+}
+@keyframes liberoSwapPulse {
+  0%, 100% { box-shadow:0 0 0 1px rgba(255,255,255,0.85), 0 0 8px rgba(255,255,255,0.4); }
+  50%      { box-shadow:0 0 0 1px rgba(255,255,255,0.85), 0 0 12px rgba(255,255,255,0.7); }
+}
 
 /* ─── Cone log ─── */
 .cone-log-line { padding:2px 0; font-size:0.85rem; animation:slideIn 0.25s ease-out; }
@@ -389,6 +478,41 @@ button, a, input, select { font-family:inherit; }
 /* ─── Disabled card overlay ─── */
 .slot.disabled { filter:grayscale(0.7) brightness(0.55); }
 .slot .dis-overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:1.6rem; pointer-events:none; }
+
+/* ─── Substitute (bench-replacement after suspension/injury) ─── */
+.slot.is-sub { box-shadow:inset 0 0 0 2px #ef4444; animation:subSwapIn 0.55s ease-out; }
+.slot .sub-badge {
+  position:absolute; top:3px; right:3px;
+  background:#ef4444; color:#fff;
+  font-family:'Barlow Condensed',sans-serif; font-weight:900;
+  font-size:0.55rem; letter-spacing:1px;
+  padding:1px 4px; border-radius:1px;
+  pointer-events:none;
+  box-shadow:0 0 6px rgba(239,68,68,0.55);
+  animation:subBadgePulse 1.6s ease-in-out infinite;
+}
+.fp-card.is-sub { box-shadow:inset 0 0 0 2px #ef4444; animation:subSwapIn 0.55s ease-out; }
+.fp-card.disabled { filter:grayscale(0.7) brightness(0.55); }
+.fp-card .fp-dis-overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:1.2rem; pointer-events:none; }
+.fp-card .fp-sub-badge {
+  position:absolute; top:2px; right:2px;
+  background:#ef4444; color:#fff;
+  font-family:'Barlow Condensed',sans-serif; font-weight:900;
+  font-size:0.5rem; letter-spacing:1px;
+  padding:0 3px; border-radius:1px;
+  pointer-events:none;
+  box-shadow:0 0 5px rgba(239,68,68,0.55);
+  animation:subBadgePulse 1.6s ease-in-out infinite;
+}
+@keyframes subSwapIn {
+  0%   { transform:scale(0.85) rotate(-3deg); box-shadow:inset 0 0 0 4px #ef4444; }
+  60%  { transform:scale(1.04) rotate(1deg);  box-shadow:inset 0 0 0 3px #ef4444; }
+  100% { transform:scale(1)    rotate(0);     box-shadow:inset 0 0 0 2px #ef4444; }
+}
+@keyframes subBadgePulse {
+  0%, 100% { opacity:1;   transform:scale(1); }
+  50%      { opacity:0.7; transform:scale(0.92); }
+}
 
 /* ─── Sound toggle bottom-right ─── */
 @media (max-width: 800px) {
@@ -476,10 +600,57 @@ button, a, input, select { font-family:inherit; }
 .lp .log-entry:last-child { border-bottom:none; }
 
 @media (max-width: 800px) {
-  .lp.expanded { width:90vw; }
-  .lp.expanded .lp-body { max-height:35vh; }
-  .lp { left:0.5rem; bottom:0.5rem; }
-  .fp { right:0.5rem; bottom:0.5rem; }
-  /* Avoid overlap on small screens by stacking */
+  /* On mobile, the floating log becomes a full-width bottom drawer that
+     slides up when tapped. The desktop "floating box" position is replaced
+     by edge-to-edge anchoring, with a grip handle on the header. */
+  .lp {
+    left:0; right:0; bottom:0;
+    margin:0;
+    width:100%;
+    max-width:100%;
+    border-radius:10px 10px 0 0;
+    border-bottom:none;
+    border-left:none;
+    border-right:none;
+    background:linear-gradient(180deg, rgba(14,14,15,0.97), rgba(8,8,8,0.97));
+    backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);
+    box-shadow:0 -10px 30px rgba(0,0,0,0.55);
+    transition:max-height 0.32s cubic-bezier(0.4, 1.4, 0.5, 1);
+    overflow:hidden;
+  }
+  .lp.collapsed { width:100%; max-height:42px; }
+  .lp.expanded  { width:100%; max-height:55vh; }
+  .lp.expanded .lp-body {
+    display:block;
+    max-height:calc(55vh - 50px);
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    padding:0.6rem 1rem 1rem;
+    font-size:0.85rem;
+    line-height:1.45;
+  }
+  /* Grip handle */
+  .lp-head {
+    position:relative;
+    padding:14px 16px 10px;
+    justify-content:center;
+    gap:0.6rem;
+  }
+  .lp-head::before {
+    content:"";
+    position:absolute;
+    top:5px; left:50%;
+    transform:translateX(-50%);
+    width:38px; height:4px;
+    border-radius:99px;
+    background:rgba(255,255,255,0.28);
+  }
+  .lp-title { font-size:0.85rem; }
+  .lp-toggle { display:none; } /* grip handle replaces the arrow */
+
+  /* Floating team panel sits above the collapsed drawer (~42px) so they
+     never overlap. When the drawer expands, it slides over the panel. */
+  .fp { right:0.5rem; bottom:50px; }
   .fp.collapsed { width:160px; max-height:180px; }
 }

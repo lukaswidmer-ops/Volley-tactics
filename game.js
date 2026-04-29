@@ -151,6 +151,9 @@ const i18n = {
     block_overshot: 'Block überspielt!',
     crunch_extra: '+2 zusätzliche Würfe',
     injury_out: 'verletzt – fällt aus',
+    sub_in: 'Ersatz',
+    sub_label: 'SUB',
+    sub_tooltip: 'Ersatz auf dem Feld – Stamm gesperrt/verletzt',
     money_rain: 'Geld-Regen — beide bekommen 5’000',
 
     season_end_h: 'Saisonende',
@@ -313,6 +316,9 @@ const i18n = {
     block_overshot: 'Block beaten!',
     crunch_extra: '+2 extra rolls',
     injury_out: 'injured – out',
+    sub_in: 'Substitute',
+    sub_label: 'SUB',
+    sub_tooltip: 'Substitute on court – starter suspended/injured',
     money_rain: 'Money rain — both teams +5,000',
 
     season_end_h: 'Season end',
@@ -564,6 +570,19 @@ function ensureFloatingLog() {
     lp.id = 'log-panel';
     lp.className = 'lp ' + (window.innerWidth < 800 ? 'collapsed' : 'expanded');
     document.body.appendChild(lp);
+    // Mobile-only: tap outside the drawer collapses it. Desktop keeps the
+    // sidebar open all the time, so this listener is a no-op there because
+    // we check for the .expanded class AND the mobile breakpoint.
+    document.addEventListener('click', e => {
+      const panel = document.getElementById('log-panel');
+      if (!panel) return;
+      if (window.innerWidth >= 800) return;
+      if (!panel.classList.contains('expanded')) return;
+      if (panel.contains(e.target)) return;
+      panel.classList.add('collapsed');
+      panel.classList.remove('expanded');
+      ensureFloatingLog();
+    });
   }
   if (!state.game || state.view !== 'game') { lp.style.display = 'none'; return; }
   lp.style.display = '';
@@ -1024,6 +1043,7 @@ function makePlayer(name, color, emoji, isHuman, personality, biasPos) {
     money: 80000, vp: 0,
     team: { outside:null, middle:null, setter:null, diagonal:null, libero:null },
     bench: [],
+    suspended: [], // [{ card, pos, reason }] — players sidelined by Red Card / Injury / VNL until next league match
     matchesWon: 0, totalEarned: 0,
     leaguePoints: 0,
     flag: choice(['IT','BR','PL','FR','USA','RU','JP','SLO']),
@@ -1565,33 +1585,52 @@ function playerCardHtml(p, idx, withBars) {
   </div>`;
 }
 
+// Board grid coordinates measured on perfektes-spielbrett.png (1254×1254).
+// Empirically calibrated via saturation profiling — the playable 6×8 grid
+// (48 stops) sits within these % bounds; the bottom endgame row is part of
+// the image but not part of the gameplay path.
+const BOARD_GRID = {
+  leftPct: 19.1, rightPct: 80.5,
+  topPct: 21.5,  bottomPct: 64.6,
+  cols: 8, rows: 6,
+};
+function coneDayToPct(day) {
+  const d = Math.max(1, Math.min(48, day || 1));
+  const row = Math.floor((d - 1) / BOARD_GRID.cols);
+  const col = (d - 1) % BOARD_GRID.cols;
+  const cellW = (BOARD_GRID.rightPct  - BOARD_GRID.leftPct) / BOARD_GRID.cols;
+  const cellH = (BOARD_GRID.bottomPct - BOARD_GRID.topPct)  / BOARD_GRID.rows;
+  return {
+    leftPct: BOARD_GRID.leftPct + (col + 0.5) * cellW,
+    topPct:  BOARD_GRID.topPct  + (row + 0.5) * cellH,
+  };
+}
+
 function boardHtml(g) {
-  // 6 weeks, each week 8 days. Show as horizontal timeline with the cone position marked.
-  const weeks = range(6).map(wi => {
-    const w = wi + 1;
-    const ev = weekEventByWeek(w);
-    const days = range(8).map(di => {
-      const day = wi*8 + di + 1;
-      const isCone = day === g.coneDay;
-      const isLeague = di + 1 === 8;
-      const isTournament = ev && ev.day === di + 1;
-      let cls = 'tile';
-      if (isLeague) cls += ' league';
-      if (isTournament) cls += ' tournament';
-      if (isCone) cls += ' cone';
-      const passed = day < g.coneDay;
-      if (passed) cls += ' passed';
-      let label = '';
-      if (isLeague) label = '🏐';
-      else if (isTournament) label = ev.type === 'supercup' ? '🏆' : ev.type.startsWith('cl') ? '⭐' : '🏅';
-      return `<div class="${cls}" data-tip="${T('week')} ${w}, Tag ${di+1}">${isCone ? '<span class="cone-marker">⛳</span>' : label || (di+1)}</div>`;
-    }).join('');
-    return `<div class="week-block ${w===g.week?'current':''}">
-      <div class="week-head">W${w}${ev?` <span class="we-ev">${T('week_event_'+ev.type)}</span>`:''}</div>
-      <div class="week-tiles">${days}</div>
-    </div>`;
-  }).join('');
-  return weeks;
+  // Visual board: real arena image as background, the black cone moves
+  // smoothly across the 48 stops. The cone is the only interactive marker;
+  // event icons (red card, trophy, league shirts, …) are baked into the
+  // background art.
+  const { leftPct, topPct } = coneDayToPct(g.coneDay);
+  const w = Math.floor((g.coneDay - 1) / 8) + 1;
+  const dInW = ((g.coneDay - 1) % 8) + 1;
+  const ev = weekEventByWeek(w);
+  return `<div class="vv-board" data-day="${g.coneDay}" data-week="${w}">
+    <div class="vv-board-img"></div>
+    <div class="board-cone" style="left:${leftPct}%; top:${topPct}%;" data-tip="${T('week')} ${w} · ${state.lang==='de'?'Tag':'Day'} ${dInW}">
+      <svg viewBox="0 0 50 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <ellipse cx="25" cy="58" rx="14" ry="3.4" fill="rgba(0,0,0,0.55)"/>
+        <path d="M25 4 L41 50 L9 50 Z" fill="#0a0a0a" stroke="#ffffff" stroke-width="1.6" stroke-linejoin="round"/>
+        <path d="M25 4 L33 22 L17 22 Z" fill="#222" opacity="0.8"/>
+        <circle cx="20" cy="26" r="2" fill="rgba(255,255,255,0.35)"/>
+      </svg>
+    </div>
+    <div class="vv-board-info">
+      <span class="vbi-week">${T('week')} ${w}/6</span>
+      <span class="vbi-day">${state.lang==='de'?'Tag':'Day'} ${dInW}/8</span>
+      ${ev ? `<span class="vbi-ev">${T('week_event_'+ev.type)}</span>` : ''}
+    </div>
+  </div>`;
 }
 
 function teamPanelHtml(p) {
@@ -1608,11 +1647,14 @@ function teamPanelHtml(p) {
 function slotHtml(card, pos) {
   if (!card) return `<div class="slot empty" data-tip="${posLabel(pos)}"><span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span></div>`;
   const dis = card.disabled ? 'disabled' : '';
-  return `<div class="slot ${dis}" data-tip="${escapeHTML(card.name)} · ${card.stars}★${card.disabled?' · ' + (card.disabledReason||'-'):''}">
+  const sub = card._isSub ? 'is-sub' : '';
+  const subTip = card._isSub ? ` · ${T('sub_tooltip')}${card._subReason?' ('+card._subReason+')':''}` : '';
+  return `<div class="slot ${dis} ${sub}" data-tip="${escapeHTML(card.name)} · ${card.stars}★${card.disabled?' · ' + (card.disabledReason||'-'):''}${subTip}">
     <span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
     <img src="${card.url}" alt="">
     <div class="stars">${'★'.repeat(card.stars)}</div>
     ${card.disabled?'<div class="dis-overlay">⛔</div>':''}
+    ${card._isSub?`<div class="sub-badge" data-tip="${T('sub_tooltip')}">${T('sub_label')}</div>`:''}
   </div>`;
 }
 
@@ -1623,6 +1665,31 @@ function refreshTopbar() {
 }
 function refreshBoard() {
   const b = $('#board'); if (!b || !state.game) return;
+  // Smart update: if the board exists already, only nudge the cone position
+  // and the info-pill so the CSS transition can play smoothly between stops.
+  // Full re-render only when the board element is missing.
+  const existingBoard = b.querySelector('.vv-board');
+  const cone = b.querySelector('.board-cone');
+  if (existingBoard && cone) {
+    const g = state.game;
+    const { leftPct, topPct } = coneDayToPct(g.coneDay);
+    cone.style.left = leftPct + '%';
+    cone.style.top  = topPct  + '%';
+    existingBoard.dataset.day  = g.coneDay;
+    const w = Math.floor((g.coneDay - 1) / 8) + 1;
+    const dInW = ((g.coneDay - 1) % 8) + 1;
+    existingBoard.dataset.week = w;
+    cone.setAttribute('data-tip', `${T('week')} ${w} · ${state.lang==='de'?'Tag':'Day'} ${dInW}`);
+    const info = b.querySelector('.vv-board-info');
+    if (info) {
+      const ev = weekEventByWeek(w);
+      info.innerHTML =
+        `<span class="vbi-week">${T('week')} ${w}/6</span>` +
+        `<span class="vbi-day">${state.lang==='de'?'Tag':'Day'} ${dInW}/8</span>` +
+        (ev ? `<span class="vbi-ev">${T('week_event_'+ev.type)}</span>` : '');
+    }
+    return;
+  }
   b.innerHTML = boardHtml(state.game);
 }
 function refreshTeamPanel() {
@@ -1808,12 +1875,10 @@ async function applyRedCard(player) {
   detail.innerHTML = `<div class="dice-area"><div class="dice-num" id="dice-num">—</div></div>`;
   const v = await performDiceRoll(6);
   const pos = diePositionFor(v);
-  if (player.team[pos]) {
-    player.team[pos].disabled = true;
-    player.team[pos].disabledReason = T('cone_event_red');
-  }
-  appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🟥 ${posLabel(pos)} ${T('injury_out')}`);
+  const subbed = disablePlayerOnTeam(player, pos, T('cone_event_red'));
+  appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🟥 ${posLabel(pos)} ${T('injury_out')}${subbed?` · ${T('sub_in')}: ${escapeHTML(subbed.name)}`:''}`);
   refreshTeamPanel();
+  refreshFloatingPanel();
 }
 
 async function applyTransfer(player) {
@@ -1877,10 +1942,14 @@ async function applyVnlEvent(player) {
   let count = 0;
   for (const pos of POSITIONS) {
     const c = player.team[pos];
-    if (c && Math.random() < 0.30) { c.disabled = true; c.disabledReason = T('cone_event_vnl'); count++; }
+    if (c && !c.disabled && !c._isSub && Math.random() < 0.30) {
+      disablePlayerOnTeam(player, pos, T('cone_event_vnl'));
+      count++;
+    }
   }
   appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🚩 ${count} ${state.lang==='de'?'Spieler verfügbar erst nach Liga':'players unavailable until league match'}`);
   refreshTeamPanel();
+  refreshFloatingPanel();
 }
 
 async function applyInjury(player) {
@@ -1888,23 +1957,87 @@ async function applyInjury(player) {
   detail.innerHTML = `<div class="dice-area"><div class="dice-num" id="dice-num">—</div></div>`;
   const v = await performDiceRoll(6);
   const pos = diePositionFor(v);
-  if (player.team[pos]) {
-    player.team[pos].disabled = true;
-    player.team[pos].disabledReason = T('cone_event_injury');
-  }
-  appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🩹 ${posLabel(pos)} ${T('injury_out')}`);
+  const subbed = disablePlayerOnTeam(player, pos, T('cone_event_injury'));
+  appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🩹 ${posLabel(pos)} ${T('injury_out')}${subbed?` · ${T('sub_in')}: ${escapeHTML(subbed.name)}`:''}`);
   refreshTeamPanel();
+  refreshFloatingPanel();
+}
+
+// ────────────────────────────────────────────────────────────────
+//  SUSPENSION / INJURY HELPERS
+//  When an event (Red Card / Injury / VNL / dice criterion 11) sidelines
+//  a starter, we keep the disabled flag (so legacy paths still work) AND
+//  swap in a same-position bench card if available. The original goes
+//  into player.suspended and gets restored on the next league match.
+// ────────────────────────────────────────────────────────────────
+function disablePlayerOnTeam(player, pos, reason) {
+  const card = player.team[pos];
+  if (!card) return null;
+  if (card._isSub) {
+    // Already a substitute filling in for someone — disabling the sub too
+    // would defeat the purpose; just flag and bail. (Rare edge case.)
+    card.disabled = true;
+    card.disabledReason = reason;
+    return null;
+  }
+  if (card.disabled) {
+    // Already disabled — nothing to do (don't double-suspend).
+    card.disabledReason = reason;
+    return null;
+  }
+  card.disabled = true;
+  card.disabledReason = reason;
+  if (!Array.isArray(player.suspended)) player.suspended = [];
+
+  if (!Array.isArray(player.bench)) player.bench = [];
+  const benchIdx = player.bench.findIndex(b => b.pos === pos);
+  if (benchIdx >= 0) {
+    const sub = player.bench.splice(benchIdx, 1)[0];
+    sub._isSub = true;
+    sub._subReason = reason;
+    player.team[pos] = sub;
+    player.suspended.push({ card, pos, reason });
+    return sub;
+  }
+  // No bench replacement available — disabled card stays in the slot
+  // (legacy ⛔ overlay). Criteria see 0 stars, but at least we don't crash.
+  return null;
 }
 
 function restoreDisabledCards(afterLeague) {
   const g = state.game;
   for (const p of g.players) {
+    if (!Array.isArray(p.suspended)) p.suspended = [];
+    if (!Array.isArray(p.bench)) p.bench = [];
+    // 1) For each suspended entry: original returns to the team slot,
+    //    the temporary sub goes back to the bench.
+    while (p.suspended.length) {
+      const entry = p.suspended.shift();
+      const cur = p.team[entry.pos];
+      if (cur && cur._isSub) {
+        delete cur._isSub;
+        delete cur._subReason;
+        p.bench.push(cur);
+        entry.card.disabled = false;
+        entry.card.disabledReason = null;
+        p.team[entry.pos] = entry.card;
+      } else {
+        // Slot was changed in the meantime (e.g. market buy or re-sub);
+        // keep the suspended player on the bench as a safe fallback.
+        entry.card.disabled = false;
+        entry.card.disabledReason = null;
+        p.bench.push(entry.card);
+      }
+    }
+    // 2) Any remaining disabled cards on team had no sub at the time —
+    //    just clear their flags now.
     for (const pos of POSITIONS) {
       const c = p.team[pos];
       if (c && c.disabled) { c.disabled = false; c.disabledReason = null; }
     }
   }
   refreshTopbar(); refreshTeamPanel();
+  if (typeof refreshFloatingPanel === 'function') refreshFloatingPanel();
 }
 
 
@@ -2195,11 +2328,8 @@ async function resolveCriterion(dice, M) {
       const r = roll(12);
       const team = r <= 6 ? home : away;
       const pos = diePositionFor(((r - 1) % 6) + 1);
-      if (team.team[pos]) {
-        team.team[pos].disabled = true;
-        team.team[pos].disabledReason = T('cone_event_injury');
-      }
-      M._injuryWho = team; M._injuryPos = pos;
+      const sub = disablePlayerOnTeam(team, pos, T('cone_event_injury'));
+      M._injuryWho = team; M._injuryPos = pos; M._injurySub = sub;
       winner = 'tie';
       break;
     }
@@ -2214,7 +2344,7 @@ async function resolveCriterion(dice, M) {
   // Build a textual description
   let text = '';
   if (kind === 'crunch')  text = `${escapeHTML(home.name)}: ${T('crunch_extra')}`;
-  else if (kind === 'injury') text = `${escapeHTML(M._injuryWho.name)} · ${posLabel(M._injuryPos)} ${T('injury_out')}`;
+  else if (kind === 'injury') text = `${escapeHTML(M._injuryWho.name)} · ${posLabel(M._injuryPos)} ${T('injury_out')}${M._injurySub?` · ${T('sub_in')}: ${escapeHTML(M._injurySub.name)}`:''}`;
   else if (kind === 'money')  text = T('money_rain');
   else if (kind === 'block') {
     const r = M._blockRoll, t = M._blockTarget;
@@ -2250,28 +2380,47 @@ async function showMatchSummary(M, winner) {
 function courtMiniHtml(player, rotation) {
   // Slots in serving rotation order:
   // [0]=back-right (server), [1]=back-middle, [2]=back-left, [3]=front-left, [4]=front-middle, [5]=front-right
-  const t = player.team;
   // Map our 5 positions to 6 court slots loosely:
   // Front: [outside (left), middle (center), setter (right)]
   // Back:  [diagonal (left), libero (middle), outside (right)] (outside plays both rows; diagonal is server)
-  // Rotate the labels by 'rotation'
-  const baseLabels = [
-    posShort('diagonal'),
-    posShort('libero'),
-    posShort('outside'),
-    posShort('outside'),
-    posShort('middle'),
-    posShort('setter'),
-  ];
-  const baseColors = [posColor('diagonal'), posColor('libero'), posColor('outside'), posColor('outside'), posColor('middle'), posColor('setter')];
+  const basePositions = ['diagonal', 'libero', 'outside', 'outside', 'middle', 'setter'];
+  const baseLabels = basePositions.map(posShort);
+  const baseColors = basePositions.map(posColor);
   const r = ((rotation || 0) % 6 + 6) % 6;
   const order = range(6).map(i => (i + r) % 6);
+
+  // Auto Libero-Swap: When the Middle Blocker rotates into the back row
+  // (slots 0–2), the Libero subs in for them. We display the libero
+  // label/color in that slot and add `is-libero-sub` for a brief
+  // highlight animation so the swap is visible.
+  let liberoSwapSlot = -1;
+  for (let k = 0; k < 3; k++) {
+    if (basePositions[order[k]] === 'middle') { liberoSwapSlot = k; break; }
+  }
+
+  // Tooltip text for the swapped cell
+  const swapTip = (state.lang === 'de'
+    ? 'Libero ersetzt MB in der Hinterreihe'
+    : 'Libero subs in for MB in the back row');
+
+  function cell(slotIdx, kInRow, isBackRow) {
+    const idx = order[slotIdx];
+    const isSwap = isBackRow && (slotIdx === liberoSwapSlot);
+    const label = isSwap ? posShort('libero') : baseLabels[idx];
+    const color = isSwap ? posColor('libero') : baseColors[idx];
+    const cls   = isSwap ? 'is-libero-sub' : '';
+    const tipBase = isSwap ? `${label} · ${swapTip}` : label;
+    const ext = (isBackRow && kInRow === 2) ? ' 🏐' : (!isBackRow && kInRow === 2) ? ' ⛳' : '';
+    const labelOut = label + (isBackRow && kInRow === 2 ? ' 🏐' : '');
+    return `<span class="court-cell ${cls}" style="background:${color}" data-tip="${tipBase}${ext}">${labelOut}</span>`;
+  }
+
   return `<div class="court-mini">
     <div class="court-row top">
-      ${order.slice(3).map((i, k) => `<span class="court-cell" style="background:${baseColors[i]}" data-tip="${baseLabels[i]}${k===2?' ⛳':''}">${baseLabels[i]}</span>`).join('')}
+      ${[3,4,5].map((slot, k) => cell(slot, k, false)).join('')}
     </div>
     <div class="court-row bot">
-      ${order.slice(0,3).map((i, k) => `<span class="court-cell" style="background:${baseColors[i]}" data-tip="${baseLabels[i]}${k===2?' 🏐':''}">${baseLabels[i]}${k===2?' 🏐':''}</span>`).join('')}
+      ${[0,1,2].map((slot, k) => cell(slot, k, true)).join('')}
     </div>
   </div>`;
 }
@@ -2673,9 +2822,15 @@ function refreshFloatingPanel() {
     <div class="fp-court">
       ${POSITIONS.map(pos => {
         const c = me.team[pos];
-        return `<div class="fp-card pos-${pos} ${sellMode?'sellable':''}" style="border-color:${posColor(pos)};" data-pos="${pos}" onclick="event.stopPropagation(); VV.handleFloatingClick('${pos}')">
+        const dis = c && c.disabled ? 'disabled' : '';
+        const sub = c && c._isSub ? 'is-sub' : '';
+        const subTip = c && c._isSub ? ` · ${T('sub_tooltip')}` : '';
+        const tip = c ? `${escapeHTML(c.name)} · ${c.stars}★${c.disabled?' · '+(c.disabledReason||'-'):''}${subTip}` : posLabel(pos);
+        return `<div class="fp-card pos-${pos} ${dis} ${sub} ${sellMode?'sellable':''}" style="border-color:${posColor(pos)};" data-pos="${pos}" data-tip="${tip}" onclick="event.stopPropagation(); VV.handleFloatingClick('${pos}')">
           ${c ? `<img src="${c.url}" alt="" loading="lazy"><div class="fp-stars">${'★'.repeat(c.stars)}</div>` : `<div class="fp-empty">?</div>`}
           <span class="fp-pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
+          ${c && c.disabled?'<div class="fp-dis-overlay">⛔</div>':''}
+          ${c && c._isSub?`<div class="fp-sub-badge">${T('sub_label')}</div>`:''}
         </div>`;
       }).join('')}
     </div>
