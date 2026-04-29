@@ -173,20 +173,15 @@ button { font-family:inherit; cursor:pointer; }
   border: 1px solid var(--line);
   border-radius: 6px;
 }
-/* Stage (event text) sits below the board image */
-.gpanel-board .stage {
-  flex-shrink: 0;
-  padding: 0.4rem 0.75rem 0.5rem;
-  border-top: 1px solid var(--line);
-  font-size: 0.8rem;
-  overflow-y: auto;
-  max-height: 80px;
+/* Stage lives in #actions (bottom left) */
+.actions .stage {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.4rem;
+  overflow-y: auto;
+  min-height: 0;
 }
-.gpanel-board .stage-h { font-size: 0.95rem; }
-.gpanel-board .stage-sub { font-size: 0.75rem; }
 .gpanel-board-header {
   flex-shrink: 0;
   padding: 0.5rem 0.85rem;

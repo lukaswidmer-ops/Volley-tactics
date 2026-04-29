@@ -1444,7 +1444,6 @@ function renderGame() {
             <span id="board-week-label" style="color:var(--gold)"></span>
           </div>
           <div class="gpanel-board-inner" id="board-img">${boardHtml(g)}</div>
-          <div class="stage" id="stage"></div>
         </div>
         <div class="gpanel-team">
           <div class="gpanel-team-header">
@@ -1455,7 +1454,7 @@ function renderGame() {
         </div>
       </div>
       <div class="gbot">
-        <div class="actions" id="actions"></div>
+        <div class="actions" id="actions"><div class="stage" id="stage"></div></div>
         <div class="dice-panel" id="dice-panel">
           <div class="dice-panel-label" id="dice-panel-label">🎲 D3</div>
           <div class="dice-panel-result" id="dice-panel-result">—</div>
@@ -1802,12 +1801,17 @@ function setActiveBanner(p) {
 }
 
 function appendConeLog(html) {
-  const cl = $('#cone-log'); if (!cl) return;
-  const e = document.createElement('div');
-  e.className = 'cone-log-line';
-  e.innerHTML = html;
-  cl.appendChild(e);
-  cl.scrollTop = cl.scrollHeight;
+  // Write to the main log panel (bottom right)
+  logEntry(html);
+  // Also update cone-log in stage if it exists
+  const cl = $('#cone-log');
+  if (cl) {
+    const e = document.createElement('div');
+    e.className = 'cone-log-line';
+    e.innerHTML = html;
+    cl.appendChild(e);
+    cl.scrollTop = cl.scrollHeight;
+  }
 }
 
 // Resolve what happens on landing on `day` for `triggerPlayer`
