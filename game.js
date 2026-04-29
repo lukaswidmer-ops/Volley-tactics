@@ -2032,7 +2032,7 @@ function showEventPopup(eventInfo, player, type) {
     div.querySelector('#epb-close-btn').addEventListener('click', finish);
     
     // Auto-close after 5 seconds (or 2s if skipping)
-    const timeout = state.skipping ? 200 : 5000;
+    const timeout = state.skipping ? 200 : 8000;
     const autoTimer = setTimeout(finish, timeout);
   });
 }
