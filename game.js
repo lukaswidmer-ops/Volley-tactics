@@ -1780,8 +1780,8 @@ async function runConeRoll(player) {
     actions.innerHTML = `<h3>${T('phase_event')}</h3>
       ${speedToggleHtml()}
       <button class="action-btn pulse" onclick="VV.coneContinue()">${T('cone_continue')}</button>`;
-    if (state.speed === 'auto') setTimeout(()=>fire('coneContinue'), speedMs(400));
-    await waitFor('coneContinue');
+    if (state.speed === 'auto' || !player.isHuman) setTimeout(()=>fire('coneContinue'), speedMs(400));
+    await waitFor('coneContinue', !player.isHuman ? speedMs(2000) : 0);
   }
 }
 
