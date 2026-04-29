@@ -564,35 +564,9 @@ function logEntry(text, kind='') {
 }
 
 function ensureFloatingLog() {
+  // Log is now in the fixed #log element in gbot — no floating panel needed
   let lp = document.getElementById('log-panel');
-  if (!lp) {
-    lp = document.createElement('div');
-    lp.id = 'log-panel';
-    lp.className = 'lp ' + (window.innerWidth < 800 ? 'collapsed' : 'expanded');
-    document.body.appendChild(lp);
-    // Mobile-only: tap outside the drawer collapses it. Desktop keeps the
-    // sidebar open all the time, so this listener is a no-op there because
-    // we check for the .expanded class AND the mobile breakpoint.
-    document.addEventListener('click', e => {
-      const panel = document.getElementById('log-panel');
-      if (!panel) return;
-      if (window.innerWidth >= 800) return;
-      if (!panel.classList.contains('expanded')) return;
-      if (panel.contains(e.target)) return;
-      panel.classList.add('collapsed');
-      panel.classList.remove('expanded');
-      ensureFloatingLog();
-    });
-  }
-  if (!state.game || state.view !== 'game') { lp.style.display = 'none'; return; }
-  lp.style.display = '';
-  const expanded = lp.classList.contains('expanded');
-  lp.innerHTML = `
-    <div class="lp-head" onclick="VV.toggleLog()">
-      <span class="lp-title">📜 ${state.lang==='de'?'Live-Log':'Live log'}</span>
-      <span class="lp-toggle">${expanded?'▼':'▲'}</span>
-    </div>
-    <div class="lp-body" id="log-feed"></div>`;
+  if (lp) lp.style.display = 'none';
 }
 function toggleLog() {
   const lp = document.getElementById('log-panel'); if (!lp) return;
@@ -1550,18 +1524,26 @@ function renderGame() {
     </div>
     <div class="game">
       <div class="topbar" id="topbar">${g.players.map((p,i)=>playerCardHtml(p,i,true)).join('')}</div>
-      <div class="board-row">
-        <div class="board" id="board">${boardHtml(g)}</div>
-      </div>
       <div class="phase-bar" id="phase-bar"></div>
-      <div class="gmain">
-        <div class="gleft">
-          <div class="stage" id="stage"></div>
+      <div class="gmid">
+        <div class="gpanel-board" id="board-panel">
+          <div class="gpanel-board-header">
+            <span>🗺️ ${state.lang==='de'?'Spielbrett':'Game Board'}</span>
+            <span id="board-week-label" style="color:var(--gold)"></span>
+          </div>
+          <div class="gpanel-board-inner" id="board">${boardHtml(g)}</div>
         </div>
-        <div class="gright">
-          <div class="team" id="team-panel">${teamPanelHtml(g.players[0])}</div>
-          <div class="actions" id="actions"></div>
+        <div class="gpanel-team">
+          <div class="gpanel-team-header">
+            <span>🏐 ${state.lang==='de'?'Mein Team':'My Team'}</span>
+            <span class="team-strength" id="team-strength-label">★ ${teamStrength(g.players[0])}</span>
+          </div>
+          <div class="gpanel-team-inner" id="team-panel">${teamPanelHtml(g.players[0])}</div>
         </div>
+      </div>
+      <div class="gbot">
+        <div class="actions" id="actions"><div class="stage" id="stage"></div></div>
+        <div class="log" id="log"></div>
       </div>
     </div>`;
   ensureFloatingLog();
@@ -1634,14 +1616,34 @@ function boardHtml(g) {
 }
 
 function teamPanelHtml(p) {
+  const s = p.team;
+  const bench = p.bench || [];
   return `
-    <div class="team-h">
-      <span>${escapeHTML(p.name)} · ${fmtMoney(p.money)}’</span>
-      <span class="team-strength">★ ${teamStrength(p)}</span>
+    <div class="vb-formation">
+      <div class="vb-row-label">${state.lang==='de'?'▲ Vorderreihe':'▲ Front Row'}</div>
+      <div class="vb-row">
+        ${slotHtml(s.middle,   'middle')}
+        ${slotHtml(s.setter,   'setter')}
+        ${slotHtml(s.diagonal, 'diagonal')}
+      </div>
+      <div class="vb-row-label" style="margin-top:0.4rem">${state.lang==='de'?'▼ Hinterreihe':'▼ Back Row'}</div>
+      <div class="vb-row">
+        ${slotHtml(s.outside,  'outside')}
+        ${slotHtml(s.libero,   'libero')}
+      </div>
     </div>
-    <div class="team-grid">
-      ${POSITIONS.map(pos => slotHtml(p.team[pos], pos)).join('')}
-    </div>`;
+    ${bench.length ? `
+    <div class="vb-bench">
+      <div class="vb-bench-label">⬇ ${state.lang==='de'?'Ersatzspieler':'Bench'} (${bench.length})</div>
+      <div class="vb-bench-row">
+        ${bench.map(c => `<div class="slot vb-slot-narrow" data-tip="${escapeHTML(c.name)} · ${c.stars}★ · ${posLabel(c.pos)}${c.disabled?' · ⛔':''}">
+          <span class="pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
+          <img src="${c.url}" alt="">
+          <div class="stars">${'★'.repeat(c.stars)}</div>
+          ${c.disabled?'<div class="dis-overlay">⛔</div>':''}
+        </div>`).join('')}
+      </div>
+    </div>` : ''}`;
 }
 
 function slotHtml(card, pos) {
@@ -1695,6 +1697,29 @@ function refreshBoard() {
 function refreshTeamPanel() {
   const tp = $('#team-panel'); if (!tp || !state.game) return;
   tp.innerHTML = teamPanelHtml(state.game.players[0]);
+  const sl = $('#team-strength-label');
+  if (sl) sl.textContent = '★ ' + teamStrength(state.game.players[0]);
+}
+function showOpponentBoard(opponent) {
+  const boardInner = $('#board');
+  if (!boardInner) return;
+  boardInner.innerHTML = `
+    <div class="opp-panel">
+      <div class="opp-panel-title">⚔️ ${escapeHTML(opponent.name)}</div>
+      <div style="font-size:0.7rem;color:var(--silver);text-align:center;margin-bottom:0.4rem">★ ${teamStrength(opponent)} · ${fmtMoney(opponent.money)}'</div>
+      <div class="opp-team-grid">
+        ${['middle','setter','diagonal','outside','libero'].map(pos => slotHtml(opponent.team[pos], pos)).join('')}
+      </div>
+      ${(opponent.bench||[]).length ? `<div style="font-size:0.65rem;color:var(--silver);margin-top:0.5rem;letter-spacing:2px;text-transform:uppercase">Bench</div>
+      <div style="display:flex;gap:0.3rem;flex-wrap:wrap;margin-top:0.2rem">
+        ${(opponent.bench||[]).map(c=>`<div class="slot vb-slot-narrow" data-tip="${escapeHTML(c.name)} · ${c.stars}★"><span class="pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span><img src="${c.url}" alt=""><div class="stars">${'★'.repeat(c.stars)}</div></div>`).join('')}
+      </div>` : ''}
+    </div>`;
+}
+function restoreBoardPanel() {
+  const boardInner = $('#board');
+  if (!boardInner || !state.game) return;
+  boardInner.innerHTML = boardHtml(state.game);
 }
 function setPhase(active) {
   const phases = [
@@ -1780,8 +1805,8 @@ async function runConeRoll(player) {
     actions.innerHTML = `<h3>${T('phase_event')}</h3>
       ${speedToggleHtml()}
       <button class="action-btn pulse" onclick="VV.coneContinue()">${T('cone_continue')}</button>`;
-    if (state.speed === 'auto' || !player.isHuman) setTimeout(()=>fire('coneContinue'), speedMs(400));
-    await waitFor('coneContinue', !player.isHuman ? speedMs(2000) : 0);
+    if (state.speed === 'auto') setTimeout(()=>fire('coneContinue'), speedMs(400));
+    await waitFor('coneContinue');
   }
 }
 
@@ -2182,6 +2207,10 @@ function showLockedFeaturePopup(title) {
 //  Returns the winning player.
 // ────────────────────────────────────────────────────────────────
 async function runMatchClassic(home, away, isTournament) {
+  // Show the opponent (non-human) in the board panel
+  const me = state.game.players[0];
+  const opp = home === me ? away : home;
+  if (opp !== me) showOpponentBoard(opp);
   const stage = $('#stage');
   const actions = $('#actions');
   // Match state
@@ -2374,6 +2403,7 @@ async function showMatchSummary(M, winner) {
       <button class="btn btn-primary" onclick="VV.continueAfterMatch()">${T('next_match')}</button>
     </div>`;
   await waitFor('continueAfterMatch', speedMs(state.speed === 'auto' ? 600 : 0));
+  restoreBoardPanel();
 }
 
 // Mini court diagram (6 positions in a 3×2 grid representing front + back rows)
@@ -2431,7 +2461,9 @@ async function runLeagueMatch() {
   const me = g.players[0];
   const opp = g.players.filter(p => p !== me).sort((a,b)=>teamStrength(b)-teamStrength(a))[0];
   const home = me; const away = opp;
+  showOpponentBoard(away);
   const winner = await runMatchClassic(home, away, false);
+  restoreBoardPanel();
   // Award league points and money per rulebook
   if (winner === home) {
     home.money += 10000; home.totalEarned += 10000; animateMoneyChange(home, 10000);
