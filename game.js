@@ -1544,7 +1544,7 @@ function renderGame() {
         </div>
       </div>
       <div class="gbot">
-        <div class="actions" id="actions"><div class="stage" id="stage"></div></div>
+        <div class="actions" id="actions"><div class="stage" id="stage"></div><div class="action-buttons" id="action-buttons"></div></div>
         <div class="dice-panel" id="dice-panel">
           <div class="dice-panel-label" id="dice-panel-label">🎲 D3</div>
           <div class="dice-panel-result" id="dice-panel-result">—</div>
@@ -1835,7 +1835,8 @@ async function _runConeRollInner(player) {
       <div class="dice-num" id="dice-num">—</div>
     </div>
     <div id="cone-log" style="margin-top:1rem;"></div>`;
-  actions.innerHTML = `<h3>${T('phase_event')}</h3>
+  const ab1 = $('#action-buttons') || actions;
+  ab1.innerHTML = `<h3>${T('phase_event')}</h3>
     ${speedToggleHtml()}
     <button id="cone-roll-btn" class="action-btn pulse" data-tip="${T('cone_roll')}" onclick="VV.coneRollNow()">🎲 ${T('cone_roll')}</button>`;
   // Update dice panel
@@ -1874,7 +1875,8 @@ async function _runConeRollInner(player) {
       await sleep(!player.isHuman && state.speed === 'normal' ? 800 : speedMs(300));
     } else {
       // Human normal speed: show Weiter button, wait for click
-      actions.innerHTML = `<h3>${T('phase_event')}</h3>
+      const ab2 = $('#action-buttons') || actions;
+      ab2.innerHTML = `<h3>${T('phase_event')}</h3>
         ${speedToggleHtml()}
         <button class="action-btn pulse" onclick="VV.coneContinue()">${T('cone_continue')}</button>`;
       if (dpBtnC) { dpBtnC.disabled = false; dpBtnC.classList.add('pulse'); dpBtnC.textContent = '▶ Weiter'; }
@@ -1951,13 +1953,28 @@ async function _resolveDayInner(day, triggerPlayer) {
 async function runEventSpace(type, player) {
   try { return await _runEventSpaceInner(type, player); }
   catch(err) {
-    console.error('runEventSpace crash:', err);
-    logEntry('⚠ Event error: ' + type, 'loss');
+    console.error('runEventSpace crash:', type, err, err.stack);
+    logEntry('⚠ Event error: ' + type + ' — ' + (err.message||'unknown'), 'loss');
     return;
   }
 }
 async function _runEventSpaceInner(type, player) {
-  const stage = $('#stage');
+  // Ensure stage exists — re-create inside actions if it was overwritten
+  let stage = $('#stage');
+  if (!stage) {
+    const actions = $('#actions');
+    if (actions) {
+      const s = document.createElement('div');
+      s.id = 'stage';
+      s.className = 'stage';
+      actions.appendChild(s);
+      stage = s;
+    }
+  }
+  if (!stage) { 
+    // Fallback: log only
+    appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → ${type}`);
+  }
   const map = {
     red:      { h:T('cone_event_red'),      p:T('cone_event_red_p'),      icon:'🟥' },
     transfer: { h:T('cone_event_transfer'), p:T('cone_event_transfer_p'), icon:'🔁' },
@@ -1966,14 +1983,16 @@ async function _runEventSpaceInner(type, player) {
     injury:   { h:T('cone_event_injury'),   p:T('cone_event_injury_p'),   icon:'🩹' },
   };
   const e = map[type];
-  // Render event modal-ish
-  stage.innerHTML += `
-    <div class="event-card">
-      <div class="event-icon">${e.icon}</div>
-      <div class="event-h">${e.h}</div>
-      <div class="event-p">${e.p} · <span style="color:var(--silver);">${escapeHTML(player.name)}</span></div>
-      <div id="event-detail"></div>
-    </div>`;
+  // Render event card (only if stage exists)
+  if (stage) {
+    stage.innerHTML += `
+      <div class="event-card">
+        <div class="event-icon">${e.icon}</div>
+        <div class="event-h">${e.h}</div>
+        <div class="event-p">${e.p} · <span style="color:var(--silver);">${escapeHTML(player.name)}</span></div>
+        <div id="event-detail"></div>
+      </div>`;
+  }
   flash(type === 'action' ? 'win' : 'loss');
   beep(type === 'action' ? 760 : 320, 120);
   if (type === 'red')      await applyRedCard(player);
@@ -2409,7 +2428,8 @@ async function runMatchClassic(home, away, isTournament) {
   }
   function setActionUI() {
     const isHumanMatch = home.isHuman || away.isHuman;
-    actions.innerHTML = `<h3>${T('phase_match')}</h3>
+    const ab3 = $('#action-buttons') || actions;
+    ab3.innerHTML = `<h3>${T('phase_match')}</h3>
       ${speedToggleHtml()}
       <button id="serve-btn" class="action-btn pulse" data-tip="${T('serve_t')}" onclick="VV.serveOnce()">🏐 ${T('serve')}</button>`;
     // Enable dice panel button for serve
@@ -2726,7 +2746,8 @@ function renderMarket() {
     <div class="market market-1star">${oneStarMarketHtml(me, weakPos)}</div>
     ${me.bench.length ? `<h4 class="h-cond" style="font-size:1rem; letter-spacing:2px; margin-top:1.4rem; color:var(--silver);">${state.lang==='de'?'Bench / Ersatz':'Bench / Substitutes'}</h4><div class="bench-grid">${me.bench.map(c => benchCardHtml(c, me)).join('')}</div>`:''}`;
   const actions = $('#actions'); if (!actions) return;
-  actions.innerHTML = `<h3>${T('phase_buy')}</h3>
+  const ab4 = $('#action-buttons') || actions;
+  ab4.innerHTML = `<h3>${T('phase_buy')}</h3>
     ${speedToggleHtml()}
     <button class="action-btn pulse" onclick="VV.endMarket()">${T('finish_buying')}</button>`;
 }
