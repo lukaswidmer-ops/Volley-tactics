@@ -1659,16 +1659,23 @@ function teamPanelHtml(p) {
       </button>
     </div>
     <div class="vb-formation">
-      <div class="vb-row-label">${state.lang==='de'?'▲ Angriff (Vorne)':'▲ Attack (Front)'}</div>
-      <div class="vb-row vb-row-3">
-        ${teamSlotHtml(s.outside,  'outside')}
-        ${teamSlotHtml(s.middle,   'middle')}
-        ${teamSlotHtml(s.diagonal, 'diagonal')}
-      </div>
       <div class="vb-net-line"></div>
-      <div class="vb-row-label">${state.lang==='de'?'▼ Annahme (Hinten)':'▼ Reception (Back)'}</div>
-      <div class="vb-row vb-row-2">
+      <div class="vb-pos-labels">
+        <span>4</span><span>3</span><span>2</span>
+      </div>
+      <div class="vb-row-label">${state.lang==='de'?'Vorne (netznahe)':'Front (near net)'}</div>
+      <div class="vb-row vb-row-3">
+        ${teamSlotHtml(s.middle,   'middle')}
+        ${teamSlotHtml(s.outside,  'outside')}
         ${teamSlotHtml(s.setter,   'setter')}
+      </div>
+      <div class="vb-pos-labels" style="margin-top:0.5rem">
+        <span>5</span><span>6</span><span>1</span>
+      </div>
+      <div class="vb-row-label">${state.lang==='de'?'Hinten':'Back'}</div>
+      <div class="vb-row vb-row-3">
+        ${teamSlotHtml(s.diagonal, 'diagonal')}
+        ${teamSlotHtml(s.outside,  'outside')}
         ${teamSlotHtml(s.libero,   'libero')}
       </div>
     </div>
