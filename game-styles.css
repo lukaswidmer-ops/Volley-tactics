@@ -169,7 +169,7 @@ button { font-family:inherit; cursor:pointer; }
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  background: linear-gradient(180deg,#0e0e0f,#080808);
+  background: #080808;
   border: 1px solid var(--line);
   border-radius: 6px;
 }
@@ -201,8 +201,17 @@ button { font-family:inherit; cursor:pointer; }
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.4rem;
+  padding: 0.5rem;
   background: #080808;
+}
+.gpanel-board-inner .vv-board {
+  /* Square board sized to fit container — whichever dimension is smaller */
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
 }
 
 /* Right: team management panel */
@@ -655,7 +664,8 @@ button, a, input, select { font-family:inherit; }
 /* ─── Real-arena board with positioned cone ─── */
 .vv-board {
   position:relative;
-  width:100%;
+  /* Shrink to fit — never exceed container */
+  max-width: min(100%, 100vh);
   aspect-ratio:1 / 1;
   background:rgba(0,0,0,0.25);
   border:1px solid var(--line);

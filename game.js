@@ -1791,24 +1791,22 @@ async function runConeRoll(player) {
     if (g.over) return;
   }
   if (!g.over) {
-    actions.innerHTML = `<h3>${T('phase_event')}</h3>
-      ${speedToggleHtml()}
-      <button class="action-btn pulse" onclick="VV.coneContinue()">${T('cone_continue')}</button>`;
-    // Update dice panel for "Weiter" 
     const dpBtnC = document.getElementById('dice-panel-btn');
     const dpLblC = document.getElementById('dice-panel-label');
     if (dpLblC) dpLblC.textContent = '🎲 D3';
     if (!player.isHuman || state.speed === 'auto' || state.speed === 'fast') {
+      // Bot or fast/auto: continue automatically after a short pause
       if (dpBtnC) { dpBtnC.disabled = true; dpBtnC.classList.remove('pulse'); }
-      const botDelay = (!player.isHuman && state.speed === 'normal') ? 1000 : speedMs(400);
-      setTimeout(()=>fire('coneContinue'), botDelay);
+      await sleep(!player.isHuman && state.speed === 'normal' ? 800 : speedMs(300));
     } else {
-      // Normal speed human: show "Weiter" button in dice panel
+      // Human normal speed: show Weiter button, wait for click
+      actions.innerHTML = `<h3>${T('phase_event')}</h3>
+        ${speedToggleHtml()}
+        <button class="action-btn pulse" onclick="VV.coneContinue()">${T('cone_continue')}</button>`;
       if (dpBtnC) { dpBtnC.disabled = false; dpBtnC.classList.add('pulse'); dpBtnC.textContent = '▶ Weiter'; }
+      await waitFor('coneContinue');
+      if (dpBtnC) { dpBtnC.disabled = true; dpBtnC.classList.remove('pulse'); dpBtnC.textContent = '🎲 Würfeln'; }
     }
-    // Always 2s max safety timeout
-    await waitFor('coneContinue', 2000);
-    if (dpBtnC) { dpBtnC.disabled = true; dpBtnC.classList.remove('pulse'); dpBtnC.textContent = '🎲 Würfeln'; }
   }
 }
 
