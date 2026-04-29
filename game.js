@@ -568,6 +568,17 @@ function ensureFloatingLog() {
   let lp = document.getElementById('log-panel');
   if (lp) lp.style.display = 'none';
 }
+function skipAll() {
+  // Fire all possible waiters to unstick the game loop
+  ['coneRollNow','coneContinue','continueAfterMatch','serveOnce','endMarket',
+   'auctionBid','auctionPass'].forEach(e => fire(e));
+  // Also click any OK/continue buttons in modals
+  document.querySelectorAll('.modal-popup .btn, #locked-ok, #action-ok-btn').forEach(b => b.click());
+  // Reset dice button
+  const dpBtn = document.getElementById('dice-panel-btn');
+  if (dpBtn) { dpBtn.disabled = true; dpBtn.classList.remove('pulse'); }
+}
+
 function toggleLog() {
   const lp = document.getElementById('log-panel'); if (!lp) return;
   lp.classList.toggle('expanded');
@@ -997,6 +1008,7 @@ function renderDraft() {
       <div class="gh-lang">
         <span class="lang-pill ${state.lang==='de'?'active':''}" onclick="VV.setLang('de')">DE</span>
         <span class="lang-pill ${state.lang==='en'?'active':''}" onclick="VV.setLang('en')">EN</span>
+        <span class="skip-pill" onclick="VV.skipAll()" title="Skip / Unstuck">⏭</span>
       </div>
     </div>
     <div style="padding:1.5rem; display:grid; grid-template-columns:1fr 280px; gap:1.5rem; max-width:1200px; margin:0 auto;">
@@ -1210,6 +1222,7 @@ async function renderAuction() {
       <div class="gh-lang">
         <span class="lang-pill ${state.lang==='de'?'active':''}" onclick="VV.setLang('de')">DE</span>
         <span class="lang-pill ${state.lang==='en'?'active':''}" onclick="VV.setLang('en')">EN</span>
+        <span class="skip-pill" onclick="VV.skipAll()" title="Skip / Unstuck">⏭</span>
       </div>
     </div>
     <div style="padding:1.5rem; display:grid; grid-template-columns:1fr 280px; gap:1.5rem; max-width:1200px; margin:0 auto;">
@@ -1379,6 +1392,7 @@ function renderStarting() {
       <div class="gh-lang">
         <span class="lang-pill ${state.lang==='de'?'active':''}" onclick="VV.setLang('de')">DE</span>
         <span class="lang-pill ${state.lang==='en'?'active':''}" onclick="VV.setLang('en')">EN</span>
+        <span class="skip-pill" onclick="VV.skipAll()" title="Skip / Unstuck">⏭</span>
       </div>
     </div>
     <div style="padding:1.5rem; max-width:900px; margin:0 auto; text-align:center;">
@@ -1456,6 +1470,7 @@ function renderGame() {
       <div class="gh-lang">
         <span class="lang-pill ${state.lang==='de'?'active':''}" onclick="VV.setLang('de')">DE</span>
         <span class="lang-pill ${state.lang==='en'?'active':''}" onclick="VV.setLang('en')">EN</span>
+        <span class="skip-pill" onclick="VV.skipAll()" title="Skip / Unstuck">⏭</span>
       </div>
     </div>
     <div class="game">
@@ -2119,8 +2134,9 @@ async function runTournament(ev) {
   if (ev.type === 'cupfinal') return runCupFinal(ev);
   if (ev.type === 'supercup') {
     // SuperCup only from Season 2 onwards
-    if ((state.game.season || 1) < 2) {
-      appendConeLog(state.lang==='de' ? '⚽ SuperCup startet ab Saison 2' : '⚽ SuperCup starts from Season 2');
+    const currentSeason = (state.game && state.game.season) || 1;
+    if (currentSeason < 2) {
+      logEntry(state.lang==='de' ? '⚽ SuperCup startet ab Saison 2' : '⚽ SuperCup starts from Season 2', 'tournament');
       return;
     }
     return runSuperCup(ev);
@@ -2259,9 +2275,10 @@ function showLockedFeaturePopup(title) {
 // ────────────────────────────────────────────────────────────────
 async function runMatchClassic(home, away, isTournament) {
   // Show the opponent (non-human) in the board panel
-  const me = state.game.players[0];
-  const opp = home === me ? away : home;
-  if (opp !== me) showOpponentBoard(opp);
+  const me = state.game ? state.game.players[0] : null;
+  const humanPlaying = home.isHuman || away.isHuman;
+  const opp = home.isHuman ? away : home;
+  if (humanPlaying) showOpponentBoard(opp);
   const stage = $('#stage');
   const actions = $('#actions');
   // Match state
@@ -2308,7 +2325,7 @@ async function runMatchClassic(home, away, isTournament) {
     $('#rally-feed').scrollTop = $('#rally-feed').scrollHeight;
   }
   function setActionUI() {
-    const isHumanMatch = home === state.game.players[0] || away === state.game.players[0];
+    const isHumanMatch = home.isHuman || away.isHuman;
     actions.innerHTML = `<h3>${T('phase_match')}</h3>
       ${speedToggleHtml()}
       <button id="serve-btn" class="action-btn pulse" data-tip="${T('serve_t')}" onclick="VV.serveOnce()">🏐 ${T('serve')}</button>`;
@@ -2326,11 +2343,11 @@ async function runMatchClassic(home, away, isTournament) {
 
   const totalRolls = () => M.totalRolls + M.crunchExtra;
   while (M.iRoll < totalRolls() && !M.ended) {
-    const isHuman = home === state.game.players[0] || away === state.game.players[0];
+    const isHuman = home.isHuman || away.isHuman;
     if (state.speed !== 'auto' && isHuman) {
       await waitFor('serveOnce', speedMs(2000));
     } else {
-      await sleep(speedMs(isHuman ? 400 : 220));
+      await sleep(speedMs(isHuman ? 400 : 180));
     }
     const dice = await performDiceRoll(12);
     M.rolls.push(dice);
@@ -2532,9 +2549,9 @@ async function runLeagueMatch() {
   const me = g.players[0];
   const opp = g.players.filter(p => p !== me).sort((a,b)=>teamStrength(b)-teamStrength(a))[0];
   const home = me; const away = opp;
-  showOpponentBoard(away);
+  if (me.isHuman) showOpponentBoard(away);
   const winner = await runMatchClassic(home, away, false);
-  restoreBoardPanel();
+  if (me.isHuman) restoreBoardPanel();
   // Award league points and money per rulebook
   if (winner === home) {
     home.money += 10000; home.totalEarned += 10000; animateMoneyChange(home, 10000);
@@ -3018,7 +3035,7 @@ window.VV = {
   startSolo, openMultiplayer, createRoom, showJoinForm,
   draftDraw, draftRedraw, draftPick1, draftFinish,
   rollStartingDice,
-  coneRollNow, coneContinue, dicePanel_roll,
+  coneRollNow, coneContinue, dicePanel_roll, skipAll,
   buyCard, endMarket, buyOneStar, sellBenchCard, sellStarter,
   serveOnce, continueAfterMatch,
   playAgain, toMenu,
