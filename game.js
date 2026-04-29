@@ -1545,7 +1545,6 @@ function renderGame() {
       </div>
       <div class="gbot">
         <div class="actions" id="actions">
-          <div class="stage" id="stage"></div>
           <div class="action-buttons" id="action-buttons"></div>
         </div>
         <div class="dice-panel" id="dice-panel">
@@ -1554,6 +1553,7 @@ function renderGame() {
           <button class="dice-panel-btn" id="dice-panel-btn" disabled onclick="VV.dicePanel_roll()">Würfeln</button>
         </div>
         <div class="log" id="log"></div>
+        <div class="stage" id="stage"></div>
       </div>
     </div>`;
   ensureFloatingLog();
@@ -1886,7 +1886,7 @@ async function _runConeRollInner(player) {
   } else {
     if (dpBtn) dpBtn.disabled = true;
     // Give player time to see what bot is doing
-    await sleep(state.speed === 'auto' ? 100 : state.speed === 'fast' ? 700 : 1500);
+    await sleep(state.speed === 'auto' ? 100 : state.speed === 'fast' ? 1000 : 2200);
   }
   const v = await performDiceRoll(3);
   const advance = v >= 3 ? 2 : 1;     // rule: 1=+1, 2=+1, 3=+2
@@ -1910,8 +1910,8 @@ async function _runConeRollInner(player) {
       if (dpBtnC) { dpBtnC.disabled = true; dpBtnC.classList.remove('pulse'); }
       let pause = 300;
       if (!player.isHuman) {
-        if (state.speed === 'normal') pause = 1500;
-        else if (state.speed === 'fast') pause = 700;
+        if (state.speed === 'normal') pause = 2200;
+        else if (state.speed === 'fast') pause = 1000;
         else pause = 100; // auto
       }
       await sleep(pause);
@@ -2001,22 +2001,40 @@ async function runEventSpace(type, player) {
   }
 }
 function showEventPopup(eventInfo, player, type) {
-  // Remove any existing event popup first
-  const existing = document.getElementById('event-popup');
-  if (existing) existing.remove();
-  const div = document.createElement('div');
-  div.id = 'event-popup';
-  div.className = 'event-popup-banner ' + (type || '');
-  div.innerHTML = `
-    <div class="epb-icon">${eventInfo.icon}</div>
-    <div class="epb-text">
-      <div class="epb-title">${eventInfo.h}</div>
-      <div class="epb-player"><span style="color:${player.color}">${player.emoji}</span> ${escapeHTML(player.name)}</div>
-    </div>
-    <div id="event-detail" class="epb-detail"></div>`;
-  document.body.appendChild(div);
-  // Trigger animation
-  setTimeout(() => div.classList.add('open'), 10);
+  return new Promise(resolve => {
+    // Remove existing
+    const existing = document.getElementById('event-popup');
+    if (existing) existing.remove();
+    const div = document.createElement('div');
+    div.id = 'event-popup';
+    div.className = 'event-popup-banner ' + (type || '');
+    div.innerHTML = `
+      <button class="epb-close" id="epb-close-btn" title="Schliessen">✕</button>
+      <div class="epb-icon">${eventInfo.icon}</div>
+      <div class="epb-text">
+        <div class="epb-title">${eventInfo.h}</div>
+        <div class="epb-player"><span style="color:${player.color}">${player.emoji}</span> ${escapeHTML(player.name)}</div>
+      </div>
+      <div id="event-detail" class="epb-detail"></div>
+      <button class="epb-ok" id="epb-ok-btn">OK</button>
+      <div class="epb-progress"><div class="epb-progress-bar"></div></div>`;
+    document.body.appendChild(div);
+    setTimeout(() => div.classList.add('open'), 10);
+    
+    let resolved = false;
+    const finish = () => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(autoTimer);
+      resolve();
+    };
+    div.querySelector('#epb-ok-btn').addEventListener('click', finish);
+    div.querySelector('#epb-close-btn').addEventListener('click', finish);
+    
+    // Auto-close after 5 seconds (or 2s if skipping)
+    const timeout = state.skipping ? 200 : 5000;
+    const autoTimer = setTimeout(finish, timeout);
+  });
 }
 function hideEventPopup() {
   const ep = document.getElementById('event-popup');
@@ -2052,14 +2070,19 @@ async function _runEventSpaceInner(type, player) {
   };
   const e = map[type];
   // Render event card (only if stage exists)
-  // Show event as central popup overlay
-  showEventPopup(e, player, type);
-  // Also keep small note in stage if it exists
+  // Add to stage as small note
   if (stage) {
     const li = document.createElement('div');
     li.className = 'stage-event-mini';
     li.innerHTML = `${e.icon} <b>${e.h}</b> · ${escapeHTML(player.name)}`;
     stage.appendChild(li);
+  }
+  // Show event popup and WAIT until dismissed (OK click or 5s timeout)
+  // For events that have their own UI inside (transfer), don't await — the inline UI handles closing
+  if (type !== 'transfer') {
+    await showEventPopup(e, player, type);
+  } else {
+    showEventPopup(e, player, type);
   }
   flash(type === 'action' ? 'win' : 'loss');
   beep(type === 'action' ? 760 : 320, 120);
@@ -2126,7 +2149,7 @@ async function applyTransfer(player) {
       }
       bidsDiv.appendChild(line);
     }
-    await sleep(state.speed === 'auto' ? 100 : state.speed === 'fast' ? 500 : 900);
+    await sleep(state.speed === 'auto' ? 100 : state.speed === 'fast' ? 800 : 1400);
     if (!dec.pass && dec.bid > high) { high = dec.bid; highP = p; }
   }
 
@@ -2552,7 +2575,7 @@ async function runMatchClassic(home, away, isTournament) {
       await sleep(200);
     } else {
       // Bot vs bot match — pace based on speed
-      await sleep(state.speed === 'normal' ? 1800 : state.speed === 'fast' ? 800 : 200);
+      await sleep(state.speed === 'normal' ? 2500 : state.speed === 'fast' ? 1200 : 200);
     }
     const dice = await performDiceRoll(12);
     M.rolls.push(dice);
@@ -2568,7 +2591,7 @@ async function runMatchClassic(home, away, isTournament) {
     beep(result.winner === 'home' ? 740 : result.winner === 'away' ? 480 : 540, 60);
     // Pause AFTER each rally so player can read the result
     if (state.speed !== 'auto') {
-      await sleep(state.speed === 'fast' ? 500 : 1200);
+      await sleep(state.speed === 'fast' ? 800 : 1800);
     }
   }
 

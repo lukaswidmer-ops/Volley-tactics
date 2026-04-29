@@ -361,13 +361,28 @@ button { font-family:inherit; cursor:pointer; }
 .gbot {
   flex-shrink: 0;
   display: grid;
-  grid-template-columns: 280px 160px 1fr;
+  grid-template-columns: 240px 160px 1fr 220px;
   gap: 0.6rem;
   padding: 0 0.6rem 0.6rem;
   max-height: 22vh;
   min-height: 140px;
   overflow: hidden;
 }
+.gbot > .stage {
+  background: linear-gradient(180deg,#0e0e0f,#080808);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  overflow-y: auto;
+  font-size: 0.78rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.gbot > .stage:empty { display: none; }
+.gbot > .stage .stage-h { font-size: 0.95rem; }
+.gbot > .stage .stage-sub { font-size: 0.72rem; }
+
 /* Action buttons sit inside actions panel below stage */
 #action-buttons {
   flex-shrink: 0;
@@ -1175,3 +1190,59 @@ button, a, input, select { font-family:inherit; }
   font-size: 0.5rem;
   padding: 1px 3px;
 }
+
+/* Event popup OK button + close X + progress bar */
+.epb-close {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.5rem;
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.4);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  line-height: 1;
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+.epb-close:hover { color: #fff; background: rgba(255,255,255,0.08); }
+.epb-ok {
+  margin-top: 0.6rem;
+  padding: 0.5rem 1.5rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  border: 1px solid var(--orange);
+  background: linear-gradient(135deg, var(--red), var(--orange));
+  color: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.epb-ok:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(232,67,23,0.4); }
+.epb-progress {
+  width: 100%;
+  height: 2px;
+  background: rgba(255,255,255,0.08);
+  margin-top: 0.6rem;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.epb-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--orange), var(--red));
+  width: 100%;
+  animation: epbCountdown 5s linear forwards;
+}
+@keyframes epbCountdown {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+.event-popup-banner {
+  position: fixed !important;
+  /* keep close button positioning context */
+}
+
