@@ -1914,33 +1914,33 @@ async function applyRedCard(player) {
 }
 
 async function applyTransfer(player) {
-  // Pull a card from auctionDeck and run a quick auction
   const card = state.game.auctionDeck.shift();
-  if (!card) { appendConeLog(`${T('auction_no_one')}`); return; }
-  // Quick auction: triggering player bids first, others can join
-  // For simplicity: auto-resolve where bots bid via shouldBid; human gets prompt
-  const detail = $('#event-detail');
-  detail.innerHTML = `<div style="margin-top:0.6rem;"><b>${escapeHTML(card.name)}</b> · ${'★'.repeat(card.stars)} · ${T('auction_minbid')}: ${fmtMoney(card.stars*10000)}’</div>`;
-  // simple flow — single round of bids in player order starting with trigger
-  let high = 0, highP = null;
-  const order = state.game.players.slice();
-  // rotate so triggerPlayer is first
-  while (order[0] !== player) order.push(order.shift());
+  if (!card) { appendConeLog(T('auction_no_one')); return; }
   const minBid = card.stars * 10000;
-  for (const p of order) {
+  const order = state.game.players.slice();
+  while (order[0] !== player) order.push(order.shift());
+  let high = 0, highP = null;
+
+  // Bots bid silently
+  for (const p of order.filter(p => !p.isHuman)) {
     if (p.money < minBid) continue;
-    if (p.isHuman) {
-      const r = await humanBidPrompt(p, card, Math.max(minBid, high+1000));
-      if (r && !r.pass && r.bid > high && r.bid <= p.money) { high = r.bid; highP = p; }
-    } else {
-      const dec = window.VV_BOTS.shouldBid(p, card, high, Math.max(minBid, high+1000), order);
-      if (!dec.pass && dec.bid > high) { high = dec.bid; highP = p; }
+    const dec = window.VV_BOTS.shouldBid(p, card, high, Math.max(minBid, high+1000), order);
+    if (!dec.pass && dec.bid > high) { high = dec.bid; highP = p; }
+  }
+
+  // Human gets inline bid UI
+  const me = order.find(p => p.isHuman);
+  if (me && me.money >= minBid) {
+    const result = await inlineTransferBid(card, high, minBid, me);
+    if (result && !result.pass && result.bid > high && result.bid <= me.money) {
+      high = result.bid; highP = me;
     }
   }
+
   if (highP) {
     highP.money -= high;
     placeIntoTeamOrBench(highP, card);
-    appendConeLog(`${highP.emoji} ${escapeHTML(highP.name)} → ${escapeHTML(card.name)} (${fmtMoney(high)}’)`);
+    appendConeLog(`${highP.emoji} ${escapeHTML(highP.name)} → ${escapeHTML(card.name)} (${fmtMoney(high)}')`);
   } else {
     state.game.auctionDeck.push(card);
     appendConeLog(T('auction_no_one'));
@@ -1948,25 +1948,64 @@ async function applyTransfer(player) {
   refreshTopbar(); refreshTeamPanel();
 }
 
+function inlineTransferBid(card, currentHigh, minBid, player) {
+  return new Promise(resolve => {
+    const detail = document.getElementById('event-detail');
+    if (!detail) { resolve({pass:true}); return; }
+    const sugg = Math.max(minBid, currentHigh + 2000);
+    detail.innerHTML = `
+      <div style="margin-top:0.5rem; font-size:0.8rem; color:var(--silver)">
+        <b style="color:#fff">${escapeHTML(card.name)}</b> · ${'★'.repeat(card.stars)}<br>
+        ${state.lang==='de'?'Mindestgebot':'Min bid'}: <b>${fmtMoney(minBid)}'</b>
+        ${currentHigh>0 ? ` · Bot: <b>${fmtMoney(currentHigh)}'</b>` : ''}
+      </div>
+      <div style="display:flex;gap:0.4rem;margin-top:0.5rem;align-items:center;flex-wrap:wrap;">
+        <input type="number" id="transfer-bid-input" min="${sugg}" max="${player.money}" step="1000" value="${sugg}"
+          style="width:110px;padding:0.3rem 0.5rem;background:rgba(255,255,255,0.06);border:1px solid var(--line);border-radius:3px;color:#fff;font-family:inherit;font-size:0.85rem;">
+        <button class="btn btn-primary" id="transfer-bid-btn" style="padding:0.35rem 0.8rem;font-size:0.8rem;">
+          ${state.lang==='de'?'Bieten':'Bid'}
+        </button>
+        <button class="btn btn-secondary" id="transfer-pass-btn" style="padding:0.35rem 0.8rem;font-size:0.8rem;">
+          ${state.lang==='de'?'Passen':'Pass'}
+        </button>
+      </div>`;
+    document.getElementById('transfer-bid-btn').onclick = () => {
+      const v = parseInt(document.getElementById('transfer-bid-input').value||'0',10);
+      detail.innerHTML = '';
+      resolve({bid:v});
+    };
+    document.getElementById('transfer-pass-btn').onclick = () => {
+      detail.innerHTML = '';
+      resolve({pass:true});
+    };
+    const inp = document.getElementById('transfer-bid-input');
+    if (inp) { inp.focus(); inp.onkeydown = e => { if(e.key==='Enter') document.getElementById('transfer-bid-btn').click(); }; }
+  });
+}
+
+
 async function applyActionCard(player) {
-  // Surprise — show a popup that says it only exists in the physical game
-  showActionCardPopup();
   appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🎴 ${T('cone_event_action')}`);
+  await showActionCardPopup();
 }
 
 function showActionCardPopup() {
-  const layer = $('#toast-layer');
-  const div = document.createElement('div');
-  div.className = 'modal-popup';
-  div.innerHTML = `
-    <div class="modal-card">
-      <div class="modal-icon">🎁</div>
-      <div class="modal-h">${T('cone_event_action')}</div>
-      <div class="modal-p">${T('cone_event_action_p')}</div>
-      <button class="btn btn-primary" onclick="this.closest('.modal-popup').remove()">OK</button>
-    </div>`;
-  document.body.appendChild(div);
-  setTimeout(() => div.classList.add('open'), 10);
+  return new Promise(resolve => {
+    const div = document.createElement('div');
+    div.className = 'modal-popup';
+    div.innerHTML = `
+      <div class="modal-card">
+        <div class="modal-icon">🎁</div>
+        <div class="modal-h">${T('cone_event_action')}</div>
+        <div class="modal-p">${T('cone_event_action_p')}</div>
+        <button class="btn btn-primary" id="action-ok-btn">OK</button>
+      </div>`;
+    document.body.appendChild(div);
+    setTimeout(() => div.classList.add('open'), 10);
+    const close = () => { if (document.body.contains(div)) div.remove(); resolve(); };
+    div.querySelector('#action-ok-btn').addEventListener('click', close);
+    if (state.speed !== 'normal') setTimeout(close, speedMs(1500));
+  });
 }
 
 async function applyVnlEvent(player) {
@@ -2290,8 +2329,11 @@ async function runMatchClassic(home, away, isTournament) {
   const totalRolls = () => M.totalRolls + M.crunchExtra;
   while (M.iRoll < totalRolls() && !M.ended) {
     const isHuman = home === state.game.players[0] || away === state.game.players[0];
-    if (state.speed !== 'auto' && isHuman) await waitFor('serveOnce', speedMs(2000));
-    else await sleep(speedMs(220));
+    if (state.speed !== 'auto' && isHuman) {
+      await waitFor('serveOnce', speedMs(2000));
+    } else {
+      await sleep(speedMs(isHuman ? 400 : 220));
+    }
     const dice = await performDiceRoll(12);
     M.rolls.push(dice);
     const result = await resolveCriterion(dice, M);
@@ -2432,7 +2474,7 @@ async function showMatchSummary(M, winner) {
   const dpLbl2 = document.getElementById('dice-panel-label');
   if (dpLbl2) dpLbl2.textContent = '🎲 Weiter';
   if (dpBtn2 && state.speed !== 'auto') { dpBtn2.disabled = false; dpBtn2.classList.add('pulse'); dpBtn2.textContent = '✅ Weiter'; }
-  await waitFor('continueAfterMatch', speedMs(state.speed === 'auto' ? 600 : 2000));
+  await waitFor('continueAfterMatch', state.speed === 'auto' ? speedMs(600) : state.speed === 'fast' ? 600 : 0);
   if (dpBtn2) { dpBtn2.disabled = true; dpBtn2.classList.remove('pulse'); dpBtn2.textContent = '🎲 Würfeln'; }
   restoreBoardPanel();
 }
@@ -2561,7 +2603,7 @@ async function runMarketPhase() {
   const dpLblM = document.getElementById('dice-panel-label');
   if (dpLblM) dpLblM.textContent = '🛒 Markt';
   if (dpBtnM && state.speed !== 'auto') { dpBtnM.disabled = false; dpBtnM.classList.add('pulse'); dpBtnM.textContent = '✅ Fertig'; }
-  await waitFor('endMarket', speedMs(state.speed === 'auto' ? 600 : 0));
+  await waitFor('endMarket', state.speed === 'auto' ? speedMs(600) : state.speed === 'fast' ? 800 : 0);
   if (dpBtnM) { dpBtnM.disabled = true; dpBtnM.classList.remove('pulse'); dpBtnM.textContent = '🎲 Würfeln'; }
 }
 
