@@ -919,6 +919,7 @@ function initSoloGame() {
     phase: 'draft',
     log: [],
     market: [],
+    marketPile: [],    // unsold auction cards — appear on the market for direct purchase
     auctionDeck: [],   // shuffled 2-5 star cards for in-game auctions/transfers
     coneDay: 1,        // black cone position on the timeline (day 1 → 50)
     over: false, winner: null,
@@ -2035,7 +2036,8 @@ async function applyTransfer(player) {
     placeIntoTeamOrBench(highP, card);
     appendConeLog(`${highP.emoji} ${escapeHTML(highP.name)} \u2192 ${escapeHTML(card.name)} (${fmtMoney(high)}')`);
   } else {
-    state.game.auctionDeck.push(card);
+    // Nobody bid — card goes to market pile for direct purchase next market phase
+    state.game.marketPile.push(card);
     appendConeLog(T('auction_no_one'));
   }
   refreshTopbar(); refreshTeamPanel();
@@ -2694,16 +2696,9 @@ async function runLeagueMatch() {
 //  MARKET PHASE  (between weeks)
 // ────────────────────────────────────────────────────────────────
 function regenMarket() {
-  // Pull from the auction deck (2-5 stars). 1-star cards have a separate always-available section.
-  const out = [];
-  const deck = state.game.auctionDeck.slice();
-  while (out.length < 8 && deck.length) {
-    out.push(deck.shift());
-  }
-  // Don't permanently remove from auctionDeck — refresh each week
-  state.game.auctionDeck = state.game.auctionDeck.filter(c => !out.includes(c));
-  // Put back unused at the end so they cycle
-  return out;
+  // Market only shows unsold auction cards (from marketPile) + 1-star section (always-available)
+  // No random cards from the full deck — only what actually went through auction and wasn't bought
+  return state.game.marketPile.slice();
 }
 
 async function runMarketPhase() {
@@ -2798,17 +2793,20 @@ async function runWeekendMatches(week) {
 
 function marketBodyHtml(me, weakPos) {
   const de = state.lang === 'de';
+  const unsoldCards = state.game.market; // already filtered unsold auction cards
   return `
     <div class="gp-market-info">
       <span>${T('market_budget')}: <b id="budget-num">${fmtMoney(me.money)}'</b></span>
       <span>${T('market_team_strength')}: <b>&#9733; ${teamStrength(me)}</b></span>
       <span>${T('market_suggest')}: <b style="color:var(--gold)">${posLabel(weakPos)}</b></span>
     </div>
-    <div class="gp-section-h">${de?'Markt \u2014 2\u2605 bis 5\u2605':'Market \u2014 2\u2605 to 5\u2605'}</div>
-    <div class="market" id="market-grid">${state.game.market.map(c => marketCardHtml(c, me, { suggestedPos: weakPos })).join('')}</div>
-    <div class="gp-section-h" style="margin-top:1.2rem;">${de?'1-Stern-Markt':'1-Star Market'}</div>
+    <div class="gp-section-h">${de?'1-Stern-Karten (fester Preis)':'1-Star Cards (fixed price)'}</div>
     <div class="market market-1star">${oneStarMarketHtml(me, weakPos)}</div>
-    ${me.bench.length ? `<div class="gp-section-h" style="margin-top:1.2rem;">${de?'Bench / Ersatz':'Bench / Substitutes'}</div><div class="bench-grid">${me.bench.map(c => benchCardHtml(c, me)).join('')}</div>` : ''}
+    ${unsoldCards.length ? `
+      <div class="gp-section-h" style="margin-top:0.8rem;">${de?'Unverkaufte Auktionskarten':'Unsold Auction Cards'} (${unsoldCards.length})</div>
+      <div class="market" id="market-grid">${unsoldCards.map(c => marketCardHtml(c, me, { suggestedPos: weakPos })).join('')}</div>
+    ` : `<div style="color:var(--silver);font-size:0.72rem;margin-top:0.6rem;font-style:italic;">${de?'Noch keine unverkauften Auktionskarten':'No unsold auction cards yet'}</div>`}
+    ${me.bench.length ? `<div class="gp-section-h" style="margin-top:0.8rem;">${de?'Meine Bank':'My Bench'}</div><div class="bench-grid">${me.bench.map(c => benchCardHtml(c, me)).join('')}</div>` : ''}
     <div class="gp-footer">
       <button class="action-btn pulse" onclick="VV.endMarket()">${T('finish_buying')}</button>
     </div>`;
@@ -2942,7 +2940,9 @@ function buyCard(id) {
   if (cur) me.bench.push(cur);
   me.team[c.pos] = c;
   me.money -= c.price;
+  // Remove from both market display list and marketPile
   state.game.market = state.game.market.filter(x => x.id !== c.id);
+  state.game.marketPile = state.game.marketPile.filter(x => x.id !== c.id);
   toast(state.lang==='de' ? `Gekauft: ${c.name}` : `Bought: ${c.name}`, 'good');
   beep(880, 60);
   refreshTopbar(); refreshTeamPanel();
@@ -2951,8 +2951,8 @@ function buyCard(id) {
 function endMarket() {
   closeGamePopup('market-popup');
   const g = state.game;
-  if (g && g.market && g.market.length) {
-    for (const c of g.market) g.auctionDeck.push(c);
+  if (g) {
+    // Unsold market cards stay in marketPile for next week
     g.market = [];
   }
   fire('endMarket');
