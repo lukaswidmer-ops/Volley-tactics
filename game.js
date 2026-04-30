@@ -1968,8 +1968,10 @@ async function runConeRoll(player) {
   }
 }
 
-function coneRollNow() { fire('coneRollNow'); }
-function coneContinue() { fire('coneContinue'); }
+// Route both action buttons through the same waiter-dispatch logic.
+// This prevents dead clicks when UI labels and active waiter briefly desync.
+function coneRollNow() { dicePanel_roll(); }
+function coneContinue() { dicePanel_roll(); }
 function setActiveBanner(p) {
   // Big floating banner
   let banner = $('#turn-banner');
