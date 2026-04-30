@@ -549,10 +549,10 @@ function logEntry(text, kind='') {
 function refreshPhaseLog() {
   const strip = document.getElementById('phase-log-strip');
   if (!strip || !state.game) return;
-  const entries = state.game.log.slice(-4).reverse();
+  const entries = state.game.log.slice(-6).reverse();
   strip.innerHTML = entries.map((e, i) =>
-    `<span class="pls-entry ${e.kind||''}" style="opacity:${1 - i * 0.22}">${e.text}</span>`
-  ).join('<span class="pls-sep">·</span>');
+    `<span class="pls-entry ${e.kind||''}" style="opacity:${Math.max(0.25, 1 - i * 0.16)}">${e.text}</span>`
+  ).join('<span class="pls-sep">›</span>');
 }
 
 function ensureFloatingLog() {
@@ -616,7 +616,7 @@ function waitFor(name, autoMs) {
     _waiters[name] = resolve;
     const done = () => { if (_waiters[name]) { delete _waiters[name]; resolve(); } };
     if (autoMs) setTimeout(done, autoMs);
-    setTimeout(done, 30000); // 30s safety timeout – verhindert permanentes Hängen
+    setTimeout(done, 8000); // 8s safety timeout – verhindert permanentes Hängen
   });
 }
 function fire(name, val) {
@@ -727,6 +727,10 @@ function animateDicePanel(type, finalValue) {
 function dicePanel_roll() {
   const btn = document.getElementById('dice-panel-btn');
   if (btn && btn.disabled) return;
+  // Multi-purpose: also acts as "Continue" if that's what the game is waiting for
+  if (_waiters['coneContinue']) { fire('coneContinue'); return; }
+  if (_waiters['continueAfterMatch']) { fire('continueAfterMatch'); return; }
+  if (_waiters['serveOnce']) { fire('serveOnce'); return; }
   fire('coneRollNow');
 }
 
@@ -1311,7 +1315,7 @@ async function runAuctionForCard(card, idx, total) {
           beep(820, 50);
         }
       } else {
-        await sleep(speedMs(700));
+        await sleep(speedMs(300));
         const opps = order.filter(o => o !== p);
         const decision = window.VV_BOTS.shouldBid(p, card, currentBid, minNext, opps);
         if (decision.pass) {
@@ -1888,8 +1892,12 @@ async function runConeRoll(player) {
     setActionsHtml(`<h3>${T('phase_event')}</h3>
       ${speedToggleHtml()}
       <button class="action-btn pulse" onclick="VV.coneContinue()">${T('cone_continue')}</button>`);
+    // Also enable the dice-panel button as a second "Continue" trigger
+    const dpBtn2 = document.getElementById('dice-panel-btn');
+    if (dpBtn2) { dpBtn2.disabled = false; dpBtn2.classList.add('pulse'); dpBtn2.textContent = '▶ ' + T('cone_continue'); }
     if (state.speed === 'auto' || !player.isHuman) setTimeout(()=>fire('coneContinue'), speedMs(400));
     await waitFor('coneContinue', !player.isHuman ? speedMs(2000) : 0);
+    if (dpBtn2) { dpBtn2.disabled = true; dpBtn2.classList.remove('pulse'); dpBtn2.textContent = '🎲 Würfeln'; }
   }
 }
 
@@ -2554,8 +2562,15 @@ async function showMatchSummary(M, winner) {
   setActionsHtml(`<h3>${T('phase_match')}</h3>
     ${speedToggleHtml()}
     <button class="action-btn pulse" onclick="VV.continueAfterMatch()">${T('next_match')}</button>`);
+  // Dice-panel button acts as backup "Continue" trigger during match summary
+  const matchDpBtn = document.getElementById('dice-panel-btn');
+  if (humanInMatch && state.speed !== 'auto' && matchDpBtn) {
+    matchDpBtn.disabled = false; matchDpBtn.classList.add('pulse');
+    matchDpBtn.textContent = '▶ ' + T('next_match');
+  }
   if (!humanInMatch || state.speed === 'auto') setTimeout(() => fire('continueAfterMatch'), speedMs(2000));
   await waitFor('continueAfterMatch', autoMs);
+  if (matchDpBtn) { matchDpBtn.disabled = true; matchDpBtn.classList.remove('pulse'); matchDpBtn.textContent = '🎲 Würfeln'; }
   restoreBoardPanel();
 }
 
@@ -3098,6 +3113,20 @@ window.VV = {
   handleFloatingClick, handleFloatingBenchClick,
   exportLog, showFullHistory,
 };
+
+// ────────────────────────────────────────────────────────────────
+//  KEYBOARD SHORTCUTS — Space / Enter advances any pending waiter
+// ────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+  if (e.key === ' ' || e.key === 'Enter') {
+    if (_waiters['coneContinue'])     { e.preventDefault(); fire('coneContinue');      return; }
+    if (_waiters['continueAfterMatch']){ e.preventDefault(); fire('continueAfterMatch'); return; }
+    if (_waiters['serveOnce'])        { e.preventDefault(); fire('serveOnce');         return; }
+    if (_waiters['coneRollNow'])      { e.preventDefault(); fire('coneRollNow');       return; }
+    if (_waiters['endMarket'])        { e.preventDefault(); fire('endMarket');         return; }
+  }
+});
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
 else boot();
