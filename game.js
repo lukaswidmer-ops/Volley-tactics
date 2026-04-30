@@ -543,6 +543,16 @@ function logEntry(text, kind='') {
     log.scrollTop = log.scrollHeight;
     while (log.children.length > 100) log.removeChild(log.firstChild);
   }
+  refreshPhaseLog();
+}
+
+function refreshPhaseLog() {
+  const strip = document.getElementById('phase-log-strip');
+  if (!strip || !state.game) return;
+  const entries = state.game.log.slice(-4).reverse();
+  strip.innerHTML = entries.map((e, i) =>
+    `<span class="pls-entry ${e.kind||''}" style="opacity:${1 - i * 0.22}">${e.text}</span>`
+  ).join('<span class="pls-sep">·</span>');
 }
 
 function ensureFloatingLog() {
@@ -1622,7 +1632,7 @@ function boardHtml(g) {
   </div>`;
 }
 
-function teamPanelHtml(p) {
+function teamPanelHtml(p, opts) {
   // Volleyball rotation: 6 positions in court order
   // Front row (left→right): pos4=OH, pos3=MB, pos2=OPP
   // Back row  (left→right): pos5=OH2(empty slot), pos6=Libero, pos1=Setter
@@ -1630,15 +1640,17 @@ function teamPanelHtml(p) {
   // Standard rotation: OH ↔ OH (opposite sides), MB ↔ Libero (sub), OPP ↔ S (opposite)
   const s = p.team;
   const bench = p.bench || [];
-  const sellMode = !!state.sellMode;
+  const readOnly = !!(opts && opts.readOnly);
+  const sellMode = !readOnly && !!state.sellMode;
   
   function teamSlotHtml(card, pos) {
     if (!card) return `<div class="slot empty vb-team-slot" data-tip="${posLabel(pos)}"><span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span></div>`;
     const dis = card.disabled ? 'disabled' : '';
     const sub = card._isSub ? 'is-sub' : '';
+    const click = readOnly ? '' : `onclick="VV.handleFloatingClick('${pos}')"`;
     return `<div class="slot vb-team-slot ${dis} ${sub} ${sellMode?'sellable':''}" 
       data-tip="${escapeHTML(card.name)} · ${card.stars}★${card.disabled?' · '+(card.disabledReason||''):''}${sub?' · '+T('sub_tooltip'):''}"
-      onclick="VV.handleFloatingClick('${pos}')">
+      ${click}>
       <span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
       <img src="${card.url}" alt="">
       <div class="stars">${'★'.repeat(card.stars)}</div>
@@ -1648,9 +1660,10 @@ function teamPanelHtml(p) {
   }
   
   function benchSlotHtml(c) {
+    const click = readOnly ? '' : `onclick="VV.handleFloatingBenchClick('${c.id}')"`;
     return `<div class="slot vb-bench-slot ${sellMode?'sellable':''}" 
       data-tip="${escapeHTML(c.name)} · ${c.stars}★ · ${posLabel(c.pos)}${c.disabled?' · ⛔':''}"
-      onclick="VV.handleFloatingBenchClick('${c.id}')">
+      ${click}>
       <span class="pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
       <img src="${c.url}" alt="">
       <div class="stars">${'★'.repeat(c.stars)}</div>
@@ -1660,12 +1673,12 @@ function teamPanelHtml(p) {
 
   const lang = state.lang === 'de';
   return `
-    <div class="vb-sell-bar">
+    ${readOnly ? '' : `<div class="vb-sell-bar">
       <span style="font-size:0.7rem;color:var(--silver)">${lang?'Klicke Karte zum Verkaufen':'Click card to sell'}</span>
       <button class="vb-sell-toggle ${sellMode?'on':''}" onclick="VV.toggleSellMode()">
         🔴 ${sellMode?(lang?'Verkauf AN':'Sell ON'):(lang?'Verkaufen':'Sell')}
       </button>
-    </div>
+    </div>`}
     <div class="vb-formation-wrap">
       <div class="vb-formation">
         <div class="vb-net-line"></div>
@@ -1770,15 +1783,13 @@ function showOpponentBoard(opponent) {
   if (!boardInner) return;
   boardInner.innerHTML = `
     <div class="opp-panel">
-      <div class="opp-panel-title">⚔️ ${escapeHTML(opponent.name)}</div>
-      <div style="font-size:0.7rem;color:var(--silver);text-align:center;margin-bottom:0.4rem">★ ${teamStrength(opponent)} · ${fmtMoney(opponent.money)}'</div>
-      <div class="opp-team-grid">
-        ${['middle','setter','diagonal','outside','libero'].map(pos => slotHtml(opponent.team[pos], pos)).join('')}
+      <div class="opp-panel-header">
+        <span class="opp-panel-title">⚔️ ${escapeHTML(opponent.name)}</span>
+        <span class="opp-panel-stats">${opponent.emoji || ''} ★ ${teamStrength(opponent)} &nbsp;·&nbsp; ${fmtMoney(opponent.money)}'</span>
       </div>
-      ${(opponent.bench||[]).length ? `<div style="font-size:0.65rem;color:var(--silver);margin-top:0.5rem;letter-spacing:2px;text-transform:uppercase">Bench</div>
-      <div style="display:flex;gap:0.3rem;flex-wrap:wrap;margin-top:0.2rem">
-        ${(opponent.bench||[]).map(c=>`<div class="slot vb-slot-narrow" data-tip="${escapeHTML(c.name)} · ${c.stars}★"><span class="pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span><img src="${c.url}" alt=""><div class="stars">${'★'.repeat(c.stars)}</div></div>`).join('')}
-      </div>` : ''}
+      <div class="opp-team-wrap">
+        ${teamPanelHtml(opponent, { readOnly: true })}
+      </div>
     </div>`;
 }
 function restoreBoardPanel() {
@@ -1798,7 +1809,8 @@ function setPhase(active) {
   bar.innerHTML = phases.map(p => {
     const cls = p.id === active ? 'active' : (order.indexOf(p.id) < order.indexOf(active) ? 'done' : '');
     return `<span class="phase ${cls}">${p.icon} ${p.label}</span>`;
-  }).join('') + `<span class="gh-spacer" style="flex:1"></span><span class="phase">${T('week')} ${state.game.week}/6</span>`;
+  }).join('') + `<div class="phase-log-strip" id="phase-log-strip"></div><span class="phase">${T('week')} ${state.game.week}/6</span>`;
+  refreshPhaseLog();
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -1979,38 +1991,69 @@ async function applyRedCard(player) {
 }
 
 async function applyTransfer(player) {
-  // Pull a card from auctionDeck and run a quick auction
   const card = state.game.auctionDeck.shift();
-  if (!card) { appendConeLog(`${T('auction_no_one')}`); return; }
-  // Quick auction: triggering player bids first, others can join
-  // For simplicity: auto-resolve where bots bid via shouldBid; human gets prompt
-  const detail = $('#event-detail');
-  detail.innerHTML = `<div style="margin-top:0.6rem;"><b>${escapeHTML(card.name)}</b> · ${'★'.repeat(card.stars)} · ${T('auction_minbid')}: ${fmtMoney(card.stars*10000)}’</div>`;
-  // simple flow — single round of bids in player order starting with trigger
+  if (!card) { appendConeLog(T('auction_no_one')); return; }
   let high = 0, highP = null;
   const order = state.game.players.slice();
-  // rotate so triggerPlayer is first
   while (order[0] !== player) order.push(order.shift());
   const minBid = card.stars * 10000;
   for (const p of order) {
     if (p.money < minBid) continue;
     if (p.isHuman) {
-      const r = await humanBidPrompt(p, card, Math.max(minBid, high+1000));
+      const r = await humanBidPopup(p, card, Math.max(minBid, high + 1000));
       if (r && !r.pass && r.bid > high && r.bid <= p.money) { high = r.bid; highP = p; }
     } else {
-      const dec = window.VV_BOTS.shouldBid(p, card, high, Math.max(minBid, high+1000), order);
+      const dec = window.VV_BOTS.shouldBid(p, card, high, Math.max(minBid, high + 1000), order);
       if (!dec.pass && dec.bid > high) { high = dec.bid; highP = p; }
     }
   }
   if (highP) {
     highP.money -= high;
     placeIntoTeamOrBench(highP, card);
-    appendConeLog(`${highP.emoji} ${escapeHTML(highP.name)} → ${escapeHTML(card.name)} (${fmtMoney(high)}’)`);
+    appendConeLog(`${highP.emoji} ${escapeHTML(highP.name)} \u2192 ${escapeHTML(card.name)} (${fmtMoney(high)}')`);
   } else {
     state.game.auctionDeck.push(card);
     appendConeLog(T('auction_no_one'));
   }
   refreshTopbar(); refreshTeamPanel();
+}
+
+function humanBidPopup(p, card, minNext) {
+  return new Promise(resolve => {
+    const sugg = Math.min(p.money, minNext);
+    const id = 'transfer-bid-popup';
+    const body = `
+      <div style="display:flex;gap:1rem;align-items:flex-start;margin-bottom:1rem;">
+        <img src="${card.url}" style="width:80px;border-radius:4px;" alt="">
+        <div>
+          <div style="font-weight:700;font-size:1rem;">${escapeHTML(card.name)}</div>
+          <div style="color:var(--silver);font-size:0.8rem;">${'\u2605'.repeat(card.stars)} \u00b7 ${posLabel(card.pos)}</div>
+          <div style="color:var(--silver);font-size:0.8rem;margin-top:0.3rem;">${T('auction_minbid')}: <b>${fmtMoney(minNext)}'</b> \u00b7 ${T('money')}: <b>${fmtMoney(p.money)}'</b></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
+        <input type="number" id="bid-popup-input" min="${minNext}" max="${p.money}" step="1000" value="${sugg}"
+          style="width:130px;padding:0.4rem 0.6rem;background:#111;border:1px solid var(--line);color:#fff;border-radius:4px;font-size:0.9rem;">
+        <button class="btn btn-primary" id="bid-popup-do">${T('auction_bid')}</button>
+        <button class="btn btn-secondary" id="bid-popup-pass">${T('auction_pass')}</button>
+      </div>`;
+    openGamePopup(id, `\ud83d\udd01 ${T('cone_event_transfer')} \u2014 ${escapeHTML(p.name)}`, body);
+    setTimeout(() => {
+      const doBtn = document.getElementById('bid-popup-do');
+      const passBtn = document.getElementById('bid-popup-pass');
+      const input = document.getElementById('bid-popup-input');
+      if (doBtn) doBtn.onclick = () => {
+        const v = parseInt((input && input.value) || '0', 10);
+        closeGamePopup(id);
+        resolve({ bid: v });
+      };
+      if (passBtn) passBtn.onclick = () => { closeGamePopup(id); resolve({ pass: true }); };
+      if (input) {
+        input.focus();
+        input.addEventListener('keydown', e => { if (e.key === 'Enter' && doBtn) doBtn.click(); });
+      }
+    }, 50);
+  });
 }
 
 async function applyActionCard(player) {
@@ -2074,23 +2117,23 @@ function disablePlayerOnTeam(player, pos, reason) {
   const card = player.team[pos];
   if (!card) return null;
   if (card._isSub) {
-    // Already a substitute filling in for someone — disabling the sub too
-    // would defeat the purpose; just flag and bail. (Rare edge case.)
+    // Already a sub filling this slot — disable it, try to find a new replacement below
     card.disabled = true;
     card.disabledReason = reason;
-    return null;
-  }
-  if (card.disabled) {
-    // Already disabled — nothing to do (don't double-suspend).
+    // Fall through: treat this slot as now empty and find another sub/emergency card
+  } else {
+    if (card.disabled) { card.disabledReason = reason; return null; }
+    card.disabled = true;
     card.disabledReason = reason;
-    return null;
   }
-  card.disabled = true;
-  card.disabledReason = reason;
   if (!Array.isArray(player.suspended)) player.suspended = [];
-
   if (!Array.isArray(player.bench)) player.bench = [];
-  const benchIdx = player.bench.findIndex(b => b.pos === pos);
+
+  // Pool mapping: outside2 accepts 'outside' bench cards, middle2 accepts 'middle'
+  const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
+
+  // Look for a bench card matching the position (exact or pool)
+  const benchIdx = player.bench.findIndex(b => !b.disabled && (b.pos === pos || b.pos === poolPos));
   if (benchIdx >= 0) {
     const sub = player.bench.splice(benchIdx, 1)[0];
     sub._isSub = true;
@@ -2099,8 +2142,26 @@ function disablePlayerOnTeam(player, pos, reason) {
     player.suspended.push({ card, pos, reason });
     return sub;
   }
-  // No bench replacement available — disabled card stays in the slot
-  // (legacy ⛔ overlay). Criteria see 0 stars, but at least we don't crash.
+
+  // No bench replacement — buy an emergency 1★ card for 10'000
+  const cost = 10000;
+  player.money = Math.max(0, player.money - cost);
+  animateMoneyChange(player, -cost);
+  toast(`⚠️ ${state.lang === 'de' ? 'Kein Ersatz — Notfallkauf' : 'No sub — emergency buy'} -${fmtMoney(cost)}'`, 'bad', 2500);
+
+  const opts = (ALL_CARDS || []).filter(c => c.stars === 1 && c.pos === poolPos);
+  if (opts.length) {
+    const emergency = choice(opts);
+    const em = Object.assign({}, emergency, {
+      _isSub: true,
+      _subReason: (state.lang === 'de' ? 'Notfall-Einwechslung' : 'Emergency sub'),
+    });
+    player.team[pos] = em;
+    player.suspended.push({ card, pos, reason });
+    return em;
+  }
+
+  // Absolute fallback: disabled card stays in the slot (should rarely happen)
   return null;
 }
 
@@ -2483,15 +2544,16 @@ async function showMatchSummary(M, winner) {
   stage.innerHTML = `
     <div class="stage-h">${headLine}</div>
     <div class="stage-sub">${summary}</div>
-    <div style="margin-top:1rem; display:flex; gap:0.4rem; flex-wrap:wrap; max-width:640px;">
+    <div style="margin-top:0.5rem; display:flex; gap:0.3rem; flex-wrap:wrap;">
       ${M.events.map(e => `<span class="crit-pill ${e.winner}">#${e.dice} ${T('crit_'+e.kind)}</span>`).join('')}
-    </div>
-    <div style="margin-top:1rem; text-align:center;">
-      <button class="btn btn-primary" onclick="VV.continueAfterMatch()">${T('next_match')}</button>
     </div>`;
   const me = state.game ? state.game.players[0] : null;
   const humanInMatch = me && (M.home === me || M.away === me);
   const autoMs = (!humanInMatch || state.speed === 'auto') ? speedMs(2000) : 0;
+  // Button always in actions panel — never buried in the stage scroll area
+  setActionsHtml(`<h3>${T('phase_match')}</h3>
+    ${speedToggleHtml()}
+    <button class="action-btn pulse" onclick="VV.continueAfterMatch()">${T('next_match')}</button>`);
   if (!humanInMatch || state.speed === 'auto') setTimeout(() => fire('continueAfterMatch'), speedMs(2000));
   await waitFor('continueAfterMatch', autoMs);
   restoreBoardPanel();
