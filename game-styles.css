@@ -946,6 +946,27 @@ button, a, input, select { font-family:inherit; }
   50%      { opacity:0.7; transform:scale(0.92); }
 }
 
+/* Debug HUD for async-flow diagnosis */
+#vv-debug-hud {
+  position: fixed;
+  right: 8px;
+  bottom: 8px;
+  z-index: 10001;
+  min-width: 260px;
+  max-width: 360px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #fff;
+  background: rgba(8, 8, 8, 0.92);
+  border: 1px solid rgba(249, 115, 22, 0.7);
+  border-radius: 6px;
+  padding: 8px 10px;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.45);
+  pointer-events: none;
+}
+#vv-debug-hud b { color: #f59e0b; font-weight: 700; }
+
 /* ─── Sound toggle bottom-right ─── */
 @media (max-width: 800px) {
   .week-block { min-width:140px; }

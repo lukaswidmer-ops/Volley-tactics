@@ -515,6 +515,7 @@ const state = {
   speed: localStorage.getItem('vv_speed') || 'normal',
   game: null,
   skipping: false,
+  debugHud: localStorage.getItem('vv_debug_hud') !== '0',
 };
 
 // ────────────────────────────────────────────────────────────────
@@ -602,6 +603,7 @@ function setView(v) {
   // Hide floating log + panel outside game
   const lp = document.getElementById('log-panel'); if (lp) lp.style.display = (v === 'game') ? '' : 'none';
   const fp = document.getElementById('floating-panel'); if (fp) fp.style.display = (v === 'game') ? '' : 'none';
+  refreshDebugHud();
 }
 function setLang(l) {
   state.lang = l;
@@ -610,11 +612,48 @@ function setLang(l) {
   render();
 }
 function setSpeed(s) { state.speed = s; localStorage.setItem('vv_speed', s); } // no render() — would destroy waitFor listeners mid-game
+function toggleDebugHud() {
+  state.debugHud = !state.debugHud;
+  localStorage.setItem('vv_debug_hud', state.debugHud ? '1' : '0');
+  refreshDebugHud();
+}
 
 // Wait/fire helpers
 const _waiters = {};
 const _pendingFires = {}; // catches fire() calls when no waiter is set up yet
 let _expectedAdvance = 'coneRollNow';
+let _lastAdvanceSource = '-';
+let _lastFired = '-';
+function debugHudData() {
+  const waiters = Object.keys(_waiters).filter(k => !!_waiters[k]).join(', ') || '-';
+  const pending = Object.keys(_pendingFires).filter(k => !!_pendingFires[k]).join(', ') || '-';
+  const overlays = document.querySelectorAll('.game-popup.open, .modal-popup.open').length;
+  return { waiters, pending, overlays };
+}
+function refreshDebugHud() {
+  const el = document.getElementById('vv-debug-hud');
+  if (!el) return;
+  if (!state.debugHud || state.view !== 'game') { el.style.display = 'none'; return; }
+  const d = debugHudData();
+  el.style.display = 'block';
+  el.innerHTML = [
+    `<div><b>expected:</b> ${_expectedAdvance}</div>`,
+    `<div><b>waiters:</b> ${d.waiters}</div>`,
+    `<div><b>pending:</b> ${d.pending}</div>`,
+    `<div><b>lastSource:</b> ${_lastAdvanceSource}</div>`,
+    `<div><b>lastFire:</b> ${_lastFired}</div>`,
+    `<div><b>overlays:</b> ${d.overlays}</div>`
+  ].join('');
+}
+function ensureDebugHud() {
+  let el = document.getElementById('vv-debug-hud');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'vv-debug-hud';
+    document.body.appendChild(el);
+  }
+  refreshDebugHud();
+}
 function waitFor(name, autoMs) {
   return new Promise(resolve => {
     if (state.skipping) { setTimeout(resolve, 0); return; }
@@ -627,19 +666,22 @@ function waitFor(name, autoMs) {
       return;
     }
     _waiters[name] = resolve;
+    refreshDebugHud();
     const done = () => { if (_waiters[name]) { delete _waiters[name]; resolve(); } };
     if (autoMs) setTimeout(done, autoMs);
     setTimeout(done, 15000); // 15s safety timeout – verhindert permanentes Hängen
   });
 }
 function fire(name, val) {
+  _lastFired = name;
   const r = _waiters[name];
-  if (r) { delete _waiters[name]; r(val); return; }
+  if (r) { delete _waiters[name]; r(val); refreshDebugHud(); return; }
   // No waiter yet — remember the fire so the next waitFor with this name resolves instantly
   _pendingFires[name] = val !== undefined ? val : true;
   // Keep pending clicks longer so early "Continue" presses during animations/events
   // are not lost before waitFor(...) is reached.
   setTimeout(() => { delete _pendingFires[name]; }, 30000);
+  refreshDebugHud();
 }
 function skipAll() {
   state.skipping = true;
@@ -758,6 +800,7 @@ function animateDicePanel(type, finalValue) {
 // dicePanel_roll: fires the currently active waiter
 // `force=true` lets non-dice buttons trigger even if dice button is disabled.
 function dicePanel_roll(force) {
+  _lastAdvanceSource = force ? 'action-btn' : 'dice-btn';
   const btn = document.getElementById('dice-panel-btn');
   if (!force && btn && btn.disabled) return;
   // Multi-purpose: also acts as "Continue" if that's what the game is waiting for
@@ -768,6 +811,7 @@ function dicePanel_roll(force) {
   // No active waiter yet (e.g. short animation/event gap):
   // queue the action that is expected next in the current flow.
   fire(_expectedAdvance || 'coneRollNow');
+  refreshDebugHud();
 }
 
 
@@ -1556,6 +1600,7 @@ function renderGame() {
   ensureFloatingLog();
   for (const e of state.game.log.slice(-30)) logEntry(e.text, e.kind);
   refreshFloatingPanel();
+  ensureDebugHud();
 }
 
 function playerCardHtml(p, idx, withBars) {
@@ -3307,6 +3352,7 @@ function showFullHistory() {
 // ────────────────────────────────────────────────────────────────
 window.VV = {
   setView, setLang, setSpeed,
+  toggleDebugHud,
   advanceIntro, skipIntro,
   startSolo, openMultiplayer, createRoom, showJoinForm,
   draftDraw, draftRedraw, draftPick1, draftFinish,
