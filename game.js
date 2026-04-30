@@ -2869,50 +2869,38 @@ async function runWeekendMatches(week) {
   const schedule = WEEKEND_SCHEDULE[week - 1];
   if (!schedule) return;
   const me = g.players[0];
+  // User request: only one weekend match should be played (the human match).
+  const humanPair = schedule.find(([hi, ai]) => g.players[hi] === me || g.players[ai] === me);
+  if (!humanPair) return;
+  const [hi, ai] = humanPair;
+  const home = g.players[hi];
+  const away = g.players[ai];
+  if (!home || !away) return;
 
-  for (let mi = 0; mi < schedule.length; mi++) {
-    const [hi, ai] = schedule[mi];
-    const home = g.players[hi];
-    const away = g.players[ai];
-    if (!home || !away) continue;
+  const opp = home === me ? away : home;
+  showOpponentBoard(opp);
 
-    const isHumanMatch = (home === me || away === me);
-    const matchLabel = mi === 0 ? T('weekend_match1') : T('weekend_match2');
-
-    // Show opponent panel for human match
-    if (isHumanMatch) {
-      const opp = home === me ? away : home;
-      showOpponentBoard(opp);
-    }
-
-    // Stage header
-    const stage = $('#stage');
-    if (stage) {
-      stage.innerHTML = `
-        <div class="stage-h">🏅 ${T('weekend_match')} · ${T('week')} ${week} · ${matchLabel}</div>
-        <div class="stage-sub">${escapeHTML(home.name)} vs ${escapeHTML(away.name)}</div>`;
-    }
-
-    const winner = await runMatchClassic(home, away, true);
-
-    // Weekend win: only money reward — VP awarded exclusively at season end by league standings
-    if (winner) {
-      winner.money += 3000;
-      winner.totalEarned += 3000;
-      animateMoneyChange(winner, 3000);
-      const loser = winner === home ? away : home;
-      logEntry(`🏅 ${T('weekend_match')} W${week} ${matchLabel}: <b>${escapeHTML(winner.name)}</b> +3' · ${escapeHTML(loser.name)}`, 'tournament');
-    } else {
-      logEntry(`🏅 ${T('weekend_match')} W${week} ${matchLabel}: 🤝 ${escapeHTML(home.name)} — ${escapeHTML(away.name)}`);
-    }
-
-    if (isHumanMatch) restoreBoardPanel();
-    refreshTopbar();
-    if (checkWin()) return;
-
-    // Short pause between matches
-    if (mi === 0) await sleep(speedMs(600));
+  const stage = $('#stage');
+  if (stage) {
+    stage.innerHTML = `
+      <div class="stage-h">🏅 ${T('weekend_match')} · ${T('week')} ${week}</div>
+      <div class="stage-sub">${escapeHTML(home.name)} vs ${escapeHTML(away.name)}</div>`;
   }
+
+  const winner = await runMatchClassic(home, away, true);
+  if (winner) {
+    winner.money += 3000;
+    winner.totalEarned += 3000;
+    animateMoneyChange(winner, 3000);
+    const loser = winner === home ? away : home;
+    logEntry(`🏅 ${T('weekend_match')} W${week}: <b>${escapeHTML(winner.name)}</b> +3' · ${escapeHTML(loser.name)}`, 'tournament');
+  } else {
+    logEntry(`🏅 ${T('weekend_match')} W${week}: 🤝 ${escapeHTML(home.name)} — ${escapeHTML(away.name)}`);
+  }
+
+  restoreBoardPanel();
+  refreshTopbar();
+  if (checkWin()) return;
 }
 
 function marketBodyHtml(me, weakPos) {
