@@ -609,7 +609,7 @@ function setLang(l) {
   document.documentElement.lang = l;
   render();
 }
-function setSpeed(s) { state.speed = s; localStorage.setItem('vv_speed', s); render(); }
+function setSpeed(s) { state.speed = s; localStorage.setItem('vv_speed', s); } // no render() — would destroy waitFor listeners mid-game
 
 // Wait/fire helpers
 const _waiters = {};
@@ -3092,13 +3092,7 @@ function renderEnd() {
 function playAgain() { initSoloGame(); setView('draft'); }
 function toMenu() { state.game = null; setView('menu'); }
 
-function speedToggleHtml() {
-  const tags = [{ id:'normal', label:'🐢', t:T('speed_normal') }, { id:'fast', label:'⚡', t:T('speed_fast') }, { id:'auto', label:'🚀', t:T('speed_auto') }];
-  return `<div style="display:flex; gap:0.3rem; margin-bottom:0.4rem;">
-    <span style="font-size:0.65rem; letter-spacing:2px; color:var(--silver); text-transform:uppercase; align-self:center; margin-right:0.3rem;">${T('speed')}</span>
-    ${tags.map(s => `<button class="lang-pill ${state.speed===s.id?'active':''}" data-tip="${s.t}" onclick="VV.setSpeed('${s.id}')">${s.label}</button>`).join('')}
-  </div>`;
-}
+function speedToggleHtml() { return ''; } // speed buttons removed — clicking them during a match caused render() to rebuild the DOM and lose all waitFor listeners
 
 function continueAfterMatch() { fire('continueAfterMatch'); }
 function serveOnce() { fire('serveOnce'); }
