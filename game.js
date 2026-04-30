@@ -613,10 +613,18 @@ function setSpeed(s) { state.speed = s; localStorage.setItem('vv_speed', s); ren
 
 // Wait/fire helpers
 const _waiters = {};
+const _pendingFires = {}; // catches fire() calls when no waiter is set up yet
 function waitFor(name, autoMs) {
   return new Promise(resolve => {
     if (state.skipping) { setTimeout(resolve, 0); return; }
     if (!name) { setTimeout(resolve, autoMs||1); return; }
+    // If user already clicked before we got here, resolve immediately
+    if (_pendingFires[name]) {
+      const val = _pendingFires[name];
+      delete _pendingFires[name];
+      setTimeout(() => resolve(val === true ? undefined : val), 0);
+      return;
+    }
     _waiters[name] = resolve;
     const done = () => { if (_waiters[name]) { delete _waiters[name]; resolve(); } };
     if (autoMs) setTimeout(done, autoMs);
@@ -625,7 +633,11 @@ function waitFor(name, autoMs) {
 }
 function fire(name, val) {
   const r = _waiters[name];
-  if (r) { delete _waiters[name]; r(val); }
+  if (r) { delete _waiters[name]; r(val); return; }
+  // No waiter yet — remember the fire so the next waitFor with this name resolves instantly
+  _pendingFires[name] = val !== undefined ? val : true;
+  // Auto-clear after 3s so a stale click doesn't fire something later
+  setTimeout(() => { delete _pendingFires[name]; }, 3000);
 }
 function skipAll() {
   state.skipping = true;
@@ -1911,7 +1923,7 @@ async function runConeRoll(player) {
     if (dpBtn) { dpBtn.disabled = true; dpBtn.classList.remove('pulse'); }
   } else {
     if (dpBtn) dpBtn.disabled = true;
-    await sleep(speedMs(1100));
+    await sleep(speedMs(2000)); // bot thinking pause before roll
   }
   const v = await performDiceRoll(3);
   const advance = v >= 3 ? 2 : 1;     // rule: 1=+1, 2=+1, 3=+2
@@ -1935,8 +1947,8 @@ async function runConeRoll(player) {
     // Also enable the dice-panel button as a second "Continue" trigger
     const dpBtn2 = document.getElementById('dice-panel-btn');
     if (dpBtn2) { dpBtn2.disabled = false; dpBtn2.classList.add('pulse'); dpBtn2.textContent = '▶ ' + T('cone_continue'); }
-    if (state.speed === 'auto' || !player.isHuman) setTimeout(()=>fire('coneContinue'), speedMs(900));
-    await waitFor('coneContinue', !player.isHuman ? speedMs(2500) : 0);
+    if (state.speed === 'auto' || !player.isHuman) setTimeout(()=>fire('coneContinue'), speedMs(2000));
+    await waitFor('coneContinue', !player.isHuman ? speedMs(3000) : 0);
     if (dpBtn2) { dpBtn2.disabled = true; dpBtn2.classList.remove('pulse'); dpBtn2.textContent = '🎲 Würfeln'; }
   }
 }
@@ -2463,7 +2475,7 @@ async function runMatchClassic(home, away, isTournament) {
   const totalRolls = () => M.totalRolls + M.crunchExtra;
   while (M.iRoll < totalRolls() && !M.ended) {
     if (humanInMatch && state.speed !== 'auto') await waitFor('serveOnce');
-    else await sleep(speedMs(650));
+    else await sleep(speedMs(1000)); // bot serve delay (shorter than 2s so matches don't drag)
     const dice = await performDiceRoll(12);
     M.rolls.push(dice);
     const result = await resolveCriterion(dice, M);
@@ -2613,7 +2625,7 @@ async function showMatchSummary(M, winner) {
     matchDpBtn.disabled = false; matchDpBtn.classList.add('pulse');
     matchDpBtn.textContent = '▶ ' + T('next_match');
   }
-  if (!humanInMatch || state.speed === 'auto') setTimeout(() => fire('continueAfterMatch'), speedMs(2800));
+  if (!humanInMatch || state.speed === 'auto') setTimeout(() => fire('continueAfterMatch'), speedMs(3000));
   await waitFor('continueAfterMatch', autoMs);
   if (matchDpBtn) { matchDpBtn.disabled = true; matchDpBtn.classList.remove('pulse'); matchDpBtn.textContent = '🎲 Würfeln'; }
   restoreBoardPanel();
@@ -2741,7 +2753,7 @@ async function runMarketPhase() {
   renderMarket();
   // Bots act first, then human's turn (to give clear "your turn" feel)
   for (const bot of g.players.filter(p => !p.isHuman)) {
-    await sleep(speedMs(450));
+    await sleep(speedMs(200)); // bot market buy thinking delay
     const pick = window.VV_BOTS.pickMarketBuy(bot, g.market);
     if (pick) {
       const cur = bot.team[pick.pos];
