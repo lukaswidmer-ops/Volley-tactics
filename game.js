@@ -2102,6 +2102,8 @@ async function applyTransfer(player) {
 
 function humanBidPopup(p, card, minNext) {
   return new Promise(resolve => {
+    let settled = false;
+    const finish = (val) => { if (settled) return; settled = true; resolve(val); };
     const sugg = Math.min(p.money, minNext);
     const id = 'transfer-bid-popup';
     const body = `
@@ -2119,9 +2121,9 @@ function humanBidPopup(p, card, minNext) {
         <button class="btn btn-primary" id="bid-popup-do">${T('auction_bid')}</button>
         <button class="btn btn-secondary" id="bid-popup-pass">${T('auction_pass')}</button>
       </div>`;
-    const passAndClose = () => { closeGamePopup(id); resolve({ pass: true }); };
+    const passAndClose = () => { closeGamePopup(id); finish({ pass: true }); };
     // ✕ and backdrop close = same as "pass"
-    registerPopupClose(id, () => resolve({ pass: true }));
+    registerPopupClose(id, () => finish({ pass: true }));
     openGamePopup(id, `\ud83d\udd01 ${T('cone_event_transfer')} \u2014 ${escapeHTML(p.name)}`, body);
     setTimeout(() => {
       const doBtn = document.getElementById('bid-popup-do');
@@ -2130,7 +2132,7 @@ function humanBidPopup(p, card, minNext) {
       if (doBtn) doBtn.onclick = () => {
         const v = parseInt((input && input.value) || '0', 10);
         closeGamePopup(id);
-        resolve({ bid: v });
+        finish({ bid: v });
       };
       if (passBtn) passBtn.onclick = passAndClose;
       if (input) {
@@ -2138,6 +2140,10 @@ function humanBidPopup(p, card, minNext) {
         input.addEventListener('keydown', e => { if (e.key === 'Enter' && doBtn) doBtn.click(); });
       }
     }, 50);
+    // Safety timeout: auto-pass if popup is left open.
+    setTimeout(() => {
+      if (!settled) { closeGamePopup(id); finish({ pass: true }); }
+    }, 12000);
   });
 }
 
@@ -2151,7 +2157,6 @@ async function applyActionCard(player) {
 }
 
 function showActionCardPopup() {
-  const layer = $('#toast-layer');
   const div = document.createElement('div');
   div.className = 'modal-popup';
   div.innerHTML = `
@@ -2162,7 +2167,11 @@ function showActionCardPopup() {
       <button class="btn btn-primary" onclick="this.closest('.modal-popup').remove()">OK</button>
     </div>`;
   document.body.appendChild(div);
+  // Backdrop click closes as well (prevents blocked UI if user misses OK button).
+  div.addEventListener('click', e => { if (e.target === div) div.remove(); });
   setTimeout(() => div.classList.add('open'), 10);
+  // Safety auto-close to avoid hard-stuck overlays during event flow.
+  setTimeout(() => { if (document.body.contains(div)) div.remove(); }, 3500);
 }
 
 async function applyVnlEvent(player) {
