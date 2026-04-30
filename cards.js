@@ -182,7 +182,7 @@
         name:   name,
         pos:    pos,
         stars:  stars,
-        url:    (POS_FOLDER[pos] || 'cards') + '/' + file,
+        url:    (POS_FOLDER[pos] || 'cards') + '/' + file.replace(/\.png$/, '.jpg'),
         nation: nation
       });
     }

@@ -618,6 +618,13 @@ function fire(name, val) {
   const r = _waiters[name];
   if (r) { delete _waiters[name]; r(val); }
 }
+// Sets #actions content and always recreates #stage inside it,
+// so that subsequent $(`#stage`) lookups work correctly.
+function setActionsHtml(html) {
+  const el = $('#actions');
+  if (!el) return;
+  el.innerHTML = html + '<div class="stage" id="stage"></div>';
+}
 
 // ────────────────────────────────────────────────────────────────
 //  Position helpers
@@ -1894,8 +1901,10 @@ async function runSeason() {
 async function runConeRoll(player) {
   const g = state.game;
   setActiveBanner(player);
+  setActionsHtml(`<h3>${T('phase_event')}</h3>
+    ${speedToggleHtml()}
+    <button id="cone-roll-btn" class="action-btn pulse" data-tip="${T('cone_roll')}" onclick="VV.coneRollNow()">🎲 ${T('cone_roll')}</button>`);
   const stage = $('#stage');
-  const actions = $('#actions');
   stage.innerHTML = `
     <div class="stage-h">${T('week')} ${g.week} · Tag ${dayInWeekOf(g.coneDay)}</div>
     <div class="stage-sub">${escapeHTML(player.name)} ${player.isHuman?T('yourturn'):T('bot_thinking')+' …'}</div>
@@ -1903,9 +1912,6 @@ async function runConeRoll(player) {
       <div class="dice-num" id="dice-num">—</div>
     </div>
     <div id="cone-log" style="margin-top:1rem;"></div>`;
-  actions.innerHTML = `<h3>${T('phase_event')}</h3>
-    ${speedToggleHtml()}
-    <button id="cone-roll-btn" class="action-btn pulse" data-tip="${T('cone_roll')}" onclick="VV.coneRollNow()">🎲 ${T('cone_roll')}</button>`;
   // Update dice panel
   const dpBtn = document.getElementById('dice-panel-btn');
   const dpLbl = document.getElementById('dice-panel-label');
@@ -1932,9 +1938,9 @@ async function runConeRoll(player) {
     if (g.over) return;
   }
   if (!g.over) {
-    actions.innerHTML = `<h3>${T('phase_event')}</h3>
+    setActionsHtml(`<h3>${T('phase_event')}</h3>
       ${speedToggleHtml()}
-      <button class="action-btn pulse" onclick="VV.coneContinue()">${T('cone_continue')}</button>`;
+      <button class="action-btn pulse" onclick="VV.coneContinue()">${T('cone_continue')}</button>`);
     if (state.speed === 'auto' || !player.isHuman) setTimeout(()=>fire('coneContinue'), speedMs(400));
     await waitFor('coneContinue', !player.isHuman ? speedMs(2000) : 0);
   }
@@ -2355,6 +2361,8 @@ async function runMatchClassic(home, away, isTournament) {
   };
   state.game._classicMatch = M;
   function paint() {
+    const stage = $('#stage');
+    if (!stage) return;
     stage.innerHTML = `
       <div class="stage-h">${escapeHTML(home.name)} vs ${escapeHTML(away.name)}</div>
       <div class="match-screen">
@@ -2387,11 +2395,11 @@ async function runMatchClassic(home, away, isTournament) {
     $('#rally-feed').scrollTop = $('#rally-feed').scrollHeight;
   }
   function setActionUI() {
-    actions.innerHTML = `<h3>${T('phase_match')}</h3>
+    setActionsHtml(`<h3>${T('phase_match')}</h3>
       ${speedToggleHtml()}
-      <button id="serve-btn" class="action-btn pulse" data-tip="${T('serve_t')}" onclick="VV.serveOnce()">🏐 ${T('serve')}</button>`;
+      <button id="serve-btn" class="action-btn pulse" data-tip="${T('serve_t')}" onclick="VV.serveOnce()">🏐 ${T('serve')}</button>`);
   }
-  paint(); setActionUI();
+  setActionUI(); paint();
 
   const totalRolls = () => M.totalRolls + M.crunchExtra;
   while (M.iRoll < totalRolls() && !M.ended) {
@@ -2671,9 +2679,9 @@ function renderMarket() {
     <div class="market market-1star">${oneStarMarketHtml(me, weakPos)}</div>
     ${me.bench.length ? `<h4 class="h-cond" style="font-size:1rem; letter-spacing:2px; margin-top:1.4rem; color:var(--silver);">${state.lang==='de'?'Bench / Ersatz':'Bench / Substitutes'}</h4><div class="bench-grid">${me.bench.map(c => benchCardHtml(c, me)).join('')}</div>`:''}`;
   const actions = $('#actions'); if (!actions) return;
-  actions.innerHTML = `<h3>${T('phase_buy')}</h3>
+  setActionsHtml(`<h3>${T('phase_buy')}</h3>
     ${speedToggleHtml()}
-    <button class="action-btn pulse" onclick="VV.endMarket()">${T('finish_buying')}</button>`;
+    <button class="action-btn pulse" onclick="VV.endMarket()">${T('finish_buying')}</button>`);
 }
 
 function oneStarMarketHtml(me, weakPos) {
