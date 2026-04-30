@@ -1,3300 +1,2160 @@
-/* ================================================================
-   VOLLEY VENDETTA — Online Game (Classic Mode, single season)
-   Rule-faithful build per official rulebook (April 2026 edition).
-   Pure vanilla JS, no build step.
-   ================================================================ */
+/* =====================================================================
+   VOLLEY VENDETTA — game.js (main engine)
+   ---------------------------------------------------------------------
+   Loaded AFTER cards.js and game-bots.js.
+   Architecture: single closure, vanilla JS, no framework.
+   See spec §4 (architecture), §5 (bots), §6 (pitfalls) and §10 (checklist).
+   ===================================================================== */
+
 (function () {
-'use strict';
+  'use strict';
 
-// ────────────────────────────────────────────────────────────────
-//  i18n
-// ────────────────────────────────────────────────────────────────
-const i18n = {
-  de: {
-    loading: 'Lädt…',
-    intro1_h: 'Baue dein Team',
-    intro1_p: 'Starte mit 80’000 und drafte Spieler über fünf Positionen. Bessere Sterne = stärkeres Team.',
-    intro2_h: 'Spiele Turniere',
-    intro2_p: 'Sechs Wochen, fünf Turniere. Liga-Punkte → Saison-Platzierung. Cup, SuperCup und Champions League bringen Siegpunkte.',
-    intro3_h: 'Werde Champion',
-    intro3_p: 'Wer als Erster 8 Siegpunkte sammelt, gewinnt sofort. Sonst entscheidet das Saison-Ende.',
-    intro_skip: 'Überspringen', intro_next: 'Weiter ▸', intro_start: "Los geht's ▸",
+  // =================================================================
+  // 1. CONSTANTS & DICTIONARIES
+  // =================================================================
 
-    menu_title_l1: 'Volley', menu_title_l2: 'Vendetta',
-    menu_sub: 'Online · 3–4 Spieler · 6 Wochen Saison',
-    menu_name_label: 'Dein Name', menu_name_ph: 'z.B. Lukas',
-    menu_solo: 'Solo gegen Bots', menu_solo_t: 'Spiele gegen 2 smarte KI-Gegner',
-    menu_mp: 'Multiplayer', menu_mp_t: 'Mit Freunden via Raum-Code spielen',
-    menu_back: 'Zurück',
-    mp_create: 'Raum erstellen', mp_create_t: 'Erzeuge einen Raum-Code',
-    mp_join: 'Raum beitreten',  mp_join_t: 'Tritt einem Raum bei',
-    mp_join_label: 'Raum-Code (6 Zeichen)', mp_join_btn: 'Beitreten ▸',
-    mp_unavailable: 'Multiplayer noch nicht aktiviert (Firebase-Config fehlt). Spiele Solo gegen Bots.',
+  // outside2 is a first-class slot — every iteration must include it.
+  const POSITIONS = ['outside','outside2','middle','setter','diagonal','libero'];
 
-    lobby_h: 'Lobby', lobby_code: 'Raum-Code', lobby_copy: 'Kopieren', lobby_copied: 'Kopiert!',
-    lobby_waiting: 'Warte auf weitere Spieler…', lobby_start: 'Spiel starten ▸',
-    lobby_min: 'Min. 2 Spieler', lobby_leave: 'Lobby verlassen', lobby_host: 'Host',
+  const POS_LABEL = {
+    outside:'OH1', outside2:'OH2', middle:'MB',
+    setter:'S',    diagonal:'OPP', libero:'L'
+  };
+  const POS_NAME = {
+    outside:'Outside Hitter 1', outside2:'Outside Hitter 2',
+    middle:'Middle Blocker',   setter:'Setter',
+    diagonal:'Opposite',       libero:'Libero'
+  };
+  const POS_COLOR = {
+    outside:'#e84317', outside2:'#e84317',
+    middle:'#16a34a', setter:'#0ea5e9',
+    diagonal:'#4f46e5', libero:'#ca8a04'
+  };
 
-    setup_h: 'Aufbau',
-    draft_h: 'Blind-Draft',
-    draft_p: 'Reihum zieht jeder vom verdeckten Stapel. Sterne werden erst beim Aufdecken sichtbar.',
-    draft_step_4: 'Ziehe 1× 4★ Karte',
-    draft_step_3: 'Ziehe 2× 3★ Karten',
-    draft_step_2: 'Ziehe 3× 2★ Karten',
-    draft_step_1: 'Wähle 3× 1★ Karten nach Position',
-    draft_pick: 'Karte ziehen',
-    draft_redraw: 'Neu ziehen (mehr als 3 gleiche Position)',
-    draft_continue: 'Auktion starten ▸',
-    draft_pick_pos: 'Position wählen',
-    auction_h: 'Eröffnungs-Auktion',
-    auction_sub: '6 Karten werden versteigert. Mindestgebot = Sterne × 10’000.',
-    auction_card: 'Karte %d von %d',
-    auction_minbid: 'Mindestgebot',
-    auction_currentbid: 'Höchstgebot',
-    auction_yourbid: 'Dein Gebot',
-    auction_bid: 'Bieten',
-    auction_pass: 'Passen',
-    auction_won: '%s gewinnt für %s ’',
-    auction_passed: '%s passt',
-    auction_no_one: 'Niemand bietet — Karte zurück auf den Stapel',
-    auction_timer: 'Sekunden',
-    starting_h: 'Wer beginnt?',
-    starting_p: 'Alle würfeln den 12er. Höchste Zahl beginnt.',
-    starting_roll: 'Würfeln',
-    starting_winner: '%s beginnt!',
+  // Volleyball 5-1 formation positions (counterclockwise from back-right).
+  // Pos 4 (front-left)  → MB        Pos 5 (back-left)  → OPP
+  // Pos 3 (front-mid)   → OH1       Pos 6 (back-mid)   → OH2
+  // Pos 2 (front-right) → S         Pos 1 (back-right) → L
+  const FRONT_ROW = ['middle', 'outside', 'setter'];          // pos 4, 3, 2
+  const BACK_ROW  = ['diagonal', 'outside2', 'libero'];       // pos 5, 6, 1
+  const POS_SLOT_NUM = {
+    outside:3, outside2:6, middle:4, setter:2, diagonal:5, libero:1
+  };
 
-    pos_outside: 'Aussenangreifer 1', pos_outside2: 'Aussenangreifer 2', pos_middle: 'Mittelblocker', pos_setter: 'Setter',
-    pos_diagonal: 'Diagonal', pos_libero: 'Libero',
-    pos_short_outside: 'OH1', pos_short_outside2: 'OH2', pos_short_middle: 'MB', pos_short_setter: 'S',
-    pos_short_diagonal: 'OPP', pos_short_libero: 'L',
+  // Day-in-week → event type. (1-indexed.) Days 4 and 8 are intercepted
+  // by resolveDay before this map applies.
+  const DAY_EVENT = {
+    1: 'redcard',
+    2: 'transfer',
+    3: 'action',
+    4: 'tournament',     // intercepted
+    5: 'vnl',
+    6: 'action',
+    7: 'injury',
+    8: 'league'          // intercepted
+  };
 
-    week: 'Woche', of: 'von',
-    phase_event: 'Event', phase_match: 'Liga', phase_buy: 'Markt', phase_done: 'Wochenende',
-    week_event_supercup: 'SuperCup', week_event_cl: 'Champions League',
-    week_event_cup: 'Cup', week_event_cupfinal: 'Cup-Final', week_event_clfinal: 'CL-Final',
-    week_event_league: 'Liga',
+  // Speed timings (ms). See spec §4.5.
+  const SPEED = {
+    normal: { coneRoll:1500, continueAfter:1500, serveWait:2500, rallyView:1800,
+              botBid:700,    eventAuto:8000 },
+    fast:   { coneRoll:1000, continueAfter:1000, serveWait:1200, rallyView:800,
+              botBid:200,    eventAuto:5000 },
+    auto:   { coneRoll:100,  continueAfter:100,  serveWait:200,  rallyView:0,
+              botBid:100,    eventAuto:1500 }
+  };
 
-    yourturn: 'DU BIST AM ZUG', bot_thinking: 'denkt nach',
-
-    cone_roll: '3er werfen ▸', cone_advance: 'Hütchen bewegt sich',
-    cone_lands: '%s landet auf Tag %d',
-    cone_passes: 'Hütchen überfährt Tag-%d-Linie',
-    cone_event_red: 'Rote Karte',
-    cone_event_red_p: 'Mit dem 6er bestimmen wir, welcher Stammspieler gesperrt wird. Sperre dauert bis nach dem nächsten Liga-Spiel.',
-    cone_event_transfer: 'Spielertransfer',
-    cone_event_transfer_p: 'Eine neue Karte vom Auktionsstapel wird sofort versteigert.',
-    cone_event_action: 'Aktionskarte',
-    cone_event_action_p: 'Diese Mechanik gibt es nur im echten Brettspiel — etwas muss schließlich Überraschung bleiben! 🎁',
-    cone_event_vnl: 'VNL-Nationalspiele',
-    cone_event_vnl_p: 'Spieler dieser Flagge fehlen für die ganze Woche. Nach dem Liga-Spiel sind sie wieder dabei.',
-    cone_event_injury: 'Verletzung',
-    cone_event_injury_p: 'Der 6er bestimmt, welcher Stammspieler verletzt ist. Genesung nach dem nächsten Liga-Spiel.',
-    cone_continue: 'Weiter ▸',
-    cone_pos_disabled: 'Position bis nach dem Liga-Spiel deaktiviert: %s',
-
-    serve: 'Aufschlag', serve_t: 'Würfle den 12er und beginne den Ballwechsel',
-    next_match: 'Weiter ▸', next_week: 'Nächste Woche ▸',
-    finish_buying: 'Markt schliessen ▸',
-    speed: 'Tempo', speed_normal: 'Normal', speed_fast: 'Schnell', speed_auto: 'Auto',
-    market_h: 'Spielermarkt', market_budget: 'Budget',
-    market_team_strength: 'Team-Stärke', market_buy: 'Kaufen', market_sold: 'Vergriffen',
-    market_suggest: 'Schwächste Position', market_sell: 'Verkaufen',
-    market_sell_t: 'Hälfte des Sternenwerts',
-
-    money: 'Geld', vp: 'Siegpunkte', str: 'Stärke', pos: 'Pos', you: 'Du',
-    homeaway_home: 'Heim', homeaway_away: 'Auswärts',
-    set: 'Satz', sets: 'Sätze',
-    serve_keeps: 'Aufschlag bleibt', sideout: 'Sideout!', rotation: 'Rotation!',
-    set_won: 'Satz %s geht an %s: %d–%d 🏆',
-    match_won: '%s gewinnt %d:%d!',
-    prize: 'Preisgeld',
-    log_match: '%s vs %s — %s gewinnt %d:%d',
-
-    crit_total: 'Gesamtteam',
-    crit_front: 'Angreifer vorne',
-    crit_back: 'Verteidiger hinten',
-    crit_dice: 'Würfelvergleich',
-    crit_middle: 'Mittelblocker',
-    crit_service: 'Service',
-    crit_dia_set: 'Diagonal + Setter',
-    crit_out_dia: 'Aussen hinten vs. Diagonal',
-    crit_block: 'Block-Überwurf',
-    crit_crunch: 'Crunchtime',
-    crit_injury: 'Verletzung',
-    crit_money: 'Geld-Regen',
-
-    crit_total_d: 'Mehr Sterne gesamt gewinnt',
-    crit_front_d: 'Stärkere 3 Karten in der Vorderreihe',
-    crit_back_d: 'Stärkere 3 Karten in der Hinterreihe',
-    crit_dice_d: 'Beide werfen den 12er. Höhere Zahl gewinnt',
-    crit_middle_d: 'Besserer vorderer Mittelblocker gewinnt',
-    crit_service_d: 'Heim hinten-rechts vs. Auswärts-Libero',
-    crit_dia_set_d: 'Diagonal + Setter Sternsumme vergleichen',
-    crit_out_dia_d: 'Aussenangreifer hinten gegen Diagonal',
-    crit_block_d: 'Auswärts würfelt 12er gegen Heim-Block (Aussen+Mitte vorne)',
-    crit_crunch_d: 'Heimteam erhält +2 zusätzliche Würfe in diesem Spiel',
-    crit_injury_d: 'Würfel entscheidet welcher Spieler verletzt ausscheidet',
-    crit_money_d: 'Beide Teams erhalten 5’000 von der Bank',
-
-    end_h_winner: '%s gewinnt!',
-    end_play_again: 'Nochmal spielen', end_back_menu: 'Hauptmenü',
-    end_stats_money: 'Verdient', end_stats_won: 'Matches', end_stats_str: 'Endstärke',
-    end_remarks_8vp: 'erreicht 8 Siegpunkte und gewinnt sofort!',
-    end_remarks_season: 'Saisonende — meiste Siegpunkte gewinnen.',
-    bot_buys: '%s hat %s gekauft (%d★, %s’)',
-    bot_skips: '%s passt diesen Markt',
-    bot_bid: '%s bietet %s ’',
-    bot_pass: '%s passt',
-    standings_title: 'Liga-Tabelle',
-    coming: 'als Nächstes',
-    block_holds: 'Block hält!',
-    block_overshot: 'Block überspielt!',
-    crunch_extra: '+2 zusätzliche Würfe',
-    injury_out: 'verletzt – fällt aus',
-    sub_in: 'Ersatz',
-    sub_label: 'SUB',
-    sub_tooltip: 'Ersatz auf dem Feld – Stamm gesperrt/verletzt',
-    money_rain: 'Geld-Regen — beide bekommen 5’000',
-
-    season_end_h: 'Saisonende',
-    season_end_protect: 'Wähle einen Spieler zum Schützen',
-    season_end_protect_p: 'Der ungeschützte Spieler auf der gewürfelten Position muss zurück auf den Stapel.',
-    season_end_drop: '%s verliert %s (Position %s)',
-    season_end_steal: 'Klau-Phase',
-    season_end_steal_p: '4. darf von 1. + 2. klauen, 3. darf von 4. klauen — nur als Upgrade.',
-    season_end_payout: 'Saison-Auszahlung',
-    season_end_continue: 'Weiter ▸',
-    cup_h: 'Cup',
-    cup_roll: 'Alle würfeln den 12er — die zwei Höchsten spielen gegeneinander.',
-    cup_pair: '%s vs. %s',
-    cup_byes: '%s ist nicht qualifiziert — warten',
-    supercup_h: 'SuperCup',
-    cl_h: 'Champions League',
-    cl_first_season: 'CL-Felder werden in Saison 1 übersprungen',
-    cl_no_qual: 'Niemand qualifiziert für CL in dieser Saison',
-
-    confetti_msg: '🎉 SIEGER! 🎉',
-  },
-  en: {
-    loading: 'Loading…',
-    intro1_h: 'Build your team',
-    intro1_p: 'Start with 80,000 and draft players across five positions. More stars = stronger team.',
-    intro2_h: 'Play tournaments',
-    intro2_p: 'Six weeks, five tournaments. League points decide season ranking. Cup, Super Cup and the Champions League hand out victory points.',
-    intro3_h: 'Become champion',
-    intro3_p: 'First to 8 victory points wins instantly. Otherwise the season end decides.',
-    intro_skip: 'Skip', intro_next: 'Next ▸', intro_start: "Let's go ▸",
-
-    menu_title_l1: 'Volley', menu_title_l2: 'Vendetta',
-    menu_sub: 'Online · 3–4 players · 6-week season',
-    menu_name_label: 'Your Name', menu_name_ph: 'e.g. Alex',
-    menu_solo: 'Solo vs Bots', menu_solo_t: 'Play 2 smart AI opponents',
-    menu_mp: 'Multiplayer', menu_mp_t: 'Play with friends via room code',
-    menu_back: 'Back',
-    mp_create: 'Create Room', mp_create_t: 'Generate a room code',
-    mp_join: 'Join Room', mp_join_t: 'Join an existing room',
-    mp_join_label: 'Room code (6 characters)', mp_join_btn: 'Join ▸',
-    mp_unavailable: 'Multiplayer not enabled (Firebase config missing). Play solo.',
-
-    lobby_h: 'Lobby', lobby_code: 'Room code', lobby_copy: 'Copy', lobby_copied: 'Copied!',
-    lobby_waiting: 'Waiting for more players…', lobby_start: 'Start game ▸',
-    lobby_min: 'Min. 2 players', lobby_leave: 'Leave lobby', lobby_host: 'Host',
-
-    setup_h: 'Setup',
-    draft_h: 'Blind Draft',
-    draft_p: 'Each player draws from the face-down deck. Stars are revealed on draw.',
-    draft_step_4: 'Draw 1× 4★ card',
-    draft_step_3: 'Draw 2× 3★ cards',
-    draft_step_2: 'Draw 3× 2★ cards',
-    draft_step_1: 'Pick 3× 1★ cards by position',
-    draft_pick: 'Draw card',
-    draft_redraw: 'Redraw (more than 3 of the same position)',
-    draft_continue: 'Start auction ▸',
-    draft_pick_pos: 'Pick position',
-    auction_h: 'Opening Auction',
-    auction_sub: '6 cards are auctioned. Min bid = stars × 10,000.',
-    auction_card: 'Card %d of %d',
-    auction_minbid: 'Min bid',
-    auction_currentbid: 'High bid',
-    auction_yourbid: 'Your bid',
-    auction_bid: 'Bid',
-    auction_pass: 'Pass',
-    auction_won: '%s wins for %s',
-    auction_passed: '%s passes',
-    auction_no_one: 'No bids — card returns to the pile',
-    auction_timer: 'seconds',
-    starting_h: 'Who starts?',
-    starting_p: 'Everyone rolls the 12-sided die. Highest goes first.',
-    starting_roll: 'Roll',
-    starting_winner: '%s starts!',
-
-    pos_outside: 'Outside 1', pos_outside2: 'Outside 2', pos_middle: 'Middle', pos_setter: 'Setter',
-    pos_diagonal: 'Diagonal', pos_libero: 'Libero',
-    pos_short_outside: 'OH1', pos_short_outside2: 'OH2', pos_short_middle: 'MB', pos_short_setter: 'S',
-    pos_short_diagonal: 'OPP', pos_short_libero: 'L',
-
-    week: 'Week', of: 'of',
-    phase_event: 'Event', phase_match: 'League', phase_buy: 'Market', phase_done: 'Weekend',
-    week_event_supercup: 'Super Cup', week_event_cl: 'Champions League',
-    week_event_cup: 'Cup', week_event_cupfinal: 'Cup Final', week_event_clfinal: 'CL Final',
-    week_event_league: 'League',
-
-    yourturn: 'YOUR TURN', bot_thinking: 'thinking',
-
-    cone_roll: 'Roll the 3-die ▸', cone_advance: 'Cone advances',
-    cone_lands: '%s lands on day %d',
-    cone_passes: 'Cone passes the day-%d line',
-    cone_event_red: 'Red Card',
-    cone_event_red_p: 'A 6-die roll determines which starter is suspended until after the next league match.',
-    cone_event_transfer: 'Player Transfer',
-    cone_event_transfer_p: 'A new card from the auction deck is auctioned immediately.',
-    cone_event_action: 'Action Card',
-    cone_event_action_p: 'This mechanic only exists in the physical game — some surprise has to remain! 🎁',
-    cone_event_vnl: 'National Team (VNL)',
-    cone_event_vnl_p: 'Players of that flag are missing for the whole week and return after the league match.',
-    cone_event_injury: 'Injury',
-    cone_event_injury_p: 'The 6-die determines which starter is injured; recovers after the next league match.',
-    cone_continue: 'Continue ▸',
-    cone_pos_disabled: 'Position disabled until after the league match: %s',
-
-    serve: 'Serve', serve_t: 'Roll the 12-sided die and start the rally',
-    next_match: 'Continue ▸', next_week: 'Next week ▸',
-    finish_buying: 'Close market ▸',
-    speed: 'Speed', speed_normal: 'Normal', speed_fast: 'Fast', speed_auto: 'Auto',
-    market_h: 'Player Market', market_budget: 'Budget',
-    market_team_strength: 'Team strength', market_buy: 'Buy', market_sold: 'Sold',
-    market_suggest: 'Weakest position', market_sell: 'Sell',
-    market_sell_t: 'Half of star value',
-
-    money: 'Money', vp: 'Victory pts', str: 'Strength', pos: 'Pos', you: 'You',
-    homeaway_home: 'Home', homeaway_away: 'Away',
-    set: 'Set', sets: 'Sets',
-    serve_keeps: 'Serve stays', sideout: 'Sideout!', rotation: 'Rotation!',
-    set_won: 'Set %s goes to %s: %d–%d 🏆',
-    match_won: '%s wins %d:%d!',
-    prize: 'Prize',
-    log_match: '%s vs %s — %s wins %d:%d',
-
-    crit_total: 'Total team',
-    crit_front: 'Front-row attackers',
-    crit_back: 'Back-row defenders',
-    crit_dice: 'Dice duel',
-    crit_middle: 'Middle blocker',
-    crit_service: 'Service',
-    crit_dia_set: 'Diagonal + Setter',
-    crit_out_dia: 'Outside back vs Diagonal',
-    crit_block: 'Block challenge',
-    crit_crunch: 'Crunchtime',
-    crit_injury: 'Injury',
-    crit_money: 'Money rain',
-
-    crit_total_d: 'More total stars wins',
-    crit_front_d: 'Stronger 3 cards in the front row',
-    crit_back_d: 'Stronger 3 cards in the back row',
-    crit_dice_d: 'Both roll the 12-die. Higher number wins',
-    crit_middle_d: 'Better front-row middle blocker wins',
-    crit_service_d: 'Home back-right vs away libero',
-    crit_dia_set_d: 'Compare diagonal + setter star sum',
-    crit_out_dia_d: 'Outside back-row vs diagonal',
-    crit_block_d: 'Away rolls 12-die against home block (front outside + middle)',
-    crit_crunch_d: 'Home team gets +2 extra rolls this match',
-    crit_injury_d: 'Dice decides which player is out injured',
-    crit_money_d: 'Both teams receive 5,000 from the bank',
-
-    end_h_winner: '%s wins!',
-    end_play_again: 'Play again', end_back_menu: 'Main menu',
-    end_stats_money: 'Earned', end_stats_won: 'Matches', end_stats_str: 'Final strength',
-    end_remarks_8vp: 'reaches 8 victory points and wins instantly!',
-    end_remarks_season: 'Season end — most victory points wins.',
-    bot_buys: '%s bought %s (%d★, %s)',
-    bot_skips: '%s skips this market',
-    bot_bid: '%s bids %s',
-    bot_pass: '%s passes',
-    standings_title: 'League standings',
-    coming: 'next',
-    block_holds: 'Block holds!',
-    block_overshot: 'Block beaten!',
-    crunch_extra: '+2 extra rolls',
-    injury_out: 'injured – out',
-    sub_in: 'Substitute',
-    sub_label: 'SUB',
-    sub_tooltip: 'Substitute on court – starter suspended/injured',
-    money_rain: 'Money rain — both teams +5,000',
-
-    season_end_h: 'Season end',
-    season_end_protect: 'Pick a player to protect',
-    season_end_protect_p: 'The unprotected starter on the rolled position returns to the auction deck.',
-    season_end_drop: '%s loses %s (position %s)',
-    season_end_steal: 'Steal phase',
-    season_end_steal_p: '4th may steal from 1st & 2nd, 3rd may steal from 4th — upgrades only.',
-    season_end_payout: 'Season payout',
-    season_end_continue: 'Continue ▸',
-    cup_h: 'Cup',
-    cup_roll: 'All players roll the 12-die — the two highest play each other.',
-    cup_pair: '%s vs %s',
-    cup_byes: '%s is not qualified — waiting',
-    supercup_h: 'Super Cup',
-    cl_h: 'Champions League',
-    cl_first_season: 'CL spaces are skipped in season 1',
-    cl_no_qual: 'No one qualified for CL this season',
-
-    confetti_msg: '🎉 WINNER! 🎉',
-  }
-};
-
-// ────────────────────────────────────────────────────────────────
-//  Commentary pools (20+ per outcome)
-// ────────────────────────────────────────────────────────────────
-const COMMENTARY = {
-  de: {
-    home_score: [
-      'Starker Aufschlag! Der Libero kommt nicht ran — Punkt für %team%! 🏐',
-      'Perfektes Zuspiel, explosiver Angriff — %player% schlägt durch den Block! 💥',
-      'Ass! Der Aufschlag landet unhaltbar in der Ecke! 🎯',
-      '%player% mit einem Monster-Block — Punkt bleibt im Haus! 🧱',
-      '%team% setzt den Quick durch die Mitte — kein Halten mehr! ⚡',
-      'Pipe-Angriff! %player% knallt den Ball auf den Boden! 🔨',
-      'Tooling am Block — Ball geht raus, Punkt %team%! 🎨',
-      'Super-Annahme, perfekter Aufbau, harter Angriff — Punkt %team%!',
-      'Float-Aufschlag tanzt ins Feld — der Annehmer ist machtlos! 🪁',
-      '%player% mit dem Kill diagonal — der Diagonal-Angreifer schlägt zu! 💢',
-      'Cobra! %player% spielt mit den Fingern den Ball auf den Boden! 🐍',
-      'Slide hinter dem Setter — %player% fängt sie eiskalt! 🔒',
-      'Joust am Netz, %team% drückt durch! 🤜',
-      'Sprung-Aufschlag mit Topspin — der Annehmer fasst nur Luft! 🌪️',
-      'Schnellangriff über die Drei — %player% trifft den Boden punktgenau!',
-      'Block-out clever provoziert — %team% bekommt den Punkt geschenkt! 🪤',
-      'Reservespieler reingebracht und sofort den Punkt gemacht! 🔄',
-      '%player% mit einem Lob in die Lücke — die Verteidigung steht falsch! 🎯',
-      'Zweite Welle! Nach dem Block schlägt %player% noch ein zweites Mal zu! 🌊',
-      'Set perfectly placed — %player% spikes it into the joint zone! 🎯',
-    ],
-    away_score: [
-      'Fehler im Aufbau — %team% nutzt die Chance sofort aus! ⚡',
-      'Der Angriff geht ins Aus — Seitenball für %team%! 😬',
-      'Starke Annahme, schneller Konter — %team% punktet! 🔥',
-      'Aufschlagfehler! %team% bekommt den Punkt geschenkt. 😤',
-      '%player% verteidigt brillant — %team% nutzt den Konter! 🛡️',
-      'Block-Out! Der Block lenkt den Ball nach hinten ab — %team% punktet.',
-      'Netzberührung im Angriff — %team% bedankt sich. 🙄',
-      '%team% mit einem cleveren Tip in die Lücke — Punkt!',
-      'Joust am Netz, der Ball fällt drüben rüber — %team% jubelt!',
-      'Doppelkontakt im Aufbau — Punkt geht an %team%. 😳',
-      'Pancake! %player% rettet den unmöglichen Ball — %team% kontert! 🥞',
-      'Sprungservice im Aus — %team% übernimmt. 📐',
-      'Rotationsfehler! Punkt für %team%, ohne dass der Ball über das Netz musste. 🔁',
-      'Zaitsev-mässiger Sprung — %player% spickt den Ball über den Block! ⛳',
-      'Verschickter Block — Ball fliegt direkt ins Feld der Heimmannschaft. 🪃',
-      'Aufschlag direkt in die Mitte zwischen drei Annehmer — niemand übernimmt! 😬',
-      'Ball runter, ohne dass jemand reagiert — kollektive Verwirrung! 🤷',
-      '%team% spielt einen perfekten Quick — der Block kommt zu spät! 🚀',
-      'Risikoreicher Sprungaufschlag, perfektes Ass! 🎯',
-      'Der Heim-Setter zögert — %team% zieht den Punkt! ⏱️',
-    ],
-    set_won: [
-      '%team% holt den Satz mit einem starken Endspurt!',
-      'Was für ein Set-Finale! %team% nimmt den Satz!',
-      '%team% beendet den Satz mit einem Aufschlag-Lauf!',
-      'Sieg-Punkt für %team% — Halbzeit-Atmosphäre in der Halle!',
-      '%team% drückt den Satz nach Hause — die Tribüne tobt!',
-    ],
-    match_won: [
-      '%team% gewinnt das Match — verdient!',
-      '%team% holt sich die drei Sätze — Showtime!',
-      'Großer Auftritt von %team% — Match gewonnen!',
-      'Match-Ball verwandelt — %team% feiert!',
-    ],
-  },
-  en: {
-    home_score: [
-      'Powerful serve! The libero can’t handle it — point for %team%! 🏐',
-      'Perfect set, explosive spike — %player% hammers through the block! 💥',
-      'Ace! The serve lands untouched in the corner! 🎯',
-      '%player% with a monster block — point stays home! 🧱',
-      '%team% runs the quick through the middle — unstoppable! ⚡',
-      'Pipe attack! %player% pounds it down! 🔨',
-      'Tooling the block — ball flies out, point %team%! 🎨',
-      'Solid pass, clean set, big attack — point %team%!',
-      'Float serve dances into the court — receiver beaten! 🪁',
-      '%player% with a cross-court kill from the diagonal! 💢',
-      'Cobra! %player% finger-tips the ball straight down! 🐍',
-      'Slide behind the setter — %player% drills it home! 🔒',
-      'Joust at the net, %team% wins the push! 🤜',
-      'Jump-serve with topspin — receiver waves at it! 🌪️',
-      'Quick attack — %player% finds the seam!',
-      'Block-out drawn cleverly — gift point for %team%! 🪤',
-      'Substitute steps in and scores immediately! 🔄',
-      '%player% lobs into the gap — defense out of position! 🎯',
-      'Second wave — %player% scores after a deflection! 🌊',
-      'Perfectly-placed set — %player% drives it home! 🎯',
-    ],
-    away_score: [
-      'Error in the system — %team% pounces! ⚡',
-      'The attack goes wide — sideout for %team%! 😬',
-      'Great dig, fast counter — %team% scores! 🔥',
-      'Service error! %team% gets the point for free. 😤',
-      '%player% defends brilliantly — %team% closes the counter! 🛡️',
-      'Block-out! The block deflects long — point %team%.',
-      'Net touch on attack — %team% says thanks. 🙄',
-      '%team% tips into the gap — point!',
-      'Joust at the net, ball drops on their side — %team% celebrates!',
-      'Double contact on the set — point %team%. 😳',
-      'Pancake save by %player% — %team% counter-attacks! 🥞',
-      'Jump-serve sails wide — %team% takes over. 📐',
-      'Rotation fault! Free point for %team%. 🔁',
-      'Massive jump from %player% — bypasses the block! ⛳',
-      'Botched block sends the ball back home — %team% capitalizes! 🪃',
-      'Serve splits three receivers — chaos! 😬',
-      'Ball drops untouched — communication breakdown! 🤷',
-      '%team% runs a perfect quick — the block is late! 🚀',
-      'Risky jump-serve, perfect ace! 🎯',
-      'Home setter hesitates — %team% takes the point! ⏱️',
-    ],
-    set_won: [
-      '%team% takes the set with a strong finish!',
-      'What a finale! %team% takes the set!',
-      '%team% closes the set on a service run!',
-      'Set point converted — buzz around the arena!',
-      '%team% drives the set home — crowd erupts!',
-    ],
-    match_won: [
-      '%team% wins the match — well deserved!',
-      '%team% takes three sets — showtime!',
-      'Huge performance by %team% — match won!',
-      'Match point converted — %team% celebrates!',
-    ],
-  }
-};
-
-// ────────────────────────────────────────────────────────────────
-//  Helpers
-// ────────────────────────────────────────────────────────────────
-const $ = (s, r) => (r||document).querySelector(s);
-const $$ = (s, r) => Array.from((r||document).querySelectorAll(s));
-const T = (k) => (i18n[state.lang] && i18n[state.lang][k]) || k;
-const fmt = (str, ...args) => { let i=0; return str.replace(/%[ds]|%(\d+)/g, () => args[i++]); };
-const fmtMoney = n => (n||0).toLocaleString('de-CH').replace(/,/g,'’');
-const choice = arr => arr[Math.floor(Math.random()*arr.length)];
-const sleep = ms => new Promise(r => setTimeout(r, (state && state.skipping) ? 0 : ms));
-const range = n => Array.from({length:n}, (_,i)=>i);
-function hash(str) { let h=0; for (let i=0;i<str.length;i++) h=((h<<5)-h)+str.charCodeAt(i); return Math.abs(h); }
-function speedMs(ms) {
-  if (state.speed === 'fast') return Math.max(40, ms*0.3);
-  if (state.speed === 'auto') return Math.max(15, ms*0.08);
-  return ms;
-}
-function uid(){ return Math.random().toString(36).slice(2,10); }
-function escapeHTML(s){ return String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
-function cardStars(file) {
-  const r = hash(file) % 100;
-  if (r < 30) return 1;
-  if (r < 58) return 2;
-  if (r < 82) return 3;
-  if (r < 95) return 4;
-  return 5;
-}
-function cardPrice(stars) { return [0,5000,10000,20000,35000,55000][stars] || 5000; }
-
-// Dice roll utilities
-function roll(n) { return 1 + Math.floor(Math.random()*n); }
-
-// Build flat card pool with stable IDs
-function buildAllCards() {
-  if (typeof CARDS === 'undefined') return [];
-  const all = [];
-  for (const pos of Object.keys(CARDS)) {
-    const def = CARDS[pos];
-    for (const f of def.files) {
-      const id = pos + '/' + f;
-      const url = (def.folder ? def.folder + '/' : '') + f;
-      const stars = cardStars(f);
-      const num = (f.match(/(\d+)/) || ['','00'])[1];
-      const name = (def.label_en || pos).replace(/\s+/g,'') + ' #' + num;
-      all.push({ id, pos, file:f, url, stars, name, price: cardPrice(stars) });
+  // Localization. (DE primary, EN fallback.)
+  const I18N = {
+    de: {
+      week:'WOCHE', day:'Tag', of:'von', start:'SPIELEN', name:'Dein Name',
+      yourTurn:'DU BIST DRAN', botTurn:'Bot ist dran',
+      roll:'Würfeln', serve:'🏐 Aufschlag', continue:'▶ Weiter', done:'✅ Fertig',
+      bid:'Bieten', pass:'Passen', skip:'⏭ Skip',
+      redcard:'ROTE KARTE', transfer:'TRANSFER', action:'AKTIONSKARTE',
+      vnl:'VNL', injury:'VERLETZUNG', league:'LIGASPIEL',
+      cup:'POKAL', cl:'CHAMPIONS LEAGUE', supercup:'SUPER CUP',
+      front:'Vorne', back:'Hinten', bench:'Bank',
+      strength:'Stärke', money:'Geld', vp:'VP', lp:'LP',
+      win:'SIEG!', loss:'NIEDERLAGE', draw:'UNENTSCHIEDEN',
+      market:'Markt', sell:'Verkaufen', buy:'Kaufen', cancel:'Abbrechen',
+      next:'Weiter', ok:'OK', confirm:'Bestätigen',
+      seasonEnd:'Saisonende', protect:'Schützen', steal:'Klauen'
+    },
+    en: {
+      week:'WEEK', day:'Day', of:'of', start:'PLAY', name:'Your name',
+      yourTurn:'YOUR TURN', botTurn:'Bot is playing',
+      roll:'Roll', serve:'🏐 Serve', continue:'▶ Continue', done:'✅ Done',
+      bid:'Bid', pass:'Pass', skip:'⏭ Skip',
+      redcard:'RED CARD', transfer:'TRANSFER', action:'ACTION CARD',
+      vnl:'VNL', injury:'INJURY', league:'LEAGUE MATCH',
+      cup:'CUP', cl:'CHAMPIONS LEAGUE', supercup:'SUPER CUP',
+      front:'Front', back:'Back', bench:'Bench',
+      strength:'Strength', money:'Money', vp:'VP', lp:'LP',
+      win:'WIN!', loss:'LOSS', draw:'DRAW',
+      market:'Market', sell:'Sell', buy:'Buy', cancel:'Cancel',
+      next:'Next', ok:'OK', confirm:'Confirm',
+      seasonEnd:'Season End', protect:'Protect', steal:'Steal'
     }
-  }
-  return all;
-}
-let ALL_CARDS = [];
+  };
+  const T = (key) => (I18N[state.lang] && I18N[state.lang][key]) || I18N.en[key] || key;
 
-// ────────────────────────────────────────────────────────────────
-//  State
-// ────────────────────────────────────────────────────────────────
-const state = {
-  lang: localStorage.getItem('vv_lang') || 'de',
-  soundOn: localStorage.getItem('vv_sound') === '1',
-  view: 'splash',
-  introIdx: 0,
-  playerName: localStorage.getItem('vv_name') || '',
-  mode: null,
-  speed: localStorage.getItem('vv_speed') || 'normal',
-  game: null,
-  skipping: false,
-};
-
-// ────────────────────────────────────────────────────────────────
-//  Toast / log / flash / beep
-// ────────────────────────────────────────────────────────────────
-function toast(msg, kind='', ms=2500) {
-  const layer = $('#toast-layer'); if (!layer) return;
-  const el = document.createElement('div');
-  el.className = 'toast' + (kind ? ' '+kind : '');
-  el.textContent = msg;
-  layer.appendChild(el);
-  setTimeout(() => { el.style.opacity='0'; el.style.transition='opacity 0.3s'; setTimeout(()=>el.remove(),300); }, ms);
-}
-function flash(kind='win') {
-  let f = $('#flash');
-  if (!f) { f = document.createElement('div'); f.id='flash'; f.className='flash'; document.body.appendChild(f); }
-  f.className = 'flash ' + kind;
-  requestAnimationFrame(() => { f.classList.add('show'); setTimeout(()=>f.classList.remove('show'), 700); });
-}
-function logEntry(text, kind='') {
-  state.game && state.game.log.push({ text, kind });
-  // Try the floating log first, fall back to inline
-  const containers = [$('#log-feed'), $('#log')].filter(Boolean);
-  if (!containers.length) return;
-  for (const log of containers) {
-    const e = document.createElement('div');
-    e.className = 'log-entry' + (kind ? ' ' + kind : '');
-    e.innerHTML = `<span class="ts">${new Date().toLocaleTimeString('de-CH', {hour:'2-digit',minute:'2-digit'})}</span>${text}`;
-    log.appendChild(e);
-    log.scrollTop = log.scrollHeight;
-    while (log.children.length > 100) log.removeChild(log.firstChild);
-  }
-}
-
-function ensureFloatingLog() {
-  // Log is now in the fixed #log element in gbot — no floating panel needed
-  let lp = document.getElementById('log-panel');
-  if (lp) lp.style.display = 'none';
-}
-function skipAll() {
-  // Activate global skip mode — all sleeps/waits resolve immediately for 3s
-  state.skipping = true;
-  // Fire ALL known waiters to unstick game loop
-  ['coneRollNow','coneContinue','continueAfterMatch','serveOnce','endMarket',
-   'auctionBid','auctionPass','transferBid','transferPass'].forEach(e => fire(e));
-  // Resolve any inline transfer bids
-  const tpb = document.getElementById('transfer-pass-btn');
-  if (tpb) tpb.click();
-  // Auto-close all modals
-  document.querySelectorAll('.modal-popup').forEach(m => m.remove());
-  // Reset dice button
-  const dpBtn = document.getElementById('dice-panel-btn');
-  if (dpBtn) { dpBtn.disabled = true; dpBtn.classList.remove('pulse'); }
-  // Turn off skip mode after 3 seconds — gives the loop time to fast-forward
-  setTimeout(() => { state.skipping = false; }, 3000);
-  toast(state.lang==='de' ? '⏭ Überspringen…' : '⏭ Skipping…', 'gold', 1500);
-}
-
-function toggleLog() {
-  const lp = document.getElementById('log-panel'); if (!lp) return;
-  lp.classList.toggle('expanded');
-  lp.classList.toggle('collapsed');
-  ensureFloatingLog();
-  // restore scrollback after re-render
-  if (state.game) for (const e of state.game.log.slice(-30)) {
-    const f = document.getElementById('log-feed');
-    if (!f) break;
-    const el = document.createElement('div');
-    el.className = 'log-entry' + (e.kind?' '+e.kind:'');
-    el.innerHTML = `<span class="ts">·</span>${e.text}`;
-    f.appendChild(el);
-  }
-}
-let audioCtx = null;
-function beep(freq=440, dur=80, type='square', vol=0.05) {
-  if (!state.soundOn) return;
-  try {
-    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-    const o = audioCtx.createOscillator(); const g = audioCtx.createGain();
-    o.type = type; o.frequency.value = freq; g.gain.value = vol;
-    o.connect(g).connect(audioCtx.destination);
-    o.start(); o.stop(audioCtx.currentTime + dur/1000);
-  } catch (e) {}
-}
-
-// ────────────────────────────────────────────────────────────────
-//  View switching
-// ────────────────────────────────────────────────────────────────
-function setView(v) {
-  state.view = v;
-  document.getElementById('app').dataset.view = v;
-  render();
-  window.scrollTo(0, 0);
-  // Hide floating log + panel outside game
-  const lp = document.getElementById('log-panel'); if (lp) lp.style.display = (v === 'game') ? '' : 'none';
-  const fp = document.getElementById('floating-panel'); if (fp) fp.style.display = (v === 'game') ? '' : 'none';
-}
-function setLang(l) {
-  state.lang = l;
-  localStorage.setItem('vv_lang', l);
-  document.documentElement.lang = l;
-  render();
-}
-function setSpeed(s) {
-  state.speed = s;
-  localStorage.setItem('vv_speed', s);
-  // Re-render speed toggle buttons only — never re-render the full page
-  // as that destroys the running async game loop
-  document.querySelectorAll('.speed-toggle-wrap .lang-pill').forEach(btn => {
-    btn.classList.toggle('active', btn.getAttribute('onclick').includes("'"+s+"'"));
-  });
-  // If switching to auto, fire any pending waiters so the loop continues
-  if (s === 'auto') {
-    fire('coneRollNow');
-    fire('coneContinue');
-    fire('continueAfterMatch');
-    fire('serveOnce');
-    fire('endMarket');
-  }
-  // Update dice panel button state
-  const dpBtn = document.getElementById('dice-panel-btn');
-  if (dpBtn && s === 'auto') { dpBtn.disabled = true; dpBtn.classList.remove('pulse'); }
-}
-
-// Wait/fire helpers
-const _waiters = {};
-// Global skip state — when true, all sleeps/waits resolve immediately
-state.skipping = false;
-function skipMs(ms) { return state.skipping ? 0 : ms; }
-
-function waitFor(name, autoMs) {
-  return new Promise(resolve => {
-    // If skipping, resolve immediately
-    if (state.skipping) { setTimeout(resolve, 0); return; }
-    if (!name) { setTimeout(resolve, autoMs||1); return; }
-    _waiters[name] = resolve;
-    if (autoMs) setTimeout(() => { if (_waiters[name]) { delete _waiters[name]; resolve(); } }, autoMs);
-    // Safety net: if someone forgets timeout, max wait 30s for ANY waiter
-    setTimeout(() => { if (_waiters[name]) { delete _waiters[name]; resolve(); } }, 30000);
-  });
-}
-function fire(name, val) {
-  const r = _waiters[name];
-  if (r) { delete _waiters[name]; r(val); }
-}
-
-// ────────────────────────────────────────────────────────────────
-//  Position helpers
-// ────────────────────────────────────────────────────────────────
-const POSITIONS = ['outside','outside2','middle','setter','diagonal','libero'];
-const POS_COLORS = { outside:'#e84317', outside2:'#e84317', middle:'#16a34a', setter:'#0ea5e9', diagonal:'#4f46e5', libero:'#ca8a04' };
-function posShort(p) { return T('pos_short_'+p); }
-function posLabel(p) { return T('pos_'+p); }
-function posColor(p) { return POS_COLORS[p]; }
-
-function teamStrength(p) {
-  return POSITIONS.reduce((s,k) => s + ((p.team[k] && !p.team[k].disabled ? p.team[k].stars : 0)), 0);
-}
-function teamFront(p) { return ['outside','middle','setter'].reduce((s,k) => s + ((p.team[k]&&!p.team[k].disabled?p.team[k].stars:0)),0); }
-function teamBack(p)  { return ((p.team.libero&&!p.team.libero.disabled?p.team.libero.stars:0)) + ((p.team.diagonal&&!p.team.diagonal.disabled?p.team.diagonal.stars:0)) + ((p.team.outside&&!p.team.outside.disabled?p.team.outside.stars:0)/2) + ((p.team.outside2&&!p.team.outside2.disabled?p.team.outside2.stars:0)/2); }
-function teamBlock(p) { return ['outside','middle'].reduce((s,k) => s + ((p.team[k]&&!p.team[k].disabled?p.team[k].stars:0)),0); }
-
-
-// ────────────────────────────────────────────────────────────────
-//  3D DICE — improved (multi-type, animated, pretty)
-// ────────────────────────────────────────────────────────────────
-function performDiceRoll(type) {
-  const value = roll(type);
-  return animateDicePanel(type, value).then(() => value);
-}
-
-function animateDicePanel(type, finalValue) {
-  const lbl = document.getElementById('dice-panel-label');
-  if (lbl) lbl.textContent = '🎲 D' + type;
-  const res = document.getElementById('dice-panel-result');
-  const btn = document.getElementById('dice-panel-btn');
-  if (btn) btn.disabled = true;
-  if (!res) return Promise.resolve();
-  // If skipping, finish instantly
-  if (state.skipping) {
-    res.textContent = finalValue;
-    res.className = 'dice-panel-result landed';
-    const numEl = document.getElementById('dice-num');
-    if (numEl) numEl.textContent = finalValue;
-    return Promise.resolve();
-  }
-  return new Promise(resolve => {
-    res.className = 'dice-panel-result shuffling';
-    const dur = speedMs(900);
-    const interval = setInterval(() => {
-      if (state.skipping) { clearInterval(interval); finish(); return; }
-      res.textContent = Math.floor(Math.random() * type) + 1;
-    }, 80);
-    function finish() {
-      clearInterval(interval);
-      res.textContent = finalValue;
-      res.className = 'dice-panel-result landed';
-      const numEl = document.getElementById('dice-num');
-      if (numEl) numEl.textContent = finalValue;
-      beep(680 + finalValue * 15, 90);
-      resolve();
+  // Board grid — percentage coordinates of the 48 spaces (6 weeks × 8 days).
+  // The board image is 1254x1254. Numbering: snake by week, day 1 at the
+  // start of each week. Week 1 top, week 6 bottom.
+  const BOARD_GRID = (() => {
+    const grid = [];
+    const weeks = 6, days = 8;
+    const xLeft = 8, xRight = 92;          // percent
+    const yTop  = 12, yBottom = 88;        // percent
+    const xStep = (xRight - xLeft) / (days - 1);
+    const yStep = (yBottom - yTop) / (weeks - 1);
+    for (let w = 0; w < weeks; w++) {
+      for (let d = 0; d < days; d++) {
+        const left = xLeft + d * xStep;
+        const top  = yTop  + w * yStep;
+        grid.push({ leftPct: left, topPct: top, week: w + 1, day: d + 1 });
+      }
     }
-    setTimeout(finish, dur);
-  });
-}
+    return grid;
+  })();
 
-// dicePanel_roll: called by the dice panel button — fires the current waiter
-function dicePanel_roll() {
-  const btn = document.getElementById('dice-panel-btn');
-  if (btn && btn.disabled) return;
-  // Fire whichever waiter is currently active
-  if (_waiters['serveOnce'])        { fire('serveOnce'); return; }
-  if (_waiters['coneRollNow'])      { fire('coneRollNow'); return; }
-  if (_waiters['coneContinue'])     { fire('coneContinue'); return; }
-  if (_waiters['continueAfterMatch']){ fire('continueAfterMatch'); return; }
-  if (_waiters['endMarket'])        { fire('endMarket'); return; }
-}
-
-
-// ────────────────────────────────────────────────────────────────
-//  CONFETTI (canvas)
-// ────────────────────────────────────────────────────────────────
-let confettiAnim = null;
-function startConfetti(durationMs = 8000) {
-  const c = $('#confetti'); if (!c) return;
-  const ctx = c.getContext('2d');
-  function resize() { c.width = innerWidth; c.height = innerHeight; }
-  resize(); window.addEventListener('resize', resize);
-  const colors = ['#e84317','#f97316','#f59e0b','#facc15','#fff','#0ea5e9','#16a34a'];
-  const N = 180;
-  const parts = Array.from({length:N}, () => ({
-    x: Math.random()*c.width, y: -20 - Math.random()*c.height*0.5,
-    vx: -2 + Math.random()*4, vy: 2 + Math.random()*5,
-    r: 4 + Math.random()*7, color: choice(colors), rot: Math.random()*Math.PI*2, vrot: -0.2 + Math.random()*0.4,
-    shape: Math.random() < 0.5 ? 'rect' : 'circle',
-  }));
-  const start = performance.now();
-  function frame(t) {
-    ctx.clearRect(0,0,c.width,c.height);
-    for (const p of parts) {
-      p.x += p.vx; p.y += p.vy; p.vy += 0.07; p.rot += p.vrot;
-      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
-      ctx.fillStyle = p.color;
-      if (p.shape === 'rect') ctx.fillRect(-p.r/2, -p.r/4, p.r, p.r/2);
-      else { ctx.beginPath(); ctx.arc(0, 0, p.r/2, 0, Math.PI*2); ctx.fill(); }
-      ctx.restore();
-    }
-    if (t - start < durationMs) confettiAnim = requestAnimationFrame(frame);
-    else { ctx.clearRect(0,0,c.width,c.height); confettiAnim = null; }
+  // =================================================================
+  // 2. INLINE VV_BOTS FALLBACK
+  // (game-bots.js may fail to load — keep a minimal substitute.)
+  // =================================================================
+  if (!window.VV_BOTS) {
+    window.VV_BOTS = {
+      POSITIONS: POSITIONS.slice(),
+      pickPersonas: (n) => {
+        const arr = [{name:'Bot A',style:'balanced',emoji:'🤖'},
+                     {name:'Bot B',style:'aggressive',emoji:'🤖'},
+                     {name:'Bot C',style:'defensive',emoji:'🤖'}];
+        return arr.slice(0, n);
+      },
+      shouldBid: () => ({ pass: true }),
+      pickMarketBuy: () => null,
+      pickProtect: () => 'outside',
+      pickSteal:   () => null,
+      targetSlotFor: (bot, p) => p
+    };
   }
-  cancelAnimationFrame(confettiAnim);
-  confettiAnim = requestAnimationFrame(frame);
-}
 
-// ────────────────────────────────────────────────────────────────
-//  BOOT, INTRO, MENU
-// ────────────────────────────────────────────────────────────────
-function boot() {
-  ALL_CARDS = buildAllCards();
-  const stBtn = $('#sound-toggle');
-  if (stBtn) {
-    stBtn.hidden = false;
-    stBtn.textContent = state.soundOn ? '🔊' : '🔇';
-    stBtn.addEventListener('click', () => {
-      state.soundOn = !state.soundOn;
-      localStorage.setItem('vv_sound', state.soundOn?'1':'0');
-      stBtn.textContent = state.soundOn ? '🔊' : '🔇';
-      if (state.soundOn) beep(660, 80);
+  // =================================================================
+  // 3. STATE
+  // =================================================================
+  const state = {
+    lang: 'de',
+    view: 'splash',           // splash | setup | draft | auction | game | result
+    speed: 'normal',          // normal | fast | auto
+    skipping: false,
+    game: null                // populated by initSoloGame()
+  };
+
+  // Make state accessible from devtools.
+  window.VV_STATE = state;
+
+  // =================================================================
+  // 4. UTILITIES & DOM HELPERS
+  // =================================================================
+  const $  = (sel, root) => (root || document).querySelector(sel);
+  const $$ = (sel, root) => Array.prototype.slice.call((root || document).querySelectorAll(sel));
+
+  const esc = (s) => String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+  const fmtMoney = (n) => (n || 0).toLocaleString('de-CH').replace(/,/g, "'") + '';
+  const stars = (n) => '★'.repeat(n) + '☆'.repeat(Math.max(0, 5 - n));
+  const rand = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+  const choice = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const shuffle = (arr) => {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  };
+
+  // skip-aware sleep — see spec §4.3
+  const sleep = (ms) => new Promise(r => setTimeout(r, state.skipping ? 0 : ms));
+
+  // Speed lookup
+  const ms = (key) => SPEED[state.speed][key];
+
+  // =================================================================
+  // 5. WAIT / FIRE SYSTEM (Promise-based async game flow)
+  // =================================================================
+  const _waiters = {};
+  function waitFor(name, autoMs) {
+    return new Promise((resolve) => {
+      // Skip-aware first: if skip is active, resolve immediately.
+      if (state.skipping) { setTimeout(resolve, 0); return; }
+      _waiters[name] = resolve;
+      // Optional auto-fire (e.g. fast-mode timeout).
+      if (autoMs && autoMs > 0) {
+        setTimeout(() => {
+          if (_waiters[name] === resolve) { delete _waiters[name]; resolve(); }
+        }, autoMs);
+      }
+      // 30-second safety net — never let the loop hang permanently.
+      setTimeout(() => {
+        if (_waiters[name] === resolve) { delete _waiters[name]; resolve(); }
+      }, 30000);
     });
   }
-  const seenIntro = localStorage.getItem('vv_seenIntro') === '1';
-  setView(seenIntro ? 'menu' : 'intro');
-}
+  function fire(name) {
+    const r = _waiters[name];
+    if (r) { delete _waiters[name]; r(); }
+  }
 
-function renderIntro() {
-  const app = $('#app');
-  const slides = [
-    { icon:'🏗️', h:T('intro1_h'), p:T('intro1_p') },
-    { icon:'🏆', h:T('intro2_h'), p:T('intro2_p') },
-    { icon:'🎯', h:T('intro3_h'), p:T('intro3_p') },
-  ];
-  const idx = state.introIdx;
-  app.innerHTML = `
-    <div class="intro">
-      <div style="display:flex; gap:0.5rem; align-items:center;">
-        <span class="lang-pill ${state.lang==='de'?'active':''}" onclick="VV.setLang('de')">DE</span>
-        <span class="lang-pill ${state.lang==='en'?'active':''}" onclick="VV.setLang('en')">EN</span>
-      </div>
-      <div class="intro-slides">
-        ${slides.map((s,i)=>`
-          <div class="intro-slide ${i===idx?'active':''}">
-            <div class="intro-icon">${s.icon}</div>
-            <div class="intro-h ${i===1?'accent':''}">${s.h}</div>
-            <div class="intro-p">${s.p}</div>
-          </div>`).join('')}
-      </div>
-      <div class="intro-dots">${slides.map((_,i)=>`<span class="intro-dot ${i===idx?'active':''}"></span>`).join('')}</div>
-      <div class="intro-actions">
-        <button class="btn btn-secondary" onclick="VV.skipIntro()">${T('intro_skip')}</button>
-        <button class="btn btn-primary" onclick="VV.advanceIntro()">${idx===slides.length-1?T('intro_start'):T('intro_next')}</button>
-      </div>
-    </div>`;
-}
-function advanceIntro() {
-  if (state.introIdx >= 2) { localStorage.setItem('vv_seenIntro','1'); setView('menu'); return; }
-  state.introIdx += 1; renderIntro();
-}
-function skipIntro() { localStorage.setItem('vv_seenIntro','1'); setView('menu'); }
+  function skipAll() {
+    state.skipping = true;
+    ['coneRollNow','coneContinue','continueAfterMatch','serveOnce','endMarket',
+     'inlineBid','draftDone','auctionDone','seasonContinue','protectChosen',
+     'stealChosen']
+      .forEach(fire);
+    // Force-close any modals/popups
+    $$('.modal-popup, .event-popup-banner, .turn-banner, .market-modal-back, .result-overlay')
+      .forEach(el => el.remove());
+    setTimeout(() => { state.skipping = false; }, 3000);
+    log('⏭ Übersprungen', 'system');
+  }
 
-function renderMenu() {
-  const app = $('#app');
-  app.innerHTML = `
-    <div class="menu-wrap">
-      <div class="menu-card">
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1.4rem;">
-          <div class="menu-title"><span>${T('menu_title_l1')}</span> <span class="accent">${T('menu_title_l2')}</span></div>
-          <div style="display:flex; gap:0.4rem;">
-            <span class="lang-pill ${state.lang==='de'?'active':''}" onclick="VV.setLang('de')">DE</span>
-            <span class="lang-pill ${state.lang==='en'?'active':''}" onclick="VV.setLang('en')">EN</span>
-          </div>
-        </div>
-        <div class="menu-sub">${T('menu_sub')}</div>
-        <div class="menu-row">
-          <label class="label">${T('menu_name_label')}</label>
-          <input class="input" id="player-name" placeholder="${T('menu_name_ph')}" value="${escapeHTML(state.playerName)}" maxlength="20"/>
-        </div>
-        <div class="menu-actions">
-          <button class="btn btn-primary btn-large" data-tip="${T('menu_solo_t')}" onclick="VV.startSolo()">${T('menu_solo')} ▸</button>
-          <button class="btn btn-secondary btn-large" data-tip="${T('menu_mp_t')}" onclick="VV.openMultiplayer()">${T('menu_mp')} ▸</button>
-        </div>
-      </div>
-    </div>`;
-}
+  // =================================================================
+  // 6. CARD & TEAM HELPERS
+  // =================================================================
+  function emptyTeam() {
+    const t = {};
+    POSITIONS.forEach(p => t[p] = null);
+    return t;
+  }
 
-function startSolo() {
-  const name = ($('#player-name')||{}).value || state.playerName || (state.lang==='de'?'Spieler':'Player');
-  state.playerName = name.trim().slice(0,20) || (state.lang==='de'?'Spieler':'Player');
-  localStorage.setItem('vv_name', state.playerName);
-  state.mode = 'solo';
-  initSoloGame();
-  setView('draft');
-}
-function openMultiplayer() {
-  const name = ($('#player-name')||{}).value || state.playerName || '';
-  state.playerName = name.trim().slice(0,20);
-  localStorage.setItem('vv_name', state.playerName);
-  if (!state.playerName) { toast(state.lang==='de'?'Bitte zuerst einen Namen eingeben.':'Please enter a name first.', 'bad'); return; }
-  setView('mp_submenu');
-}
+  function teamStarters(team) {
+    return POSITIONS.map(p => team[p]).filter(Boolean);
+  }
 
-function renderMpSubmenu() {
-  const app = $('#app');
-  const mpAvail = window.VV_FIREBASE && window.VV_FIREBASE.isAvailable();
-  app.innerHTML = `
-    <div class="menu-wrap">
-      <div class="menu-card">
-        <button class="menu-back" onclick="VV.setView('menu')">‹ ${T('menu_back')}</button>
-        <div class="menu-title"><span class="accent">${T('menu_mp')}</span></div>
-        <div class="menu-sub">${escapeHTML(state.playerName)}</div>
-        ${!mpAvail ? `<div class="toast bad" style="margin-bottom:1rem; pointer-events:auto;">${T('mp_unavailable')}</div>` : ''}
-        <div class="menu-actions">
-          <button class="btn btn-primary btn-large" ${!mpAvail?'disabled':''} data-tip="${T('mp_create_t')}" onclick="VV.createRoom()">${T('mp_create')} ▸</button>
-          <button class="btn btn-secondary btn-large" ${!mpAvail?'disabled':''} data-tip="${T('mp_join_t')}" onclick="VV.showJoinForm()">${T('mp_join')} ▸</button>
-        </div>
-      </div>
-    </div>`;
-}
-function createRoom() { toast(T('mp_unavailable'), 'bad', 4000); }
-function showJoinForm() { toast(T('mp_unavailable'), 'bad', 4000); }
+  function teamStrength(team) {
+    return teamStarters(team).reduce((sum, c) => sum + (c.stars || 0), 0);
+  }
 
+  function teamFront(team) {
+    return FRONT_ROW.map(p => team[p]).filter(Boolean);
+  }
+  function teamBack(team) {
+    return BACK_ROW.map(p => team[p]).filter(Boolean);
+  }
 
-// ────────────────────────────────────────────────────────────────
-//  GAME INIT
-// ────────────────────────────────────────────────────────────────
-function makePlayer(name, color, emoji, isHuman, personality, biasPos) {
-  return {
-    id: uid(), name, color, emoji, isHuman: !!isHuman, personality: personality || 'balanced', biasPos: biasPos || 'outside',
-    money: 80000, vp: 0,
-    team: { outside:null, outside2:null, middle:null, setter:null, diagonal:null, libero:null },
-    bench: [],
-    suspended: [], // [{ card, pos, reason }] — players sidelined by Red Card / Injury / VNL until next league match
-    matchesWon: 0, totalEarned: 0,
-    leaguePoints: 0,
-    flag: choice(['IT','BR','PL','FR','USA','RU','JP','SLO']),
-    starterIdx: 0,  // who the starting player is (set after starting roll)
-  };
-}
+  // Where does an arriving card go on this player's team?
+  function placeIntoTeamOrBench(player, card) {
+    if (!player || !card) return;
+    if (card.pos === 'outside') {
+      if (!player.team.outside)  { player.team.outside  = card; return 'outside'; }
+      if (!player.team.outside2) { player.team.outside2 = card; return 'outside2'; }
+      // Both filled — replace weaker, bench old one.
+      const a = player.team.outside, b = player.team.outside2;
+      const weakerSlot = (a.stars <= b.stars) ? 'outside' : 'outside2';
+      const ousted = player.team[weakerSlot];
+      if (card.stars > ousted.stars) {
+        player.team[weakerSlot] = card;
+        player.bench.push(ousted);
+        return weakerSlot;
+      }
+      player.bench.push(card);
+      return 'bench';
+    }
+    const slot = card.pos;
+    if (!player.team[slot]) { player.team[slot] = card; return slot; }
+    const existing = player.team[slot];
+    if (card.stars > existing.stars) {
+      player.team[slot] = card;
+      player.bench.push(existing);
+      return slot;
+    }
+    player.bench.push(card);
+    return 'bench';
+  }
 
-function initSoloGame() {
-  ALL_CARDS = buildAllCards();
-  // Ensure VV_BOTS is available (fallback if game-bots.js not loaded)
-  if (!window.VV_BOTS) {
-    const PERSONAS_FB = [
-      { name:'Karch',color:'#0ea5e9',emoji:'🔵',personality:'aggressive',biasPos:'outside' },
-      { name:'Giba',color:'#16a34a',emoji:'🟢',personality:'balanced',biasPos:'middle' },
-      { name:'Zaitsev',color:'#a855f7',emoji:'🟣',personality:'defensive',biasPos:'libero' },
-      { name:'Earvin',color:'#e84317',emoji:'🔴',personality:'aggressive',biasPos:'diagonal' },
-      { name:'Wilfredo',color:'#facc15',emoji:'🟡',personality:'balanced',biasPos:'setter' },
-      { name:'Saeid',color:'#f97316',emoji:'🟠',personality:'aggressive',biasPos:'outside' },
-    ];
-    window.VV_BOTS = {
-      pickPersonas: n => PERSONAS_FB.slice().sort(()=>Math.random()-0.5).slice(0,n),
-      shouldBid: (bot,card,currentBid,minBid) => {
-        if (bot.money < minBid) return {pass:true};
-        const val = card.stars*11000; const bid = Math.min(minBid+2000, val, bot.money);
-        return bid > currentBid ? {bid:Math.round(bid/1000)*1000} : {pass:true};
-      },
-      pickMarketBuy: (bot,market) => {
-        const pos = Object.entries(bot.team).sort((a,b)=>((a[1]&&a[1].stars)||0)-((b[1]&&b[1].stars)||0))[0][0];
-        const c = market.filter(c=>c.pos===pos&&c.price<=bot.money).sort((a,b)=>b.stars-a.stars)[0];
-        return c && Math.random()<0.85 ? c : null;
-      },
+  // Replacement: when a starter is removed (red card / injury / VNL),
+  // move them to bench and try to substitute from bench-same-position;
+  // otherwise auto-buy a 1-star for 10k.
+  function replaceStarter(player, slot, reason) {
+    const removed = player.team[slot];
+    if (!removed) return;
+    player.team[slot] = null;
+    if (reason === 'injury') player.injured = (player.injured || []).concat([{card:removed, slot:slot}]);
+    else if (reason === 'redcard') player.redcards = (player.redcards || []).concat([{card:removed, slot:slot}]);
+    else if (reason === 'vnl') player.vnl = (player.vnl || []).concat([{card:removed, slot:slot}]);
+    else player.bench.push(removed);
+
+    // Try a bench substitute (same logical position)
+    const wantPos = (slot === 'outside2') ? 'outside' : slot;
+    const idx = player.bench.findIndex(c => c.pos === wantPos);
+    if (idx >= 0) {
+      const sub = player.bench.splice(idx, 1)[0];
+      player.team[slot] = sub;
+      log(`🔄 ${esc(player.name)} ersetzt ${esc(removed.name)} mit ${esc(sub.name)}`, 'system');
+    } else if (player.money >= 10000) {
+      // Auto-buy a 1-star at the right position.
+      const oneStar = state.game.cards.find(c =>
+        c.stars === 1 && c.pos === wantPos && !cardOwned(c));
+      if (oneStar) {
+        player.money -= 10000;
+        player.team[slot] = oneStar;
+        log(`💰 ${esc(player.name)} kauft 1★ ${esc(oneStar.name)} für 10k`, 'event');
+      }
+    }
+  }
+
+  // Bring back red-card / injury / VNL players after the next league match.
+  function restoreSidelined(player) {
+    ['injured','redcards','vnl'].forEach(bucket => {
+      const arr = player[bucket] || [];
+      arr.forEach(({card, slot}) => {
+        if (!player.team[slot]) player.team[slot] = card;
+        else player.bench.push(card);
+      });
+      player[bucket] = [];
+    });
+  }
+
+  function cardOwned(card) {
+    if (!state.game) return false;
+    for (const p of state.game.players) {
+      if (Object.values(p.team).some(c => c && c.id === card.id)) return true;
+      if (p.bench.some(c => c && c.id === card.id)) return true;
+    }
+    return false;
+  }
+
+  function deckHas(card) {
+    return state.game.auctionDeck.some(c => c.id === card.id);
+  }
+
+  // =================================================================
+  // 7. PLAYER FACTORY
+  // =================================================================
+  function makePlayer(name, isHuman, persona) {
+    return {
+      id: 'p' + Math.random().toString(36).slice(2, 8),
+      name: name,
+      isHuman: !!isHuman,
+      style: (persona && persona.style) || 'balanced',
+      emoji: (persona && persona.emoji) || (isHuman ? '🧑' : '🤖'),
+      money: 80000,
+      vp: 0,
+      lp: 0,
+      cupWins: 0,
+      seasonsPlayed: 0,
+      team: emptyTeam(),
+      bench: [],
+      injured: [],
+      redcards: [],
+      vnl: []
     };
   }
-  const human = makePlayer(state.playerName, '#facc15', '🟡', true, 'balanced', 'outside');
-  const bots = window.VV_BOTS.pickPersonas(3);
-  const bot1 = makePlayer('Bot ' + bots[0].name, bots[0].color, bots[0].emoji, false, bots[0].personality, bots[0].biasPos);
-  const bot2 = makePlayer('Bot ' + bots[1].name, bots[1].color, bots[1].emoji, false, bots[1].personality, bots[1].biasPos);
-  const bot3 = makePlayer('Bot ' + bots[2].name, bots[2].color, bots[2].emoji, false, bots[2].personality, bots[2].biasPos);
-  state.game = {
-    players: [human, bot1, bot2, bot3],
-    activeIdx: 0,
-    week: 0,
-    phase: 'draft',
-    log: [],
-    market: [],
-    auctionDeck: [],   // shuffled 2-5 star cards for in-game auctions/transfers
-    drafted: 0,        // how many players completed their draft
-    coneDay: 1,        // black cone position on the timeline (day 1 → 50)
-    weekResults: [],
-    over: false, winner: null,
-    leagueMatchesPlayed: 0,
-  };
-  // Build auction deck: all 2-5 star cards (1-star are fixed-price separate)
-  const aDeck = ALL_CARDS.filter(c => c.stars >= 2).slice().sort(()=>Math.random()-0.5);
-  state.game.auctionDeck = aDeck;
-}
 
-// ────────────────────────────────────────────────────────────────
-//  BLIND DRAFT (Setup Step 2 from rulebook)
-// ────────────────────────────────────────────────────────────────
-function setupTeamPanelHtml(p) {
-  const s = p.team;
-  const bench = p.bench || [];
-  const positions = ['outside','middle','setter','diagonal','libero'];
-  return `
-    <div style="font-size:0.68rem; letter-spacing:3px; text-transform:uppercase; color:var(--silver); margin-bottom:0.6rem; display:flex; justify-content:space-between;">
-      <span>🏐 ${state.lang==='de'?'Mein Team':'My Team'}</span>
-      <span style="color:var(--gold)">★ ${teamStrength(p)} · ${fmtMoney(p.money)}'</span>
-    </div>
-    <div class="vb-formation" style="margin-bottom:0.5rem;">
-      <div class="vb-net-line"></div>
-      <div class="vb-row-label">${state.lang==='de'?'Vorne':'Front'}</div>
-      <div class="vb-row vb-row-3">
-        ${setupSlotHtml(s.middle,   'middle')}
-        ${setupSlotHtml(s.outside,  'outside')}
-        ${setupSlotHtml(s.setter,   'setter')}
-      </div>
-      <div class="vb-row-label" style="margin-top:0.4rem">${state.lang==='de'?'Hinten':'Back'}</div>
-      <div class="vb-row vb-row-3">
-        ${setupSlotHtml(s.diagonal, 'diagonal')}
-        ${setupSlotHtml(s.outside2, 'outside2')}
-        ${setupSlotHtml(s.libero,   'libero')}
-      </div>
-    </div>
-    ${bench.length ? `<div style="font-size:0.6rem; letter-spacing:2px; text-transform:uppercase; color:rgba(255,255,255,0.3); margin-bottom:0.3rem">Bench (${bench.length})</div>
-    <div style="display:flex; flex-wrap:wrap; gap:0.25rem;">
-      ${bench.map(c=>`<div class="slot" style="width:40px;" data-tip="${escapeHTML(c.name)}·${c.stars}★">
-        <span class="pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
-        <img src="${c.url}" alt=""><div class="stars">${'★'.repeat(c.stars)}</div>
-      </div>`).join('')}
-    </div>` : ''}`;
-}
-
-function setupSlotHtml(card, pos) {
-  if (!card) return `<div class="slot empty vb-team-slot" data-tip="${posLabel(pos)}"><span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span></div>`;
-  return `<div class="slot vb-team-slot" data-tip="${escapeHTML(card.name)} · ${card.stars}★">
-    <span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
-    <img src="${card.url}" alt=""><div class="stars">${'★'.repeat(card.stars)}</div>
-  </div>`;
-}
-
-function refreshSetupTeamPanel() {
-  const tp = document.getElementById('setup-team-panel');
-  if (!tp || !state.game) return;
-  tp.innerHTML = setupTeamPanelHtml(state.game.players[0]);
-}
-
-function renderDraft() {
-  const app = $('#app');
-  const g = state.game;
-  const me = g.players[0];
-  const haveCount = me.bench.length + Object.values(me.team).filter(Boolean).length;
-  const stage = computeDraftStage(me);
-  app.innerHTML = `
-    <div class="gh">
-      <div class="gh-logo">VOLLEY VENDETTA</div>
-      <div class="gh-spacer"></div>
-      <div class="gh-mini">${T('setup_h')} · ${T('draft_h')}</div>
-      <div class="gh-lang">
-        <span class="lang-pill ${state.lang==='de'?'active':''}" onclick="VV.setLang('de')">DE</span>
-        <span class="lang-pill ${state.lang==='en'?'active':''}" onclick="VV.setLang('en')">EN</span>
-
-      </div>
-    </div>
-    <div style="padding:1.5rem; display:grid; grid-template-columns:1fr 280px; gap:1.5rem; max-width:1200px; margin:0 auto;">
-      <div>
-        <h2 class="h-cond" style="font-size:2rem; margin-bottom:0.3rem;">${T('draft_h')}</h2>
-        <div style="color:var(--silver); margin-bottom:1.4rem;">${T('draft_p')}</div>
-        <div class="draft-progress">${draftProgressHtml(me)}</div>
-        <div class="draft-actions" id="draft-actions" style="margin-top:1.4rem;">${draftActionsHtml(stage, me)}</div>
-        <div style="margin-top:2rem;">
-          <h3 class="h-cond" style="font-size:1.1rem; margin-bottom:0.6rem;">${T('your')} · ${escapeHTML(me.name)} · ${fmtMoney(me.money)}</h3>
-          <div class="draft-cards" id="draft-cards">${draftHandHtml(me)}</div>
-        </div>
-      </div>
-      <div class="setup-team-panel" id="setup-team-panel">${setupTeamPanelHtml(me)}</div>
-    </div>`;
-}
-
-function computeDraftStage(p) {
-  const counts = countByStars([...p.bench, ...Object.values(p.team).filter(Boolean)]);
-  if (counts[4] < 1) return 'draw_4';
-  if (counts[3] < 2) return 'draw_3';
-  if (counts[2] < 3) return 'draw_2';
-  if (counts[1] < 3) return 'pick_1';
-  return 'done';
-}
-
-function countByStars(cards) {
-  const c = {1:0,2:0,3:0,4:0,5:0};
-  for (const x of cards) if (x) c[x.stars] = (c[x.stars]||0)+1;
-  return c;
-}
-
-function draftProgressHtml(p) {
-  const c = countByStars([...p.bench, ...Object.values(p.team).filter(Boolean)]);
-  const stage = computeDraftStage(p);
-  const items = [
-    { label:'1× 4★', got:c[4], target:1, key:'draw_4' },
-    { label:'2× 3★', got:c[3], target:2, key:'draw_3' },
-    { label:'3× 2★', got:c[2], target:3, key:'draw_2' },
-    { label:'3× 1★', got:c[1], target:3, key:'pick_1' },
-  ];
-  return `<div class="draft-steps">${items.map(i => `
-    <div class="draft-step ${i.got>=i.target?'done':''} ${i.key===stage?'active':''}">
-      <span class="step-num">${i.label}</span>
-      <span class="step-check">${i.got}/${i.target}</span>
-    </div>`).join('')}</div>`;
-}
-
-function draftActionsHtml(stage, p) {
-  if (stage === 'draw_4' || stage === 'draw_3' || stage === 'draw_2') {
-    const stars = stage === 'draw_4' ? 4 : stage === 'draw_3' ? 3 : 2;
-    const stepLabel = T('draft_step_' + stars);
-    // can redraw if there are >3 cards of any single position
-    const counts = {};
-    [...p.bench, ...Object.values(p.team).filter(Boolean)].forEach(c => { counts[c.pos] = (counts[c.pos]||0)+1; });
-    const canRedraw = Object.values(counts).some(v => v > 3);
-    return `<div style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:center;">
-      <span class="label" style="margin-bottom:0;">${stepLabel}</span>
-      <button class="btn btn-primary" onclick="VV.draftDraw(${stars})">${T('draft_pick')} (${stars}★)</button>
-      ${canRedraw ? `<button class="btn btn-secondary" onclick="VV.draftRedraw()">${T('draft_redraw')}</button>` : ''}
-    </div>`;
-  }
-  if (stage === 'pick_1') {
-    return `<div>
-      <div class="label">${T('draft_step_1')}</div>
-      <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.4rem;">
-        ${POSITIONS.map(pos => `<button class="btn btn-ghost" onclick="VV.draftPick1('${pos}')" style="border-left:3px solid ${posColor(pos)};">${posLabel(pos)} ${posShort(pos)}</button>`).join('')}
-      </div>
-    </div>`;
-  }
-  // done
-  return `<button class="btn btn-primary btn-large" onclick="VV.draftFinish()">${T('draft_continue')}</button>`;
-}
-
-function draftHandHtml(p) {
-  const all = [...Object.values(p.team).filter(Boolean), ...p.bench];
-  if (!all.length) return `<div style="color:var(--silver); font-style:italic;">—</div>`;
-  return all.map(c => `
-    <div class="draft-card" data-tip="${c.name} · ${c.stars}★">
-      <span class="pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
-      <img src="${c.url}" alt="" loading="lazy">
-      <div class="draft-stars">${'★'.repeat(c.stars)}</div>
-    </div>`).join('');
-}
-
-function deckPoolForStars(stars) {
-  // Pool of 2-4 stars from auctionDeck-like pool. The blind draft draws from a simulated deck
-  // that includes ALL cards of that star count (so the human and bots all share the same source pool).
-  const g = state.game;
-  if (!g._draftDeck) {
-    // Build a master draft deck from all 2-4 star cards (1-star are picked, not drawn)
-    g._draftDeck = ALL_CARDS.filter(c => c.stars >= 2 && c.stars <= 4).slice().sort(()=>Math.random()-0.5);
-  }
-  const idx = g._draftDeck.findIndex(c => c.stars === stars);
-  if (idx < 0) return null;
-  const card = g._draftDeck.splice(idx, 1)[0];
-  return card;
-}
-
-function placeIntoTeamOrBench(p, card) {
-  // For outside hitters, fill outside first then outside2
-  let slotPos = card.pos;
-  if (card.pos === 'outside' && p.team.outside && !p.team.outside2) slotPos = 'outside2';
-  if (!p.team[slotPos]) {
-    p.team[slotPos] = card;
-  } else if (p.team[slotPos] && p.team[slotPos].stars < card.stars) {
-    // upgrade — old goes to bench
-    p.bench.push(p.team[slotPos]);
-    p.team[slotPos] = card;
-  } else {
-    p.bench.push(card);
-  }
-}
-
-function draftDraw(stars) {
-  const me = state.game.players[0];
-  const c = deckPoolForStars(stars);
-  if (!c) { toast('No cards left', 'bad'); return; }
-  placeIntoTeamOrBench(me, c);
-  beep(740, 60);
-  renderDraft();
-  // Animate: brief flash
-  toast(`+ ${c.name} (${c.stars}★)`, 'good', 1200);
-}
-
-function draftRedraw() {
-  const me = state.game.players[0];
-  // Return all current draft cards to the deck and start over
-  const all = [...Object.values(me.team).filter(Boolean), ...me.bench];
-  for (const c of all) state.game._draftDeck.push(c);
-  state.game._draftDeck.sort(()=>Math.random()-0.5);
-  me.team = { outside:null, outside2:null, middle:null, setter:null, diagonal:null, libero:null };
-  me.bench = [];
-  renderDraft();
-}
-
-function draftPick1(pos) {
-  const me = state.game.players[0];
-  const counts = countByStars([...me.bench, ...Object.values(me.team).filter(Boolean)]);
-  if (counts[1] >= 3) { toast('Already 3× 1★', 'bad'); return; }
-  // Pick a 1-star card of the given position from the pool
-  const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === pos);
-  if (!opts.length) { toast(T('no_card_for_pos')||'No card', 'bad'); return; }
-  const c = choice(opts);
-  placeIntoTeamOrBench(me, c);
-  beep(640, 60);
-  renderDraft();
-}
-
-function draftFinish() {
-  // Now do bot drafts (auto)
-  const g = state.game;
-  for (let i = 1; i < g.players.length; i++) {
-    const bot = g.players[i];
-    autoDraftBot(bot);
-  }
-  // Check that the human has all 5 positions filled (otherwise bench cards fill in)
-  ensureFiveStarter(g.players[0]);
-  state.game.phase = 'auction';
-  setView('auction');
-}
-
-function autoDraftBot(bot) {
-  // Bots receive: 1×4, 2×3, 3×2, 3×1 by position bias
-  const draws = [
-    { stars: 4, n: 1 },
-    { stars: 3, n: 2 },
-    { stars: 2, n: 3 },
-  ];
-  for (const d of draws) for (let i=0; i<d.n; i++) {
-    const c = deckPoolForStars(d.stars);
-    if (c) placeIntoTeamOrBench(bot, c);
-  }
-  // Pick 3× 1★ — prefer positions still empty, then bias position
-  for (let i = 0; i < 3; i++) {
-    const empties = POSITIONS.filter(p => !bot.team[p]);
-    let pos = empties.length ? choice(empties) : (bot.biasPos || choice(POSITIONS));
-    const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === pos);
-    if (opts.length) placeIntoTeamOrBench(bot, choice(opts));
-  }
-  ensureFiveStarter(bot);
-}
-
-function ensureFiveStarter(p) {
-  // Move bench cards into empty starter slots for any unfilled position
-  for (const pos of POSITIONS) {
-    if (!p.team[pos]) {
-      const idx = p.bench.findIndex(c => c.pos === pos);
-      if (idx >= 0) {
-        p.team[pos] = p.bench.splice(idx, 1)[0];
-      }
+  // =================================================================
+  // 8. LOGGING
+  // =================================================================
+  function log(msg, kind) {
+    const list = $('#log-list');
+    if (!list) {
+      console.log('[VV]', msg); return;
     }
-  }
-  // If still empty (rare), pick any 1-star card from the pool
-  for (const pos of POSITIONS) {
-    if (!p.team[pos]) {
-      const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === pos);
-      if (opts.length) p.team[pos] = choice(opts);
-    }
-  }
-}
-
-
-// ────────────────────────────────────────────────────────────────
-//  OPENING AUCTION  (Setup Step 3)
-// ────────────────────────────────────────────────────────────────
-async function renderAuction() {
-  const app = $('#app');
-  app.innerHTML = `
-    <div class="gh">
-      <div class="gh-logo">VOLLEY VENDETTA</div>
-      <div class="gh-spacer"></div>
-      <div class="gh-mini">${T('setup_h')} · ${T('auction_h')}</div>
-      <div class="gh-lang">
-        <span class="lang-pill ${state.lang==='de'?'active':''}" onclick="VV.setLang('de')">DE</span>
-        <span class="lang-pill ${state.lang==='en'?'active':''}" onclick="VV.setLang('en')">EN</span>
-
-      </div>
-    </div>
-    <div style="padding:1.5rem; display:grid; grid-template-columns:1fr 280px; gap:1.5rem; max-width:1200px; margin:0 auto;">
-      <div>
-        <h2 class="h-cond" style="font-size:2rem; margin-bottom:0.3rem;">${T('auction_h')}</h2>
-        <div style="color:var(--silver); margin-bottom:1.4rem;">${T('auction_sub')}</div>
-        <div class="topbar" id="topbar">${state.game.players.map((p,i)=>playerCardHtml(p,i,false)).join('')}</div>
-        <div id="auction-stage" class="stage" style="margin-top:1rem;"></div>
-      </div>
-      <div class="setup-team-panel" id="setup-team-panel">${setupTeamPanelHtml(state.game.players[0])}</div>
-    </div>`;
-  // Run the 6-card auction
-  await runOpeningAuction();
-  // Then proceed to starting roll
-  setView('starting');
-}
-
-async function runOpeningAuction() {
-  const g = state.game;
-  const cards = g.auctionDeck.splice(0, 6);
-  for (let i = 0; i < cards.length; i++) {
-    await runAuctionForCard(cards[i], i+1, cards.length);
-    refreshTopbar();
-    await sleep(speedMs(400));
-  }
-}
-
-async function runAuctionForCard(card, idx, total) {
-  const stage = $('#auction-stage');
-  const minBid = card.stars * 10000;
-  let high = 0; let highBidder = null;
-  // Auction rounds: youngest first (we treat human as youngest), then clockwise
-  let currentBid = 0;
-  let currentHigh = null;
-  // Each round, every player who hasn't passed gets a chance.
-  const order = state.game.players.slice(); // human first (index 0)
-  let active = order.slice();
-  // Keep going until only one player remains willing to bid OR everyone passes
-  let lastBidder = null;
-  let passes = new Set();
-
-  function paint() {
-    stage.innerHTML = `
-      <div class="auction-card">
-        <div class="auction-meta">
-          <div>${fmt(T('auction_card'), idx, total)}</div>
-          <div>${T('auction_minbid')}: <b>${fmtMoney(minBid)}</b></div>
-        </div>
-        <div class="auction-card-row">
-          <img class="ac-img" src="${card.url}" alt="">
-          <div class="ac-info">
-            <div class="ac-pos" style="background:${posColor(card.pos)}">${posShort(card.pos)} · ${posLabel(card.pos)}</div>
-            <div class="ac-stars">${'★'.repeat(card.stars)} <span style="color:var(--silver)">${card.name}</span></div>
-            <div class="ac-bid">
-              <div>${T('auction_currentbid')}: <b style="color:var(--gold)">${currentBid?fmtMoney(currentBid):'—'}</b>${currentHigh?` <span style="color:var(--silver)">(${escapeHTML(currentHigh.name)})</span>`:''}</div>
-            </div>
-          </div>
-        </div>
-        <div id="auction-input"></div>
-        <div id="auction-feed" class="auction-feed"></div>
-      </div>`;
-  }
-  paint();
-
-  // Loop rounds
-  while (true) {
-    let bidThisRound = false;
-    for (const p of order) {
-      if (passes.has(p.id)) continue;
-      if (p.id === lastBidder) continue; // don't bid against yourself when you're already high
-      paint();
-      const minNext = currentBid > 0 ? currentBid + 1000 : minBid;
-      if (p.isHuman) {
-        // Human input
-        const result = await humanBidPrompt(p, card, minNext);
-        if (result.pass) {
-          passes.add(p.id);
-          appendAuctionFeed(`${p.emoji} ${escapeHTML(p.name)} → ${T('auction_pass')}`);
-        } else {
-          if (result.bid > p.money) { toast(state.lang==='de'?'Nicht genug Geld':'Not enough money', 'bad'); passes.add(p.id); continue; }
-          if (result.bid < minNext) { toast(state.lang==='de'?'Gebot zu niedrig':'Bid too low', 'bad'); passes.add(p.id); continue; }
-          currentBid = result.bid; currentHigh = p; lastBidder = p.id; bidThisRound = true;
-          appendAuctionFeed(`<b>${p.emoji} ${escapeHTML(p.name)}</b> → ${fmtMoney(currentBid)}’`);
-          beep(820, 50);
-        }
-      } else {
-        await sleep(speedMs(700));
-        const opps = order.filter(o => o !== p);
-        let decision;
-        try { decision = window.VV_BOTS.shouldBid(p, card, currentBid, minNext, opps); }
-        catch(err) { console.error('Bot bid crash:', err); decision = {pass:true}; }
-        if (decision.pass) {
-          passes.add(p.id);
-          appendAuctionFeed(`${p.emoji} ${escapeHTML(p.name)} → ${T('auction_pass')}`);
-        } else {
-          currentBid = decision.bid; currentHigh = p; lastBidder = p.id; bidThisRound = true;
-          appendAuctionFeed(`<b>${p.emoji} ${escapeHTML(p.name)}</b> → ${fmtMoney(currentBid)}’`);
-          beep(740, 50);
-        }
-      }
-      // If only one active bidder remains and they're high → win
-      const remaining = order.filter(o => !passes.has(o.id));
-      if (remaining.length <= 1) break;
-    }
-    paint();
-    // End condition: nobody bid this round, or only the high bidder remains
-    const remaining = order.filter(o => !passes.has(o.id));
-    if (!bidThisRound || remaining.length <= 1) break;
-  }
-
-  // Resolve
-  if (currentHigh) {
-    currentHigh.money -= currentBid;
-    placeIntoTeamOrBench(currentHigh, card);
-    refreshSetupTeamPanel();
-    appendAuctionFeed(`<b style="color:var(--gold)">${fmt(T('auction_won'), escapeHTML(currentHigh.name), fmtMoney(currentBid))}</b>`);
-    beep(900, 120);
-  } else {
-    appendAuctionFeed(`<b style="color:var(--silver)">${T('auction_no_one')}</b>`);
-    state.game.auctionDeck.push(card);  // back on the pile
-  }
-  refreshTopbar();
-  await sleep(speedMs(800));
-}
-
-function appendAuctionFeed(html) {
-  const feed = $('#auction-feed'); if (!feed) return;
-  const el = document.createElement('div');
-  el.className = 'af-line';
-  el.innerHTML = html;
-  feed.appendChild(el);
-  feed.scrollTop = feed.scrollHeight;
-}
-
-function humanBidPrompt(p, card, minNext) {
-  return new Promise(resolve => {
-    if (state.skipping) { resolve({ pass: true }); return; }
-    const inputDiv = $('#auction-input');
-    if (!inputDiv) { resolve({ pass: true }); return; }
-    // Safety: auto-pass after 60s
-    const safety = setTimeout(() => resolve({ pass: true }), 60000);
-    const wrap = (v) => { clearTimeout(safety); resolve(v); };
-    const sugg = Math.min(p.money, minNext);
-    inputDiv.innerHTML = `
-      <div class="auction-input-row">
-        <span class="label" style="margin-bottom:0;">${T('auction_yourbid')}</span>
-        <input type="number" class="input" id="bid-input" min="${minNext}" max="${p.money}" step="1000" value="${sugg}" style="max-width:160px;"/>
-        <button class="btn btn-primary" id="bid-do">${T('auction_bid')}</button>
-        <button class="btn btn-secondary" id="bid-pass">${T('auction_pass')}</button>
-      </div>
-      <div style="margin-top:0.4rem; font-size:0.75rem; color:var(--silver);">${T('auction_minbid')}: ${fmtMoney(minNext)}’ · ${T('money')}: ${fmtMoney(p.money)}’</div>`;
-    $('#bid-do').onclick = () => {
-      const v = parseInt($('#bid-input').value || '0', 10);
-      inputDiv.innerHTML = '';
-      wrap({ bid: v });
-    };
-    $('#bid-pass').onclick = () => { inputDiv.innerHTML = ''; wrap({ pass: true }); };
-    $('#bid-input').focus();
-    $('#bid-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('#bid-do').click(); });
-  });
-}
-
-// ────────────────────────────────────────────────────────────────
-//  STARTING-PLAYER ROLL
-// ────────────────────────────────────────────────────────────────
-function renderStarting() {
-  const app = $('#app');
-  const g = state.game;
-  app.innerHTML = `
-    <div class="gh">
-      <div class="gh-logo">VOLLEY VENDETTA</div>
-      <div class="gh-spacer"></div>
-      <div class="gh-mini">${T('setup_h')} · ${T('starting_h')}</div>
-      <div class="gh-lang">
-        <span class="lang-pill ${state.lang==='de'?'active':''}" onclick="VV.setLang('de')">DE</span>
-        <span class="lang-pill ${state.lang==='en'?'active':''}" onclick="VV.setLang('en')">EN</span>
-
-      </div>
-    </div>
-    <div style="padding:1.5rem; max-width:900px; margin:0 auto; text-align:center;">
-      <h2 class="h-cond" style="font-size:2rem; margin-bottom:0.3rem;">${T('starting_h')}</h2>
-      <div style="color:var(--silver); margin-bottom:1.4rem;">${T('starting_p')}</div>
-      <div class="dice-area" style="margin:0 auto;">
-        <div class="dice-num" id="dice-num">—</div>
-      </div>
-      <div id="starting-result" style="margin-top:1.2rem;"></div>
-      <button class="btn btn-primary btn-large" id="start-roll-btn" onclick="VV.rollStartingDice()" style="margin-top:1.2rem;">🎲 ${T('starting_roll')}</button>
-    </div>`;
-}
-
-async function rollStartingDice() {
-  const btn = $('#start-roll-btn'); if (btn) btn.disabled = true;
-  const g = state.game;
-  const result = $('#starting-result');
-  const rolls = [];
-  for (const p of g.players) {
-    const v = await performDiceRoll(12);
-    rolls.push({ player: p, roll: v });
-    result.innerHTML += `<div style="margin:0.3rem;"><b>${p.emoji} ${escapeHTML(p.name)}</b>: 🎲 <span style="color:var(--gold); font-weight:800;">${v}</span></div>`;
-    await sleep(speedMs(400));
-  }
-  rolls.sort((a,b) => b.roll - a.roll);
-  const winner = rolls[0].player;
-  g.activeIdx = g.players.indexOf(winner);
-  result.innerHTML += `<div style="margin-top:1rem; font-family:'Barlow Condensed',sans-serif; font-weight:900; font-size:1.6rem; letter-spacing:2px; text-transform:uppercase; color:var(--gold);">${fmt(T('starting_winner'), escapeHTML(winner.name))}</div>`;
-  beep(900, 200);
-  await sleep(speedMs(1200));
-  // Begin season
-  g.phase = 'season';
-  g.week = 1; g.coneDay = 1;
-  setView('game');
-  setTimeout(runSeason, speedMs(400));
-}
-
-
-// ────────────────────────────────────────────────────────────────
-//  GAME BOARD / SEASON LOOP
-// ────────────────────────────────────────────────────────────────
-// Timeline: 6 weeks × 8 days = 48 days, day 1..48 (+ optional 49+ for week 7)
-// Day 4 of each week: tournament (varies)
-// Day 8 of each week: league match
-// Other days: random event spaces (we'll mark days 2, 3, 5, 6, 7 as event days probabilistically)
-
-function weekEventByWeek(w) {
-  return [null,
-    { type: 'supercup',  day: 4, prize: 15000, weekIdx: 1 },
-    { type: 'cl',        day: 4, prize: 20000, weekIdx: 2 },
-    { type: 'cup',       day: 4, prize: 20000, weekIdx: 3 },
-    { type: 'cl',        day: 4, prize: 20000, weekIdx: 4 },
-    { type: 'cupfinal',  day: 4, prize: 20000, weekIdx: 5 },
-    { type: 'cl',        day: 4, prize: 20000, weekIdx: 6 },
-    { type: 'clfinal',   day: 4, prize: 35000, weekIdx: 7 },
-  ][w] || null;
-}
-
-// Get global day number (1..48) from week/day
-function dayOf(week, dayInWeek) { return (week - 1)*8 + dayInWeek; }
-function weekOfDay(day) { return Math.floor((day - 1) / 8) + 1; }
-function dayInWeekOf(day) { return ((day - 1) % 8) + 1; }
-
-// Random event for non-special days
-const EVENT_TYPES = ['red', 'transfer', 'action', 'vnl', 'injury'];
-function eventTypeForDay(dayInWeek) {
-  // Board columns per rulebook symbols:
-  // 1=Red Card (suspension), 2=Transfer (arrow), 3=Action Card, 
-  // 4=Tournament (handled by resolveDay before this), 5=VNL/Flag, 
-  // 6=Action Card, 7=Injury (cross), 8=League (handled by resolveDay)
-  switch(dayInWeek) {
-    case 1: return 'red';
-    case 2: return 'transfer';
-    case 3: return 'action';
-    case 5: return 'vnl';
-    case 6: return 'action';
-    case 7: return 'injury';
-    default: return 'action';
-  }
-}
-function randomEventType() { return choice(EVENT_TYPES); }
-
-function renderGame() {
-  const app = $('#app');
-  const g = state.game;
-  app.innerHTML = `
-    <div class="gh">
-      <div class="gh-logo">VOLLEY VENDETTA</div>
-      <div class="gh-spacer"></div>
-      <div class="gh-mini">${T('week')} ${g.week} ${T('of')} 6</div>
-      <div class="gh-lang">
-        <span class="lang-pill ${state.lang==='de'?'active':''}" onclick="VV.setLang('de')">DE</span>
-        <span class="lang-pill ${state.lang==='en'?'active':''}" onclick="VV.setLang('en')">EN</span>
-
-      </div>
-    </div>
-    <div class="game">
-      <button class="skip-fixed-btn" onclick="VV.skipAll()" title="Skip / Unstuck">⏭ Skip</button>
-      <div class="topbar" id="topbar">${g.players.map((p,i)=>playerCardHtml(p,i,true)).join('')}</div>
-      <div class="phase-bar" id="phase-bar"></div>
-      <div class="gmid">
-        <div class="gpanel-board" id="board-panel">
-          <div class="gpanel-board-header">
-            <span>🗺️ ${state.lang==='de'?'Spielbrett':'Game Board'}</span>
-            <span id="board-week-label" style="color:var(--gold)"></span>
-          </div>
-          <div class="gpanel-board-inner" id="board-img">${boardHtml(g)}</div>
-        </div>
-        <div class="gpanel-team">
-          <div class="gpanel-team-header">
-            <span>🏐 ${state.lang==='de'?'Mein Team':'My Team'}</span>
-            <span class="team-strength" id="team-strength-label">★ ${teamStrength(g.players[0])}</span>
-          </div>
-          <div class="gpanel-team-inner" id="team-panel">${teamPanelHtml(g.players[0])}</div>
-        </div>
-      </div>
-      <div class="gbot">
-        <div class="actions" id="actions">
-          <div class="action-buttons" id="action-buttons"></div>
-        </div>
-        <div class="dice-panel" id="dice-panel">
-          <div class="dice-panel-label" id="dice-panel-label">🎲 D3</div>
-          <div class="dice-panel-result" id="dice-panel-result">—</div>
-          <button class="dice-panel-btn" id="dice-panel-btn" disabled onclick="VV.dicePanel_roll()">Würfeln</button>
-        </div>
-        <div class="log" id="log"></div>
-        <div class="stage" id="stage"></div>
-      </div>
-    </div>`;
-  ensureFloatingLog();
-  for (const e of state.game.log.slice(-30)) logEntry(e.text, e.kind);
-  refreshFloatingPanel();
-}
-
-function playerCardHtml(p, idx, withBars) {
-  const g = state.game;
-  const isYou = p.isHuman;
-  const isActive = idx === (g && g.activeIdx);
-  return `<div class="player-card ${isActive?'active':''} ${isYou?'you':''}" style="border-left:3px solid ${p.color};">
-    <div class="pc-name"><span class="pc-emoji">${p.emoji}</span>${escapeHTML(p.name)}</div>
-    <div class="pc-stats">
-      <div>${T('money')}</div><b>${fmtMoney(p.money)}</b>
-      <div>${T('vp')}</div><b>${p.vp}/8</b>
-      <div>${T('str')}</div><b>★ ${teamStrength(p)}</b>
-      <div>L-Pts</div><b>${p.leaguePoints||0}</b>
-    </div>
-    ${withBars ? `<div class="pc-vp">${range(8).map(i=>`<span class="${i<p.vp?'fill':''}"></span>`).join('')}</div>` : ''}
-  </div>`;
-}
-
-// Board grid coordinates measured on perfektes-spielbrett.png (1254×1254).
-// Empirically calibrated via saturation profiling — the playable 6×8 grid
-// (48 stops) sits within these % bounds; the bottom endgame row is part of
-// the image but not part of the gameplay path.
-const BOARD_GRID = {
-  leftPct: 19.1, rightPct: 80.5,
-  topPct: 21.5,  bottomPct: 64.6,
-  cols: 8, rows: 6,
-};
-function coneDayToPct(day) {
-  const d = Math.max(1, Math.min(48, day || 1));
-  const row = Math.floor((d - 1) / BOARD_GRID.cols);
-  const col = (d - 1) % BOARD_GRID.cols;
-  const cellW = (BOARD_GRID.rightPct  - BOARD_GRID.leftPct) / BOARD_GRID.cols;
-  const cellH = (BOARD_GRID.bottomPct - BOARD_GRID.topPct)  / BOARD_GRID.rows;
-  return {
-    leftPct: BOARD_GRID.leftPct + (col + 0.5) * cellW,
-    topPct:  BOARD_GRID.topPct  + (row + 0.5) * cellH,
-  };
-}
-
-function boardHtml(g) {
-  // Visual board: real arena image as background, the black cone moves
-  // smoothly across the 48 stops. The cone is the only interactive marker;
-  // event icons (red card, trophy, league shirts, …) are baked into the
-  // background art.
-  const { leftPct, topPct } = coneDayToPct(g.coneDay);
-  const w = Math.floor((g.coneDay - 1) / 8) + 1;
-  const dInW = ((g.coneDay - 1) % 8) + 1;
-  const ev = weekEventByWeek(w);
-  return `<div class="vv-board" data-day="${g.coneDay}" data-week="${w}">
-    <div class="vv-board-img"></div>
-    <div class="board-cone" style="left:${leftPct}%; top:${topPct}%;" data-tip="${T('week')} ${w} · ${state.lang==='de'?'Tag':'Day'} ${dInW}">
-      <svg viewBox="0 0 50 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <ellipse cx="25" cy="58" rx="14" ry="3.4" fill="rgba(0,0,0,0.55)"/>
-        <path d="M25 4 L41 50 L9 50 Z" fill="#0a0a0a" stroke="#ffffff" stroke-width="1.6" stroke-linejoin="round"/>
-        <path d="M25 4 L33 22 L17 22 Z" fill="#222" opacity="0.8"/>
-        <circle cx="20" cy="26" r="2" fill="rgba(255,255,255,0.35)"/>
-      </svg>
-    </div>
-    <div class="vv-board-info">
-      <span class="vbi-week">${T('week')} ${w}/6</span>
-      <span class="vbi-day">${state.lang==='de'?'Tag':'Day'} ${dInW}/8</span>
-      ${ev ? `<span class="vbi-ev">${T('week_event_'+ev.type)}</span>` : ''}
-    </div>
-  </div>`;
-}
-
-function teamPanelHtml(p) {
-  // Volleyball rotation: 6 positions in court order
-  // Front row (left→right): pos4=OH, pos3=MB, pos2=OPP
-  // Back row  (left→right): pos5=OH2(empty slot), pos6=Libero, pos1=Setter
-  // In our 5-player setup: Front: [outside, middle, diagonal], Back: [setter, libero]
-  // Standard rotation: OH ↔ OH (opposite sides), MB ↔ Libero (sub), OPP ↔ S (opposite)
-  const s = p.team;
-  const bench = p.bench || [];
-  const sellMode = !!state.sellMode;
-  
-  function teamSlotHtml(card, pos) {
-    if (!card) return `<div class="slot empty vb-team-slot" data-tip="${posLabel(pos)}"><span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span></div>`;
-    const dis = card.disabled ? 'disabled' : '';
-    const sub = card._isSub ? 'is-sub' : '';
-    return `<div class="slot vb-team-slot ${dis} ${sub} ${sellMode?'sellable':''}" 
-      data-tip="${escapeHTML(card.name)} · ${card.stars}★${card.disabled?' · '+(card.disabledReason||''):''}${sub?' · '+T('sub_tooltip'):''}"
-      onclick="VV.handleFloatingClick('${pos}')">
-      <span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
-      <img src="${card.url}" alt="">
-      <div class="stars">${'★'.repeat(card.stars)}</div>
-      ${card.disabled?'<div class="dis-overlay">⛔</div>':''}
-      ${card._isSub?`<div class="sub-badge">${T('sub_label')}</div>`:''}
-    </div>`;
-  }
-  
-  function benchSlotHtml(c) {
-    return `<div class="slot vb-bench-slot ${sellMode?'sellable':''}" 
-      data-tip="${escapeHTML(c.name)} · ${c.stars}★ · ${posLabel(c.pos)}${c.disabled?' · ⛔':''}"
-      onclick="VV.handleFloatingBenchClick('${c.id}')">
-      <span class="pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
-      <img src="${c.url}" alt="">
-      <div class="stars">${'★'.repeat(c.stars)}</div>
-      ${c.disabled?'<div class="dis-overlay">⛔</div>':''}
-    </div>`;
-  }
-
-  return `
-    <div class="vb-sell-bar">
-      <span style="font-size:0.7rem;color:var(--silver)">${state.lang==='de'?'Klicke Karte zum Verkaufen':'Click card to sell'}</span>
-      <button class="vb-sell-toggle ${sellMode?'on':''}" onclick="VV.toggleSellMode()">
-        🔴 ${sellMode?(state.lang==='de'?'Verkauf AN':'Sell ON'):(state.lang==='de'?'Verkaufen':'Sell')}
-      </button>
-    </div>
-    <div class="vb-formation">
-      <div class="vb-net-line"></div>
-      <div class="vb-pos-labels">
-        <span>4</span><span>3</span><span>2</span>
-      </div>
-      <div class="vb-row-label">${state.lang==='de'?'Vorne (netznahe)':'Front (near net)'}</div>
-      <div class="vb-row vb-row-3">
-        ${teamSlotHtml(s.middle,   'middle')}
-        ${teamSlotHtml(s.outside,  'outside')}
-        ${teamSlotHtml(s.setter,   'setter')}
-      </div>
-      <div class="vb-pos-labels" style="margin-top:0.5rem">
-        <span>5</span><span>6</span><span>1</span>
-      </div>
-      <div class="vb-row-label">${state.lang==='de'?'Hinten':'Back'}</div>
-      <div class="vb-row vb-row-3">
-        ${teamSlotHtml(s.diagonal, 'diagonal')}
-        ${teamSlotHtml(s.outside2, 'outside2')}
-        ${teamSlotHtml(s.libero,   'libero')}
-      </div>
-    </div>
-    <div class="vb-bench">
-      <div class="vb-bench-label">⬇ ${state.lang==='de'?'Ersatz':'Bench'} (${bench.length})</div>
-      <div class="vb-bench-row">
-        ${bench.map(c => benchSlotHtml(c)).join('') || `<span style="font-size:0.7rem;color:rgba(255,255,255,0.3)">${state.lang==='de'?'Keine Ersatzspieler':'No bench players'}</span>`}
-      </div>
-    </div>`;
-}
-function slotHtml(card, pos) {
-  if (!card) return `<div class="slot empty" data-tip="${posLabel(pos)}"><span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span></div>`;
-  const dis = card.disabled ? 'disabled' : '';
-  const sub = card._isSub ? 'is-sub' : '';
-  const subTip = card._isSub ? ` · ${T('sub_tooltip')}${card._subReason?' ('+card._subReason+')':''}` : '';
-  return `<div class="slot ${dis} ${sub}" data-tip="${escapeHTML(card.name)} · ${card.stars}★${card.disabled?' · ' + (card.disabledReason||'-'):''}${subTip}">
-    <span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
-    <img src="${card.url}" alt="">
-    <div class="stars">${'★'.repeat(card.stars)}</div>
-    ${card.disabled?'<div class="dis-overlay">⛔</div>':''}
-    ${card._isSub?`<div class="sub-badge" data-tip="${T('sub_tooltip')}">${T('sub_label')}</div>`:''}
-  </div>`;
-}
-
-function refreshTopbar() {
-  const tb = $('#topbar'); if (!tb || !state.game) return;
-  tb.innerHTML = state.game.players.map((p,i)=>playerCardHtml(p,i,true)).join('');
-  refreshFloatingPanel();
-}
-function refreshBoard() {
-  const b = $('#board-img'); if (!b || !state.game) return;
-  // Smart update: if the board exists already, only nudge the cone position
-  // and the info-pill so the CSS transition can play smoothly between stops.
-  // Full re-render only when the board element is missing.
-  const existingBoard = b.querySelector('.vv-board');
-  const cone = b.querySelector('.board-cone');
-  if (existingBoard && cone) {
-    const g = state.game;
-    const { leftPct, topPct } = coneDayToPct(g.coneDay);
-    cone.style.left = leftPct + '%';
-    cone.style.top  = topPct  + '%';
-    existingBoard.dataset.day  = g.coneDay;
-    const w = Math.floor((g.coneDay - 1) / 8) + 1;
-    const dInW = ((g.coneDay - 1) % 8) + 1;
-    existingBoard.dataset.week = w;
-    cone.setAttribute('data-tip', `${T('week')} ${w} · ${state.lang==='de'?'Tag':'Day'} ${dInW}`);
-    const info = b.querySelector('.vv-board-info');
-    if (info) {
-      const ev = weekEventByWeek(w);
-      info.innerHTML =
-        `<span class="vbi-week">${T('week')} ${w}/6</span>` +
-        `<span class="vbi-day">${state.lang==='de'?'Tag':'Day'} ${dInW}/8</span>` +
-        (ev ? `<span class="vbi-ev">${T('week_event_'+ev.type)}</span>` : '');
-    }
-    return;
-  }
-  b.innerHTML = boardHtml(state.game);
-}
-function refreshTeamPanel() {
-  const tp = $('#team-panel'); if (!tp || !state.game) return;
-  tp.innerHTML = teamPanelHtml(state.game.players[0]);
-  const sl = $('#team-strength-label');
-  if (sl) sl.textContent = '★ ' + teamStrength(state.game.players[0]);
-}
-function showOpponentBoard(opponent) {
-  const boardInner = $('#board-img');
-  if (!boardInner) return;
-  const s = opponent.team;
-  const bench = opponent.bench || [];
-  function oppSlot(card, pos) {
-    if (!card) return `<div class="slot empty vb-team-slot" data-tip="${posLabel(pos)}"><span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span></div>`;
-    const dis = card.disabled ? 'disabled' : '';
-    return `<div class="slot vb-team-slot ${dis}" data-tip="${escapeHTML(card.name)} · ${card.stars}★">
-      <span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
-      <img src="${card.url}" alt="">
-      <div class="stars">${'★'.repeat(card.stars)}</div>
-      ${card.disabled?'<div class="dis-overlay">⛔</div>':''}
-    </div>`;
-  }
-  boardInner.innerHTML = `
-    <div class="opp-panel">
-      <div class="opp-panel-title">⚔️ ${escapeHTML(opponent.name)}</div>
-      <div style="font-size:0.7rem;color:var(--silver);text-align:center;margin-bottom:0.4rem">★ ${teamStrength(opponent)} · ${fmtMoney(opponent.money)}'</div>
-      <div class="vb-formation opp-formation">
-        <div class="vb-net-line"></div>
-        <div class="vb-pos-labels"><span>4</span><span>3</span><span>2</span></div>
-        <div class="vb-row-label">${state.lang==='de'?'Vorne':'Front'}</div>
-        <div class="vb-row vb-row-3">
-          ${oppSlot(s.middle,   'middle')}
-          ${oppSlot(s.outside,  'outside')}
-          ${oppSlot(s.setter,   'setter')}
-        </div>
-        <div class="vb-pos-labels" style="margin-top:0.5rem"><span>5</span><span>6</span><span>1</span></div>
-        <div class="vb-row-label">${state.lang==='de'?'Hinten':'Back'}</div>
-        <div class="vb-row vb-row-3">
-          ${oppSlot(s.diagonal, 'diagonal')}
-          ${oppSlot(s.outside2, 'outside2')}
-          ${oppSlot(s.libero,   'libero')}
-        </div>
-      </div>
-      ${bench.length ? `
-      <div class="vb-bench" style="margin-top:0.5rem">
-        <div class="vb-bench-label">⬇ ${state.lang==='de'?'Ersatz':'Bench'} (${bench.length})</div>
-        <div class="vb-bench-row">
-          ${bench.map(c=>`<div class="slot vb-bench-slot" data-tip="${escapeHTML(c.name)} · ${c.stars}★ · ${posLabel(c.pos)}">
-            <span class="pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
-            <img src="${c.url}" alt="">
-            <div class="stars">${'★'.repeat(c.stars)}</div>
-          </div>`).join('')}
-        </div>
-      </div>` : ''}
-    </div>`;
-}
-function restoreBoardPanel() {
-  const boardInner = $('#board-img');
-  if (!boardInner || !state.game) return;
-  boardInner.innerHTML = boardHtml(state.game);
-}
-function setPhase(active) {
-  const phases = [
-    { id:'event', label:T('phase_event'), icon:'🏆' },
-    { id:'match', label:T('phase_match'), icon:'🏐' },
-    { id:'buy',   label:T('phase_buy'),   icon:'🛒' },
-    { id:'done',  label:T('phase_done'),  icon:'✅' },
-  ];
-  const order = ['event','match','buy','done'];
-  const bar = $('#phase-bar'); if (!bar) return;
-  bar.innerHTML = phases.map(p => {
-    const cls = p.id === active ? 'active' : (order.indexOf(p.id) < order.indexOf(active) ? 'done' : '');
-    return `<span class="phase ${cls}">${p.icon} ${p.label}</span>`;
-  }).join('') + `<span class="gh-spacer" style="flex:1"></span><span class="phase">${T('week')} ${state.game.week}/6</span>`;
-}
-
-// ────────────────────────────────────────────────────────────────
-//  SEASON LOOP — using the cone movement
-// ────────────────────────────────────────────────────────────────
-async function runSeason() {
-  const g = state.game;
-  while (g.week <= 6 && !g.over) {
-    refreshBoard();
-    // For each week: simulate cone advancement until past day 8
-    const targetEndOfWeek = g.week * 8;
-    while (g.coneDay <= targetEndOfWeek && !g.over) {
-      const active = g.players[g.activeIdx];
-      // Active player rolls 3-die (or auto in fast mode)
-      setPhase('event');
-      await runConeRoll(active);
-      if (g.over) return;
-      // Move to next active player (clockwise)
-      g.activeIdx = (g.activeIdx + 1) % g.players.length;
-      refreshTopbar();
-    }
-    // Week complete — market phase
-    setPhase('buy');
-    await runMarketPhase();
-    if (g.over) return;
-    g.week += 1;
-  }
-  // Season end
-  setPhase('done');
-  if (!g.over) await runSeasonEnd();
-  endGame();
-}
-
-// One cone-roll turn for a player
-async function runConeRoll(player) {
-  try { return await _runConeRollInner(player); }
-  catch(err) {
-    console.error('runConeRoll crash:', err);
-    logEntry('⚠ ' + (err.message || 'Error in turn — skipping'), 'loss');
-    return;
-  }
-}
-async function _runConeRollInner(player) {
-  const g = state.game;
-  setActiveBanner(player);
-  const stage = $('#stage');
-  const actions = $('#actions');
-  stage.innerHTML = `
-    <div class="stage-h">${T('week')} ${g.week} · Tag ${dayInWeekOf(g.coneDay)}</div>
-    <div class="stage-sub">${escapeHTML(player.name)} ${player.isHuman?T('yourturn'):T('bot_thinking')+' …'}</div>
-    <div class="dice-area" style="margin-top:1rem;">
-      <div class="dice-num" id="dice-num">—</div>
-    </div>
-    <div id="cone-log" style="margin-top:1rem;"></div>`;
-  const ab1 = $('#action-buttons') || actions;
-  ab1.innerHTML = `<h3>${T('phase_event')}</h3>
-    ${speedToggleHtml()}
-    <button id="cone-roll-btn" class="action-btn pulse" data-tip="${T('cone_roll')}" onclick="VV.coneRollNow()">🎲 ${T('cone_roll')}</button>`;
-  // Update dice panel
-  const dpBtn = document.getElementById('dice-panel-btn');
-  const dpLbl = document.getElementById('dice-panel-label');
-  if (dpLbl) dpLbl.textContent = '🎲 D3';
-  if (player.isHuman && state.speed !== 'auto') {
-    if (dpBtn) { dpBtn.disabled = false; dpBtn.classList.add('pulse'); dpBtn.textContent = '🎲 Würfeln'; }
-    await waitFor('coneRollNow');
-    if (dpBtn) { dpBtn.disabled = true; dpBtn.classList.remove('pulse'); }
-  } else {
-    if (dpBtn) dpBtn.disabled = true;
-    // Give player time to see what bot is doing
-    await sleep(state.speed === 'auto' ? 100 : state.speed === 'fast' ? 1000 : 2200);
-  }
-  const v = await performDiceRoll(3);
-  const advance = v >= 3 ? 2 : 1;     // rule: 1=+1, 2=+1, 3=+2
-  const start = g.coneDay;
-  const end = start + advance;
-  appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🎲 ${v} (${state.lang==='de'?'+':'+'}${advance})`);
-  // Advance day-by-day, resolve any landings/passes
-  for (let d = start + 1; d <= end; d++) {
-    g.coneDay = d;
-    refreshBoard();
-    await sleep(speedMs(220));
-    await resolveDay(g.coneDay, player);
-    if (g.over) return;
-  }
-  if (!g.over) {
-    const dpBtnC = document.getElementById('dice-panel-btn');
-    const dpLblC = document.getElementById('dice-panel-label');
-    if (dpLblC) dpLblC.textContent = '🎲 D3';
-    if (!player.isHuman || state.speed === 'auto' || state.speed === 'fast') {
-      // Bot or fast/auto: continue automatically after a pause
-      if (dpBtnC) { dpBtnC.disabled = true; dpBtnC.classList.remove('pulse'); }
-      let pause = 300;
-      if (!player.isHuman) {
-        if (state.speed === 'normal') pause = 2200;
-        else if (state.speed === 'fast') pause = 1000;
-        else pause = 100; // auto
-      }
-      await sleep(pause);
-    } else {
-      // Human normal speed: show Weiter button, wait for click
-      const ab2 = $('#action-buttons') || actions;
-      ab2.innerHTML = `<h3>${T('phase_event')}</h3>
-        ${speedToggleHtml()}
-        <button class="action-btn pulse" onclick="VV.coneContinue()">${T('cone_continue')}</button>`;
-      if (dpBtnC) { dpBtnC.disabled = false; dpBtnC.classList.add('pulse'); dpBtnC.textContent = '▶ Weiter'; }
-      await waitFor('coneContinue');
-      if (dpBtnC) { dpBtnC.disabled = true; dpBtnC.classList.remove('pulse'); dpBtnC.textContent = '🎲 Würfeln'; }
-    }
-  }
-}
-
-function coneRollNow() { fire('coneRollNow'); }
-function coneContinue() { fire('coneContinue'); }
-function setActiveBanner(p) {
-  // Big floating banner
-  let banner = $('#turn-banner');
-  if (!banner) { banner = document.createElement('div'); banner.id='turn-banner'; document.body.appendChild(banner); }
-  banner.className = 'turn-banner-floating ' + (p.isHuman ? 'human' : 'bot');
-  banner.innerHTML = p.isHuman
-    ? `<span class="tb-emoji">${p.emoji}</span> <span>${T('yourturn')}</span>`
-    : `<span class="tb-emoji">${p.emoji}</span> <span>${escapeHTML(p.name)}</span> <span class="thinking"><span></span><span></span><span></span></span>`;
-  banner.style.display = 'flex';
-  setTimeout(() => { banner.style.display = 'none'; }, p.isHuman ? 1600 : 1200);
-}
-
-function appendConeLog(html) {
-  // Write to the main log panel (bottom right)
-  logEntry(html);
-  // Also update cone-log in stage if it exists
-  const cl = $('#cone-log');
-  if (cl) {
-    const e = document.createElement('div');
-    e.className = 'cone-log-line';
-    e.innerHTML = html;
-    cl.appendChild(e);
-    cl.scrollTop = cl.scrollHeight;
-  }
-}
-
-// Resolve what happens on landing on `day` for `triggerPlayer`
-async function resolveDay(day, triggerPlayer) {
-  try { return await _resolveDayInner(day, triggerPlayer); }
-  catch(err) {
-    console.error('resolveDay crash:', err);
-    logEntry('⚠ Event error — skipped', 'loss');
-    return;
-  }
-}
-async function _resolveDayInner(day, triggerPlayer) {
-  const g = state.game;
-  const w = weekOfDay(day);
-  const dInW = dayInWeekOf(day);
-  const ev = weekEventByWeek(w);
-  if (dInW === ev?.day) {
-    // Tournament
-    appendConeLog(`<b>${T('week_event_'+ev.type)}</b>`);
-    await runTournament(ev);
-    return;
-  }
-  if (dInW === 8) {
-    // League match line — auto trigger as cone passes
-    appendConeLog(`<b>${T('phase_match')}</b> · ${T('week')} ${w}`);
-    await runLeagueMatch();
-    // After league match, restore disabled cards (suspensions/injuries/VNL)
-    restoreDisabledCards(true);
-    return;
-  }
-  // Event based on board position (day in week)
-  const evType = eventTypeForDay(dInW);
-  await runEventSpace(evType, triggerPlayer);
-}
-
-// ────────────────────────────────────────────────────────────────
-//  EVENT SPACES
-// ────────────────────────────────────────────────────────────────
-async function runEventSpace(type, player) {
-  try { return await _runEventSpaceInner(type, player); }
-  catch(err) {
-    console.error('runEventSpace crash:', type, err, err.stack);
-    logEntry('⚠ Event error: ' + type + ' — ' + (err.message||'unknown'), 'loss');
-    return;
-  }
-}
-function showEventPopup(eventInfo, player, type) {
-  return new Promise(resolve => {
-    // Remove existing
-    const existing = document.getElementById('event-popup');
-    if (existing) existing.remove();
+    const now = new Date();
+    const ts = String(now.getHours()).padStart(2,'0') + ':' +
+               String(now.getMinutes()).padStart(2,'0') + ':' +
+               String(now.getSeconds()).padStart(2,'0');
     const div = document.createElement('div');
-    div.id = 'event-popup';
-    div.className = 'event-popup-banner ' + (type || '');
-    div.innerHTML = `
-      <button class="epb-close" id="epb-close-btn" title="Schliessen">✕</button>
-      <div class="epb-icon">${eventInfo.icon}</div>
-      <div class="epb-text">
-        <div class="epb-title">${eventInfo.h}</div>
-        <div class="epb-player"><span style="color:${player.color}">${player.emoji}</span> ${escapeHTML(player.name)}</div>
-      </div>
-      <div id="event-detail" class="epb-detail"></div>
-      <button class="epb-ok" id="epb-ok-btn">OK</button>
-      <div class="epb-progress"><div class="epb-progress-bar"></div></div>`;
-    document.body.appendChild(div);
-    setTimeout(() => div.classList.add('open'), 10);
-    
-    let resolved = false;
-    const finish = () => {
-      if (resolved) return;
-      resolved = true;
-      clearTimeout(autoTimer);
-      resolve();
-    };
-    div.querySelector('#epb-ok-btn').addEventListener('click', finish);
-    div.querySelector('#epb-close-btn').addEventListener('click', finish);
-    
-    // Auto-close after 5 seconds (or 2s if skipping)
-    const timeout = state.skipping ? 200 : 8000;
-    const autoTimer = setTimeout(finish, timeout);
-  });
-}
-function hideEventPopup() {
-  const ep = document.getElementById('event-popup');
-  if (ep) { 
-    ep.classList.add('closing'); 
-    setTimeout(() => ep.remove(), 350); 
-  }
-}
-
-async function _runEventSpaceInner(type, player) {
-  // Ensure stage exists — re-create inside actions if it was overwritten
-  let stage = $('#stage');
-  if (!stage) {
-    const actions = $('#actions');
-    if (actions) {
-      const s = document.createElement('div');
-      s.id = 'stage';
-      s.className = 'stage';
-      actions.appendChild(s);
-      stage = s;
-    }
-  }
-  if (!stage) { 
-    // Fallback: log only
-    appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → ${type}`);
-  }
-  const map = {
-    red:      { h:T('cone_event_red'),      p:T('cone_event_red_p'),      icon:'🟥' },
-    transfer: { h:T('cone_event_transfer'), p:T('cone_event_transfer_p'), icon:'🔁' },
-    action:   { h:T('cone_event_action'),   p:T('cone_event_action_p'),   icon:'🎴' },
-    vnl:      { h:T('cone_event_vnl'),      p:T('cone_event_vnl_p'),      icon:'🚩' },
-    injury:   { h:T('cone_event_injury'),   p:T('cone_event_injury_p'),   icon:'🩹' },
-  };
-  const e = map[type];
-  // Render event card (only if stage exists)
-  // Add to stage as small note
-  if (stage) {
-    const li = document.createElement('div');
-    li.className = 'stage-event-mini';
-    li.innerHTML = `${e.icon} <b>${e.h}</b> · ${escapeHTML(player.name)}`;
-    stage.appendChild(li);
-  }
-  // Show event popup and WAIT until dismissed (OK click or 5s timeout)
-  // For events that have their own UI inside (transfer), don't await — the inline UI handles closing
-  if (type !== 'transfer') {
-    await showEventPopup(e, player, type);
-  } else {
-    showEventPopup(e, player, type);
-  }
-  flash(type === 'action' ? 'win' : 'loss');
-  beep(type === 'action' ? 760 : 320, 120);
-  if (type === 'red')      await applyRedCard(player);
-  if (type === 'transfer') await applyTransfer(player);
-  if (type === 'action')   await applyActionCard(player);
-  if (type === 'vnl')      await applyVnlEvent(player);
-  if (type === 'injury')   await applyInjury(player);
-  await sleep(speedMs(800));
-  hideEventPopup();
-}
-
-const POS_ORDER_BY_DICE = ['outside','middle','setter','diagonal','libero']; // pos by 6-die roll: 1=back-right=libero traditionally; we map 1..5 to our 5 starters and 6=back-mid (diagonal if alone)
-function diePositionFor(roll6) {
-  // Map 1..6 to a starter position (deterministic abstraction)
-  return ['libero','outside','middle','setter','diagonal','outside'][roll6-1];
-}
-
-async function applyRedCard(player) {
-  const detail = $('#event-detail');
-  detail.innerHTML = `<div class="dice-area"><div class="dice-num" id="dice-num">—</div></div>`;
-  const v = await performDiceRoll(6);
-  const pos = diePositionFor(v);
-  const subbed = disablePlayerOnTeam(player, pos, T('cone_event_red'));
-  appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🟥 ${posLabel(pos)} ${T('injury_out')}${subbed?` · ${T('sub_in')}: ${escapeHTML(subbed.name)}`:''}`);
-  refreshTeamPanel();
-  refreshFloatingPanel();
-}
-
-async function applyTransfer(player) {
-  const card = state.game.auctionDeck.shift();
-  if (!card) { appendConeLog(T('auction_no_one')); return; }
-  const minBid = card.stars * 10000;
-  const order = state.game.players.slice();
-  while (order[0] !== player) order.push(order.shift());
-  let high = 0, highP = null;
-
-  // Show transfer card in event detail
-  const detail = document.getElementById('event-detail');
-  if (detail) {
-    detail.innerHTML = `
-      <div style="margin-top:0.5rem; padding:0.6rem; background:rgba(255,255,255,0.04); border-radius:4px;">
-        <div style="font-size:1.05rem; font-weight:700; color:#fff;">${escapeHTML(card.name)}</div>
-        <div style="color:var(--gold); margin:0.2rem 0;">${'★'.repeat(card.stars)}</div>
-        <div style="font-size:0.8rem; color:var(--silver);">${posLabel(card.pos)} · Min: ${fmtMoney(minBid)}'</div>
-      </div>
-      <div id="transfer-bot-bids" style="margin-top:0.4rem; font-size:0.78rem; text-align:left;"></div>`;
+    div.className = 'log-entry ' + (kind || '');
+    div.innerHTML = '<span class="log-time">' + ts + '</span>' + msg;
+    list.insertBefore(div, list.firstChild);
+    // Trim
+    while (list.children.length > 80) list.removeChild(list.lastChild);
   }
 
-  // Bots bid one by one with visible delay so player can follow
-  for (const p of order.filter(p => !p.isHuman)) {
-    if (p.money < minBid) continue;
-    let dec;
-    try { dec = window.VV_BOTS.shouldBid(p, card, high, Math.max(minBid, high+1000), order); }
-    catch(err) { console.error('Bot bid crash:', err); dec = {pass:true}; }
-    const bidsDiv = document.getElementById('transfer-bot-bids');
-    if (bidsDiv) {
-      const line = document.createElement('div');
-      line.style.cssText = 'padding:0.15rem 0;';
-      if (dec.pass) {
-        line.innerHTML = `<span style="color:${p.color}">${p.emoji}</span> ${escapeHTML(p.name)} — <span style="color:var(--silver)">passt</span>`;
-      } else {
-        line.innerHTML = `<span style="color:${p.color}">${p.emoji}</span> ${escapeHTML(p.name)} — <b style="color:var(--gold)">${fmtMoney(dec.bid)}'</b>`;
-      }
-      bidsDiv.appendChild(line);
-    }
-    await sleep(state.speed === 'auto' ? 100 : state.speed === 'fast' ? 800 : 1400);
-    if (!dec.pass && dec.bid > high) { high = dec.bid; highP = p; }
+  // =================================================================
+  // 9. INITIAL RENDER (top-level dispatcher)
+  // =================================================================
+  function render() {
+    const root = $('#vv-app');
+    if (!root) return;
+    if (state.view === 'splash')  return renderSplash(root);
+    if (state.view === 'draft')   return renderDraft(root);
+    if (state.view === 'auction') return renderAuction(root);
+    if (state.view === 'game')    return renderGame(root);
+    if (state.view === 'result')  return renderResult(root);
   }
 
-  // Human gets inline bid UI
-  const me = order.find(p => p.isHuman);
-  if (me && me.money >= minBid) {
-    const result = await inlineTransferBid(card, high, minBid, me);
-    if (result && !result.pass && result.bid > high && result.bid <= me.money) {
-      high = result.bid; highP = me;
-    }
-  }
+  function setView(v) { state.view = v; render(); }
 
-  if (highP) {
-    highP.money -= high;
-    placeIntoTeamOrBench(highP, card);
-    appendConeLog(`${highP.emoji} ${escapeHTML(highP.name)} → ${escapeHTML(card.name)} (${fmtMoney(high)}')`);
-  } else {
-    state.game.auctionDeck.push(card);
-    appendConeLog(T('auction_no_one'));
-  }
-  refreshTopbar(); refreshTeamPanel();
-}
-
-function inlineTransferBid(card, currentHigh, minBid, player) {
-  return new Promise(resolve => {
-    if (state.skipping) { resolve({pass:true}); return; }
-    const detail = document.getElementById('event-detail');
-    if (!detail) { resolve({pass:true}); return; }
-    // Safety: auto-pass after 60 seconds
-    const safetyTimer = setTimeout(() => { resolve({pass:true}); }, 60000);
-    const wrappedResolve = (v) => { clearTimeout(safetyTimer); resolve(v); };
-    const sugg = Math.max(minBid, currentHigh + 2000);
-    detail.innerHTML = `
-      <div style="margin-top:0.5rem; font-size:0.8rem; color:var(--silver)">
-        <b style="color:#fff">${escapeHTML(card.name)}</b> · ${'★'.repeat(card.stars)}<br>
-        ${state.lang==='de'?'Mindestgebot':'Min bid'}: <b>${fmtMoney(minBid)}'</b>
-        ${currentHigh>0 ? ` · Bot: <b>${fmtMoney(currentHigh)}'</b>` : ''}
-      </div>
-      <div style="display:flex;gap:0.4rem;margin-top:0.5rem;align-items:center;flex-wrap:wrap;">
-        <input type="number" id="transfer-bid-input" min="${sugg}" max="${player.money}" step="1000" value="${sugg}"
-          style="width:110px;padding:0.3rem 0.5rem;background:rgba(255,255,255,0.06);border:1px solid var(--line);border-radius:3px;color:#fff;font-family:inherit;font-size:0.85rem;">
-        <button class="btn btn-primary" id="transfer-bid-btn" style="padding:0.35rem 0.8rem;font-size:0.8rem;">
-          ${state.lang==='de'?'Bieten':'Bid'}
-        </button>
-        <button class="btn btn-secondary" id="transfer-pass-btn" style="padding:0.35rem 0.8rem;font-size:0.8rem;">
-          ${state.lang==='de'?'Passen':'Pass'}
-        </button>
+  // =================================================================
+  // 10. SPLASH SCREEN
+  // =================================================================
+  function renderSplash(root) {
+    root.innerHTML = `
+      <div class="vv-splash">
+        <h1>VOLLEY VENDETTA</h1>
+        <p>${T('start')} — Dein Volleyball-Strategie-Kartenspiel.</p>
+        <input id="splash-name" placeholder="${T('name')}" maxlength="18" value="Marcel">
+        <button class="vv-btn primary" id="splash-start">${T('start')}</button>
+        <div class="muted" style="margin-top:12px;font-size:12px">v1.0 — first to 8 VP wins</div>
       </div>`;
-    document.getElementById('transfer-bid-btn').onclick = () => {
-      const v = parseInt(document.getElementById('transfer-bid-input').value||'0',10);
-      detail.innerHTML = '';
-      wrappedResolve({bid:v});
-    };
-    document.getElementById('transfer-pass-btn').onclick = () => {
-      detail.innerHTML = '';
-      wrappedResolve({pass:true});
-    };
-    const inp = document.getElementById('transfer-bid-input');
-    if (inp) { inp.focus(); inp.onkeydown = e => { if(e.key==='Enter') document.getElementById('transfer-bid-btn').click(); }; }
-  });
-}
-
-
-async function applyActionCard(player) {
-  // Action card field: nothing happens, next player can roll
-  appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🎴 ${state.lang==='de'?'Aktionskarte — nichts passiert':'Action card — nothing happens'}`);
-  // Only show popup in physical game context; in digital just log and continue
-  await sleep(speedMs(400));
-}
-
-function showActionCardPopup() {
-  return new Promise(resolve => {
-    const div = document.createElement('div');
-    div.className = 'modal-popup';
-    div.innerHTML = `
-      <div class="modal-card">
-        <div class="modal-icon">🎁</div>
-        <div class="modal-h">${T('cone_event_action')}</div>
-        <div class="modal-p">${T('cone_event_action_p')}</div>
-        <button class="btn btn-primary" id="action-ok-btn">OK</button>
-      </div>`;
-    document.body.appendChild(div);
-    setTimeout(() => div.classList.add('open'), 10);
-    const close = () => { if (document.body.contains(div)) div.remove(); resolve(); };
-    div.querySelector('#action-ok-btn').addEventListener('click', close);
-    if (state.speed !== 'normal') setTimeout(close, speedMs(1500));
-  });
-}
-
-async function applyVnlEvent(player) {
-  // Disable cards that match the player's flag (we don't have flags per card, so simulate ~30% chance per starter)
-  let count = 0;
-  for (const pos of POSITIONS) {
-    const c = player.team[pos];
-    if (c && !c.disabled && !c._isSub && Math.random() < 0.30) {
-      disablePlayerOnTeam(player, pos, T('cone_event_vnl'));
-      count++;
-    }
+    $('#splash-start').addEventListener('click', () => {
+      const name = ($('#splash-name').value || 'Du').trim();
+      initSoloGame(name);
+    });
+    $('#splash-name').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') $('#splash-start').click();
+    });
   }
-  appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🚩 ${count} ${state.lang==='de'?'Spieler verfügbar erst nach Liga':'players unavailable until league match'}`);
-  refreshTeamPanel();
-  refreshFloatingPanel();
-}
 
-async function applyInjury(player) {
-  const detail = $('#event-detail');
-  detail.innerHTML = `<div class="dice-area"><div class="dice-num" id="dice-num">—</div></div>`;
-  const v = await performDiceRoll(6);
-  const pos = diePositionFor(v);
-  const subbed = disablePlayerOnTeam(player, pos, T('cone_event_injury'));
-  appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🩹 ${posLabel(pos)} ${T('injury_out')}${subbed?` · ${T('sub_in')}: ${escapeHTML(subbed.name)}`:''}`);
-  refreshTeamPanel();
-  refreshFloatingPanel();
-}
-
-// ────────────────────────────────────────────────────────────────
-//  SUSPENSION / INJURY HELPERS
-//  When an event (Red Card / Injury / VNL / dice criterion 11) sidelines
-//  a starter, we keep the disabled flag (so legacy paths still work) AND
-//  swap in a same-position bench card if available. The original goes
-//  into player.suspended and gets restored on the next league match.
-// ────────────────────────────────────────────────────────────────
-function disablePlayerOnTeam(player, pos, reason) {
-  const card = player.team[pos];
-  if (!card) return null;
-  if (card._isSub) {
-    // Already a substitute filling in for someone — disabling the sub too
-    // would defeat the purpose; just flag and bail. (Rare edge case.)
-    card.disabled = true;
-    card.disabledReason = reason;
-    return null;
-  }
-  if (card.disabled) {
-    // Already disabled — nothing to do (don't double-suspend).
-    card.disabledReason = reason;
-    return null;
-  }
-  card.disabled = true;
-  card.disabledReason = reason;
-  if (!Array.isArray(player.suspended)) player.suspended = [];
-
-  if (!Array.isArray(player.bench)) player.bench = [];
-  const benchIdx = player.bench.findIndex(b => b.pos === pos);
-  if (benchIdx >= 0) {
-    const sub = player.bench.splice(benchIdx, 1)[0];
-    sub._isSub = true;
-    sub._subReason = reason;
-    player.team[pos] = sub;
-    player.suspended.push({ card, pos, reason });
-    return sub;
-  }
-  // No bench replacement available — disabled card stays in the slot
-  // (legacy ⛔ overlay). Criteria see 0 stars, but at least we don't crash.
-  return null;
-}
-
-function restoreDisabledCards(afterLeague) {
-  const g = state.game;
-  for (const p of g.players) {
-    if (!Array.isArray(p.suspended)) p.suspended = [];
-    if (!Array.isArray(p.bench)) p.bench = [];
-    // 1) For each suspended entry: original returns to the team slot,
-    //    the temporary sub goes back to the bench.
-    while (p.suspended.length) {
-      const entry = p.suspended.shift();
-      const cur = p.team[entry.pos];
-      if (cur && cur._isSub) {
-        delete cur._isSub;
-        delete cur._subReason;
-        p.bench.push(cur);
-        entry.card.disabled = false;
-        entry.card.disabledReason = null;
-        p.team[entry.pos] = entry.card;
-      } else {
-        // Slot was changed in the meantime (e.g. market buy or re-sub);
-        // keep the suspended player on the bench as a safe fallback.
-        entry.card.disabled = false;
-        entry.card.disabledReason = null;
-        p.bench.push(entry.card);
-      }
-    }
-    // 2) Any remaining disabled cards on team had no sub at the time —
-    //    just clear their flags now.
-    for (const pos of POSITIONS) {
-      const c = p.team[pos];
-      if (c && c.disabled) { c.disabled = false; c.disabledReason = null; }
-    }
-  }
-  refreshTopbar(); refreshTeamPanel();
-  if (typeof refreshFloatingPanel === 'function') refreshFloatingPanel();
-}
-
-
-// ────────────────────────────────────────────────────────────────
-//  TOURNAMENTS (Cup, Cup-Final, SuperCup, CL group, CL final)
-// ────────────────────────────────────────────────────────────────
-async function runTournament(ev) {
-  const g = state.game;
-  if (ev.type === 'cup')      return runCupSemis(ev);
-  if (ev.type === 'cupfinal') return runCupFinal(ev);
-  if (ev.type === 'supercup') {
-    // SuperCup only from Season 2 onwards
-    const currentSeason = (state.game && state.game.season) || 1;
-    if (currentSeason < 2) {
-      logEntry(state.lang==='de' ? '⚽ SuperCup startet ab Saison 2' : '⚽ SuperCup starts from Season 2', 'tournament');
+  // =================================================================
+  // 11. INIT SOLO GAME
+  // =================================================================
+  function initSoloGame(humanName) {
+    const cards = (window.buildAllCards ? window.buildAllCards() : []);
+    if (!cards.length) {
+      alert('cards.js failed to load — no cards available.');
       return;
     }
-    return runSuperCup(ev);
-  }
-  if (ev.type === 'cl')       return runCLGroup(ev);
-  if (ev.type === 'clfinal')  return runCLFinal(ev);
-}
+    const personas = window.VV_BOTS.pickPersonas(3);
+    const players = [
+      makePlayer(humanName, true, null),
+      makePlayer('Bot ' + personas[0].name, false, personas[0]),
+      makePlayer('Bot ' + personas[1].name, false, personas[1]),
+      makePlayer('Bot ' + personas[2].name, false, personas[2])
+    ];
 
-// CUP — every player rolls 12-sided die. Top 2 play in the semi (with home advantage to higher roll). Winners progress.
-async function runCupSemis(ev) {
-  const g = state.game;
-  const stage = $('#stage');
-  stage.innerHTML = `
-    <div class="stage-h">${T('cup_h')} · ${T('week')} ${g.week}</div>
-    <div class="stage-sub">${T('cup_roll')}</div>
-    <div id="cup-rolls" style="margin-top:0.6rem; display:flex; flex-direction:column; gap:0.4rem;"></div>
-    <div class="dice-area" style="margin:0 auto;"><div class="dice-num" id="dice-num">—</div></div>`;
-  const rolls = [];
-  for (const p of g.players) {
-    const v = await performDiceRoll(12);
-    rolls.push({ p, v });
-    const d = document.createElement('div'); d.className = 'cup-roll';
-    d.innerHTML = `<b>${p.emoji} ${escapeHTML(p.name)}</b> · 🎲 <span style="color:var(--gold); font-weight:800;">${v}</span>`;
-    $('#cup-rolls').appendChild(d);
-    await sleep(speedMs(280));
-  }
-  rolls.sort((a,b) => b.v - a.v);
-  // First semi: rolls[0] vs rolls[1]; second semi (if 4 players): rolls[2] vs rolls[3]
-  const semis = [];
-  if (rolls.length >= 2) semis.push({ home: rolls[0], away: rolls[1] });
-  if (rolls.length >= 4) semis.push({ home: rolls[2], away: rolls[3] });
-  // Winners
-  g._cupWinners = [];
-  for (const m of semis) {
-    appendConeLog(`${T('cup_h')}: ${escapeHTML(m.home.p.name)} vs ${escapeHTML(m.away.p.name)} · ${T('homeaway_home')} = ${escapeHTML(m.home.p.name)}`);
-    const winner = await runMatchClassic(m.home.p, m.away.p, true);
-    if (winner === m.home.p) {
-      m.home.p.money += ev.prize;
-      m.home.p.totalEarned += ev.prize;
-      logEntry(`${T('week_event_cup')} → ${escapeHTML(m.home.p.name)} +${fmtMoney(ev.prize)}’`, 'tournament');
-    } else {
-      m.away.p.money += ev.prize;
-      m.away.p.totalEarned += ev.prize;
-      logEntry(`${T('week_event_cup')} → ${escapeHTML(m.away.p.name)} +${fmtMoney(ev.prize)}’`, 'tournament');
-    }
-    g._cupWinners.push(winner);
-  }
-  if (rolls.length === 3) {
-    // 3 players: just one semi happens; the third is bye → pick the loser of semi as the second cup-final participant by rule? Per simplified rules, two semis for 4p; for 3p we use one semi + the byes player.
-    // Simplest: the bye player also advances to final to keep fairness
-    g._cupWinners.push(rolls[2].p);
-  }
-  refreshTopbar();
-}
+    // Blind draft pool: each player gets 1×4★, 2×3★, 3×2★ via random pull.
+    // 1★ cards are "always available" — players pick 3 of them by position.
+    const all = cards.slice();
+    const oneStars = all.filter(c => c.stars === 1);
+    const auctionable = all.filter(c => c.stars >= 2);
 
-// CUP-FINAL — two cup winners face off. Winner: 2VP + 20k, runner-up: 1VP.
-async function runCupFinal(ev) {
-  const g = state.game;
-  if (!g._cupWinners || g._cupWinners.length < 2) {
-    appendConeLog(`<i style="color:var(--silver)">${state.lang==='de'?'Cup-Final übersprungen — keine Halbfinal-Sieger':'Cup final skipped — no semi winners'}</i>`);
-    return;
-  }
-  const home = g._cupWinners[0];
-  const away = g._cupWinners[1];
-  const stage = $('#stage');
-  stage.innerHTML = `
-    <div class="stage-h">${T('week_event_cupfinal')}</div>
-    <div class="stage-sub">${escapeHTML(home.name)} vs ${escapeHTML(away.name)}</div>`;
-  const winner = await runMatchClassic(home, away, true);
-  const loser = winner === home ? away : home;
-  winner.money += ev.prize;
-  winner.totalEarned += ev.prize;
-  winner.vp += 2; animateVpChange(winner, 2);
-  loser.vp += 1; animateVpChange(loser, 1);
-  logEntry(`<b>${T('week_event_cupfinal')}</b> → ${escapeHTML(winner.name)} +2 VP, +${fmtMoney(ev.prize)}’ · ${escapeHTML(loser.name)} +1 VP`, 'tournament');
-  flash('win');
-  beep(900, 200);
-  refreshTopbar();
-  if (checkWin()) return;
-}
+    state.game = {
+      cards: cards,
+      players: players,
+      currentPlayerIdx: 0,
+      week: 1, season: 1,
+      coneDay: 0,                 // 0..47 (board space)
+      coneTotal: 48,
+      auctionDeck: shuffle(auctionable.slice()),
+      oneStarPool: oneStars.slice(),
+      unsoldMarket: [],           // 2★+ cards that didn't sell at auction
+      eventLog: [],
+      cupWinner: null,
+      leagueWinner: null,
+      clQualifiers: [],
+      seasonEnded: false
+    };
 
-// SUPERCUP — last season's league winner vs cup winner.  In single-season build, we treat it as
-// "current best two by team strength" (placeholder until multi-season).
-async function runSuperCup(ev) {
-  const g = state.game;
-  const sorted = g.players.slice().sort((a,b) => teamStrength(b) - teamStrength(a));
-  const home = sorted[0]; const away = sorted[1];
-  const stage = $('#stage');
-  stage.innerHTML = `
-    <div class="stage-h">${T('week_event_supercup')} · ${T('week')} ${g.week}</div>
-    <div class="stage-sub">${escapeHTML(home.name)} vs ${escapeHTML(away.name)} · ${state.lang==='de'?'(Saison 1: gewählt nach Teamstärke)':'(Season 1: chosen by team strength)'}</div>`;
-  const winner = await runMatchClassic(home, away, true);
-  winner.money += ev.prize; winner.totalEarned += ev.prize;
-  logEntry(`${T('week_event_supercup')} → ${escapeHTML(winner.name)} +${fmtMoney(ev.prize)}’`, 'tournament');
-  refreshTopbar();
-}
-
-// CHAMPIONS LEAGUE — Mechanik in dieser Version noch nicht freigeschaltet.
-// Wenn das Hütchen ein CL-Feld erreicht: Popup zeigen, kein Match starten.
-async function runCLGroup(ev) {
-  await showLockedFeaturePopup(T('week_event_cl'));
-  appendConeLog(`<i style="color:var(--silver)">${T('week_event_cl')} — ${state.lang==='de'?'noch nicht freigeschaltet':'not yet unlocked'}</i>`);
-}
-async function runCLFinal(ev) {
-  await showLockedFeaturePopup(T('week_event_clfinal'));
-  appendConeLog(`<i style="color:var(--silver)">${T('week_event_clfinal')} — ${state.lang==='de'?'noch nicht freigeschaltet':'not yet unlocked'}</i>`);
-}
-
-function showLockedFeaturePopup(title) {
-  return new Promise(resolve => {
-    if (state.skipping) { resolve(); return; }
-    const div = document.createElement('div');
-    div.className = 'modal-popup';
-    div.innerHTML = `
-      <div class="modal-card">
-        <div class="modal-icon">🔒</div>
-        <div class="modal-h">${title}</div>
-        <div class="modal-p">${state.lang==='de'
-          ? 'Diese Funktion ist noch nicht freigeschaltet — schau später nochmal vorbei. 🛠️'
-          : 'This feature is not yet unlocked — check back later. 🛠️'}</div>
-        <button class="btn btn-primary" id="locked-ok">OK</button>
-      </div>`;
-    document.body.appendChild(div);
-    setTimeout(() => div.classList.add('open'), 10);
-    div.querySelector('#locked-ok').addEventListener('click', () => {
-      div.remove();
-      resolve();
-    });
-    // Auto-close for all non-normal speeds
-    if (state.speed !== 'normal') setTimeout(() => { if (document.body.contains(div)) { div.remove(); resolve(); } }, speedMs(1000));
-  });
-}
-
-// ────────────────────────────────────────────────────────────────
-//  CLASSIC LEAGUE MATCH — 12 criteria (rule-faithful)
-//  Used for both Liga-Spiele AND tournament resolutions.
-//  Returns the winning player.
-// ────────────────────────────────────────────────────────────────
-async function runMatchClassic(home, away, isTournament) {
-  // Show the opponent (non-human) in the board panel
-  const me = state.game ? state.game.players[0] : null;
-  const humanPlaying = home.isHuman || away.isHuman;
-  const opp = home.isHuman ? away : home;
-  if (humanPlaying) showOpponentBoard(opp);
-  const stage = $('#stage');
-  const actions = $('#actions');
-  // Match state
-  const M = {
-    home, away,
-    homePoints: 0, awayPoints: 0,
-    crunchExtra: 0,
-    rolls: [], events: [],
-    rotationHome: 0, rotationAway: 0,
-    iRoll: 0, totalRolls: 4,
-    ended: false,
-  };
-  state.game._classicMatch = M;
-  function paint() {
-    stage.innerHTML = `
-      <div class="stage-h">${escapeHTML(home.name)} vs ${escapeHTML(away.name)}</div>
-      <div class="match-screen">
-        <div class="match-team home">
-          <div class="flag">${T('homeaway_home')}</div>
-          <h4>${escapeHTML(home.name)}</h4>
-          <div class="strength">${M.homePoints}</div>
-          <div style="font-size:0.7rem; color:var(--silver); margin-top:0.4rem;">★ ${teamStrength(home)}</div>
-          <div style="margin-top:0.3rem;">${courtMiniHtml(home, M.rotationHome)}</div>
-        </div>
-        <div class="match-vs">VS</div>
-        <div class="match-team away">
-          <div class="flag">${T('homeaway_away')}</div>
-          <h4>${escapeHTML(away.name)}</h4>
-          <div class="strength">${M.awayPoints}</div>
-          <div style="font-size:0.7rem; color:var(--silver); margin-top:0.4rem;">★ ${teamStrength(away)}</div>
-          <div style="margin-top:0.3rem;">${courtMiniHtml(away, M.rotationAway)}</div>
-        </div>
-      </div>
-      <div class="dice-area" style="margin-top:1rem;">
-        <div class="dice-num" id="dice-num">—</div>
-      </div>
-      <div id="rally-feed" class="rally-feed"></div>`;
-    M.events.slice(-6).forEach(r => {
-      const d = document.createElement('div');
-      d.className = 'crit show ' + (r.winner === 'home' ? 'win' : r.winner === 'away' ? 'loss' : 'tie');
-      d.innerHTML = `<div class="crit-h">#${r.dice} · ${T('crit_'+r.kind)}</div><div class="crit-r">${r.text}</div>`;
-      $('#rally-feed').appendChild(d);
-    });
-    $('#rally-feed').scrollTop = $('#rally-feed').scrollHeight;
-  }
-  function setActionUI() {
-    const isHumanMatch = home.isHuman || away.isHuman;
-    const ab3 = $('#action-buttons') || actions;
-    ab3.innerHTML = `<h3>${T('phase_match')}</h3>
-      ${speedToggleHtml()}
-      <button id="serve-btn" class="action-btn pulse" data-tip="${T('serve_t')}" onclick="VV.serveOnce()">🏐 ${T('serve')}</button>`;
-    // Enable dice panel button for serve
-    const dpBtn = document.getElementById('dice-panel-btn');
-    const dpLbl = document.getElementById('dice-panel-label');
-    if (dpLbl) dpLbl.textContent = '🎲 D12';
-    if (dpBtn && isHumanMatch && state.speed !== 'auto') {
-      dpBtn.disabled = false; dpBtn.classList.add('pulse'); dpBtn.textContent = '🏐 Aufschlag';
-    } else if (dpBtn) {
-      dpBtn.disabled = true; dpBtn.classList.remove('pulse');
-    }
-  }
-  paint(); setActionUI();
-
-  const totalRolls = () => M.totalRolls + M.crunchExtra;
-  while (M.iRoll < totalRolls() && !M.ended) {
-    const isHuman = home.isHuman || away.isHuman;
-    if (isHuman && state.speed === 'normal') {
-      // Human normal speed: wait for click (no auto-timeout)
-      await waitFor('serveOnce');
-    } else if (isHuman && state.speed === 'fast') {
-      // Human fast: still wait but auto after 1.5s if no click
-      await waitFor('serveOnce', 1500);
-    } else if (state.speed === 'auto') {
-      await sleep(200);
-    } else {
-      // Bot vs bot match — pace based on speed
-      await sleep(state.speed === 'normal' ? 2500 : state.speed === 'fast' ? 1200 : 200);
-    }
-    const dice = await performDiceRoll(12);
-    M.rolls.push(dice);
-    const result = await resolveCriterion(dice, M);
-    M.events.push(result);
-    if (result.winner === 'home') M.homePoints++;
-    else if (result.winner === 'away') M.awayPoints++;
-    if (result.winner === 'home') M.rotationHome = (M.rotationHome + 1) % 6;
-    else if (result.winner === 'away') M.rotationAway = (M.rotationAway + 1) % 6;
-    M.iRoll++;
-    paint(); setActionUI();
-    refreshTopbar();
-    beep(result.winner === 'home' ? 740 : result.winner === 'away' ? 480 : 540, 60);
-    // Pause AFTER each rally so player can read the result
-    if (state.speed !== 'auto') {
-      await sleep(state.speed === 'fast' ? 800 : 1800);
-    }
-  }
-
-  // Determine winner by points; tie → coin flip
-  let winner;
-  if (M.homePoints > M.awayPoints) winner = home;
-  else if (M.awayPoints > M.homePoints) winner = away;
-  else winner = Math.random() < 0.5 ? home : away;
-
-  // Show summary
-  await showMatchSummary(M, winner, isDraw);
-  if (isDraw) flash('draw');
-  else flash(winner === home ? 'win' : 'loss');
-  return winner;
-}
-
-// Resolve a single criterion (rule-faithful for criterion 9: Block-Überwurf)
-async function resolveCriterion(dice, M) {
-  const home = M.home, away = M.away;
-  const homeStr = teamStrength(home), awayStr = teamStrength(away);
-  const homeFront = teamFront(home), awayFront = teamFront(away);
-  const homeBack = teamBack(home), awayBack = teamBack(away);
-  const homeBlock = teamBlock(home), awayBlock = teamBlock(away);
-  let winner = 'home';
-  let kind = 'total';
-  const lang = state.lang;
-
-  function pickComment(team) {
-    return (team === 'home'
-      ? choice(COMMENTARY[lang].home_score)
-      : team === 'away' ? choice(COMMENTARY[lang].away_score)
-      : 'Punktgleichstand'
-    ).replace('%team%', escapeHTML(team === 'home' ? home.name : away.name))
-     .replace('%player%', randomPlayerName(team === 'home' ? home : away));
-  }
-
-  switch (dice) {
-    case 1:  kind='total';  winner = homeStr > awayStr ? 'home' : homeStr < awayStr ? 'away' : 'tie'; break;
-    case 2:  kind='front';  winner = homeFront > awayFront ? 'home' : homeFront < awayFront ? 'away' : 'tie'; break;
-    case 3:  kind='back';   winner = homeBack > awayBack ? 'home' : homeBack < awayBack ? 'away' : 'tie'; break;
-    case 4: { kind='dice'; const r1 = roll(12), r2 = roll(12); winner = r1 > r2 ? 'home' : r1 < r2 ? 'away' : 'tie'; break; }
-    case 5:  kind='middle'; { const a = home.team.middle?.stars||0, b = away.team.middle?.stars||0; winner = a > b ? 'home' : a < b ? 'away' : 'tie'; break; }
-    case 6:  kind='service'; {
-      // Heim hinten-rechts (= diagonal historisch) vs Auswärts-Libero. Falls Libero serviert: Mitte muss ran.
-      const homeServer = home.team.diagonal?.stars||0;
-      const awayLibero = away.team.libero?.stars||0;
-      winner = homeServer > awayLibero ? 'home' : homeServer < awayLibero ? 'away' : 'tie';
-      break;
-    }
-    case 7:  kind='dia_set'; {
-      const a = (home.team.diagonal?.stars||0) + (home.team.setter?.stars||0);
-      const b = (away.team.diagonal?.stars||0) + (away.team.setter?.stars||0);
-      winner = a > b ? 'home' : a < b ? 'away' : 'tie'; break;
-    }
-    case 8:  kind='out_dia'; {
-      const a = home.team.outside2?.stars||0; // outside2 is back-row OH
-      const b = away.team.diagonal?.stars||0;
-      winner = a > b ? 'home' : a < b ? 'away' : 'tie'; break;
-    }
-    case 9:  kind='block';  {
-      // Block-Überwurf: Auswärts wirft 12er gegen Heim-Block
-      const r = roll(12);
-      if (r > homeBlock) winner = 'away';
-      else if (r < homeBlock) winner = 'home';
-      else winner = 'tie';
-      M._blockRoll = r; M._blockTarget = homeBlock;
-      break;
-    }
-    case 10: kind='crunch'; {
-      // Heim erhält +2 zusätzliche Würfe in diesem Spiel
-      M.crunchExtra += 2;
-      winner = 'tie'; // no point on this roll itself
-      break;
-    }
-    case 11: kind='injury'; {
-      // 12er: 1-6 = Heimspieler, 7-12 = Auswärtsspieler. Position via roll.
-      const r = roll(12);
-      const team = r <= 6 ? home : away;
-      const pos = diePositionFor(((r - 1) % 6) + 1);
-      const sub = disablePlayerOnTeam(team, pos, T('cone_event_injury'));
-      M._injuryWho = team; M._injuryPos = pos; M._injurySub = sub;
-      winner = 'tie';
-      break;
-    }
-    case 12: kind='money'; {
-      // Geld-Regen
-      home.money += 5000; away.money += 5000;
-      home.totalEarned += 5000; away.totalEarned += 5000;
-      winner = 'tie';
-      break;
-    }
-  }
-  // Build a textual description
-  let text = '';
-  if (kind === 'crunch')  text = `${escapeHTML(home.name)}: ${T('crunch_extra')}`;
-  else if (kind === 'injury') text = `${escapeHTML(M._injuryWho.name)} · ${posLabel(M._injuryPos)} ${T('injury_out')}${M._injurySub?` · ${T('sub_in')}: ${escapeHTML(M._injurySub.name)}`:''}`;
-  else if (kind === 'money')  text = T('money_rain');
-  else if (kind === 'block') {
-    const r = M._blockRoll, t = M._blockTarget;
-    text = `${state.lang==='de'?'Auswärts wirft':'Away rolls'} ${r} vs ${state.lang==='de'?'Block':'block'} ${t} → ${winner==='away'?T('block_overshot'):winner==='home'?T('block_holds'):'tie'}`;
-  }
-  else text = pickComment(winner);
-  return { dice, kind, winner, text };
-}
-
-function randomPlayerName(p) {
-  const cards = POSITIONS.map(k => p.team[k]).filter(Boolean);
-  const top = cards.sort((a,b)=>b.stars-a.stars)[0];
-  return top ? top.name.replace('#','') : escapeHTML(p.name);
-}
-
-async function showMatchSummary(M, winner, isDraw=false) {
-  const stage = $('#stage');
-  const lang = state.lang;
-  const summary = `${escapeHTML(M.home.name)} ${M.homePoints}:${M.awayPoints} ${escapeHTML(M.away.name)}`;
-  stage.innerHTML = `
-    <div class="stage-h">${isDraw ? '🤝 Draw' : (winner===M.home?'🏆 ':'')+escapeHTML(winner.name)+' '+(state.lang==='de'?'gewinnt':'wins')}</div>
-    <div class="stage-sub">${summary}</div>
-    <div style="margin-top:1rem; display:flex; gap:0.4rem; flex-wrap:wrap; max-width:640px;">
-      ${M.events.map(e => `<span class="crit-pill ${e.winner}">#${e.dice} ${T('crit_'+e.kind)}</span>`).join('')}
-    </div>
-    <div style="margin-top:1rem; text-align:center;">
-      <button class="btn btn-primary" onclick="VV.continueAfterMatch()">${T('next_match')}</button>
-    </div>`;
-  // Enable dice button for "continue after match"
-  const dpBtn2 = document.getElementById('dice-panel-btn');
-  const dpLbl2 = document.getElementById('dice-panel-label');
-  if (dpLbl2) dpLbl2.textContent = '🎲 Weiter';
-  if (dpBtn2 && state.speed !== 'auto') { dpBtn2.disabled = false; dpBtn2.classList.add('pulse'); dpBtn2.textContent = '✅ Weiter'; }
-  // Bot vs bot: auto-continue after pause; Human: wait for click
-  const humanInMatch = M.home.isHuman || M.away.isHuman;
-  if (state.speed === 'auto') {
-    await waitFor('continueAfterMatch', 600);
-  } else if (!humanInMatch) {
-    // Bot vs bot — auto-continue but give player time to see result
-    await waitFor('continueAfterMatch', state.speed === 'fast' ? 1500 : 2500);
-  } else {
-    // Human in match — wait for click
-    await waitFor('continueAfterMatch');
-  }
-  if (dpBtn2) { dpBtn2.disabled = true; dpBtn2.classList.remove('pulse'); dpBtn2.textContent = '🎲 Würfeln'; }
-  restoreBoardPanel();
-}
-
-// Mini court diagram (6 positions in a 3×2 grid representing front + back rows)
-function courtMiniHtml(player, rotation) {
-  // Slots in serving rotation order:
-  // [0]=back-right (server), [1]=back-middle, [2]=back-left, [3]=front-left, [4]=front-middle, [5]=front-right
-  // Map our 5 positions to 6 court slots loosely:
-  // Front: [outside (left), middle (center), setter (right)]
-  // Back:  [diagonal (left), libero (middle), outside (right)] (outside plays both rows; diagonal is server)
-  const basePositions = ['diagonal', 'libero', 'outside', 'outside', 'middle', 'setter'];
-  const baseLabels = basePositions.map(posShort);
-  const baseColors = basePositions.map(posColor);
-  const r = ((rotation || 0) % 6 + 6) % 6;
-  const order = range(6).map(i => (i + r) % 6);
-
-  // Auto Libero-Swap: When the Middle Blocker rotates into the back row
-  // (slots 0–2), the Libero subs in for them. We display the libero
-  // label/color in that slot and add `is-libero-sub` for a brief
-  // highlight animation so the swap is visible.
-  let liberoSwapSlot = -1;
-  for (let k = 0; k < 3; k++) {
-    if (basePositions[order[k]] === 'middle') { liberoSwapSlot = k; break; }
-  }
-
-  // Tooltip text for the swapped cell
-  const swapTip = (state.lang === 'de'
-    ? 'Libero ersetzt MB in der Hinterreihe'
-    : 'Libero subs in for MB in the back row');
-
-  function cell(slotIdx, kInRow, isBackRow) {
-    const idx = order[slotIdx];
-    const isSwap = isBackRow && (slotIdx === liberoSwapSlot);
-    const label = isSwap ? posShort('libero') : baseLabels[idx];
-    const color = isSwap ? posColor('libero') : baseColors[idx];
-    const cls   = isSwap ? 'is-libero-sub' : '';
-    const tipBase = isSwap ? `${label} · ${swapTip}` : label;
-    const ext = (isBackRow && kInRow === 2) ? ' 🏐' : (!isBackRow && kInRow === 2) ? ' ⛳' : '';
-    const labelOut = label + (isBackRow && kInRow === 2 ? ' 🏐' : '');
-    return `<span class="court-cell ${cls}" style="background:${color}" data-tip="${tipBase}${ext}">${labelOut}</span>`;
-  }
-
-  return `<div class="court-mini">
-    <div class="court-row top">
-      ${[3,4,5].map((slot, k) => cell(slot, k, false)).join('')}
-    </div>
-    <div class="court-row bot">
-      ${[0,1,2].map((slot, k) => cell(slot, k, true)).join('')}
-    </div>
-  </div>`;
-}
-
-async function runLeagueMatch() {
-  const g = state.game;
-  // Pair human (home this week) vs strongest bot
-  const me = g.players[0];
-  const opp = g.players.filter(p => p !== me).sort((a,b)=>teamStrength(b)-teamStrength(a))[0];
-  const home = me; const away = opp;
-  if (me.isHuman) showOpponentBoard(away);
-  const winner = await runMatchClassic(home, away, false);
-  if (me.isHuman) restoreBoardPanel();
-  // Award league points and money per rulebook
-  if (winner === null) {
-    // Draw: both +5k from bank, +1 LP
-    home.money += 5000; home.totalEarned += 5000; home.leaguePoints += 1; animateMoneyChange(home, 5000);
-    away.money += 5000; away.totalEarned += 5000; away.leaguePoints += 1; animateMoneyChange(away, 5000);
-    logEntry(`🏐 ${T('phase_match')}: 🤝 Draw — ${escapeHTML(home.name)} & ${escapeHTML(away.name)} je +5k · +1 LP`, 'win');
-  } else if (winner === home) {
-    home.money += 10000; home.totalEarned += 10000; animateMoneyChange(home, 10000);
-    if (away.money >= 5000) { away.money -= 5000; animateMoneyChange(away, -5000); home.money += 5000; home.totalEarned += 5000; animateMoneyChange(home, 5000); } else { home.money += away.money; away.money = 0; }
-    home.matchesWon++; home.leaguePoints += 3;
-    logEntry(`🏐 ${T('phase_match')}: <b>${escapeHTML(home.name)}</b> +10k (Bank) +5k · +3 LP`, 'win');
-  } else {
-    away.money += 10000; away.totalEarned += 10000; animateMoneyChange(away, 10000);
-    if (home.money >= 5000) { home.money -= 5000; animateMoneyChange(home, -5000); away.money += 5000; away.totalEarned += 5000; animateMoneyChange(away, 5000); } else { away.money += home.money; home.money = 0; }
-    away.matchesWon++; away.leaguePoints += 3;
-    logEntry(`🏐 ${T('phase_match')}: <b>${escapeHTML(away.name)}</b> +10k (Bank) +5k · +3 LP`, 'loss');
-  }
-  // Other players: bye → +5'000
-  for (const p of g.players) {
-    if (p !== home && p !== away) {
-      p.money += 5000; p.totalEarned += 5000; animateMoneyChange(p, 5000);
-      logEntry(`🏐 ${T('week_event_league')} ${state.lang==='de'?'Freilos':'Bye'} → ${escapeHTML(p.name)} +5’`);
-    }
-  }
-  refreshTopbar();
-  if (checkWin()) return;
-}
-
-
-// ────────────────────────────────────────────────────────────────
-//  MARKET PHASE  (between weeks)
-// ────────────────────────────────────────────────────────────────
-function regenMarket() {
-  // Pull from the auction deck (2-5 stars). 1-star cards have a separate always-available section.
-  const out = [];
-  const deck = state.game.auctionDeck.slice();
-  while (out.length < 8 && deck.length) {
-    out.push(deck.shift());
-  }
-  // Don't permanently remove from auctionDeck — refresh each week
-  state.game.auctionDeck = state.game.auctionDeck.filter(c => !out.includes(c));
-  // Put back unused at the end so they cycle
-  return out;
-}
-
-async function runMarketPhase() {
-  const g = state.game;
-  g.market = regenMarket();
-  renderMarket();
-  // Bots act first, then human's turn (to give clear "your turn" feel)
-  for (const bot of g.players.filter(p => !p.isHuman)) {
-    await sleep(speedMs(450));
-    let pick;
-    try { pick = window.VV_BOTS.pickMarketBuy(bot, g.market); }
-    catch(err) { console.error('Bot market crash:', err); pick = null; }
-    if (pick) {
-      const cur = bot.team[pick.pos];
-      bot.team[pick.pos] = pick;
-      if (cur) bot.bench.push(cur);
-      bot.money -= pick.price;
-      g.market = g.market.filter(c => c.id !== pick.id);
-      logEntry(fmt(T('bot_buys'), `${bot.emoji} ${escapeHTML(bot.name)}`, T('pos_'+pick.pos), pick.stars, fmtMoney(pick.price)), 'tournament');
-    } else {
-      logEntry(fmt(T('bot_skips'), `${bot.emoji} ${escapeHTML(bot.name)}`));
-    }
-    refreshTopbar();
-    renderMarket();
-  }
-  // Enable dice button as "Fertig" for market phase
-  const dpBtnM = document.getElementById('dice-panel-btn');
-  const dpLblM = document.getElementById('dice-panel-label');
-  if (dpLblM) dpLblM.textContent = '🛒 Markt';
-  if (dpBtnM && state.speed !== 'auto') { dpBtnM.disabled = false; dpBtnM.classList.add('pulse'); dpBtnM.textContent = '✅ Fertig'; }
-  await waitFor('endMarket', state.speed === 'auto' ? speedMs(600) : state.speed === 'fast' ? 800 : 0);
-  if (dpBtnM) { dpBtnM.disabled = true; dpBtnM.classList.remove('pulse'); dpBtnM.textContent = '🎲 Würfeln'; }
-}
-
-function renderMarket() {
-  const stage = $('#stage'); if (!stage) return;
-  const me = state.game.players[0];
-  const weakPos = weakestPosition(me);
-  stage.innerHTML = `
-    <div class="stage-h">${T('market_h')}</div>
-    <div class="stage-sub">${T('market_budget')}: <b id="budget-num">${fmtMoney(me.money)}</b>’ · ${T('market_team_strength')}: <b>★ ${teamStrength(me)}</b> · ${T('market_suggest')}: <b style="color:var(--gold)">${posLabel(weakPos)}</b></div>
-    <h4 class="h-cond" style="font-size:1rem; letter-spacing:2px; margin-top:1rem; color:var(--silver);">${state.lang==='de'?'Markt — 2★ bis 5★':'Market — 2★ to 5★'}</h4>
-    <div class="market" id="market-grid">${state.game.market.map(c => marketCardHtml(c, me, { suggestedPos: weakPos })).join('')}</div>
-    <h4 class="h-cond" style="font-size:1rem; letter-spacing:2px; margin-top:1.4rem; color:var(--silver);">${state.lang==='de'?'1-Stern-Markt — immer kaufbar':'1-Star Market — always available'}</h4>
-    <div class="market market-1star">${oneStarMarketHtml(me, weakPos)}</div>
-    ${me.bench.length ? `<h4 class="h-cond" style="font-size:1rem; letter-spacing:2px; margin-top:1.4rem; color:var(--silver);">${state.lang==='de'?'Bench / Ersatz':'Bench / Substitutes'}</h4><div class="bench-grid">${me.bench.map(c => benchCardHtml(c, me)).join('')}</div>`:''}`;
-  const actions = $('#actions'); if (!actions) return;
-  const ab4 = $('#action-buttons') || actions;
-  ab4.innerHTML = `<h3>${T('phase_buy')}</h3>
-    ${speedToggleHtml()}
-    <button class="action-btn pulse" onclick="VV.endMarket()">${T('finish_buying')}</button>`;
-}
-
-function oneStarMarketHtml(me, weakPos) {
-  return POSITIONS.map(pos => {
-    const c = (ALL_CARDS.filter(x => x.stars === 1 && x.pos === pos)[0]) || null;
-    if (!c) return '';
-    const canAfford = me.money >= 10000;
-    const suggested = pos === weakPos;
-    return `<div class="mc ${canAfford?'':'poor'} ${suggested?'suggested':''}" data-tip="1★ ${posLabel(pos)} · 10’000">
-      <img class="mc-img" src="${c.url}" alt="" loading="lazy">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span class="mc-pos" style="background:${posColor(pos)}">${posShort(pos)}</span>
-        <span class="mc-stars">★</span>
-      </div>
-      <div class="mc-price">${fmtMoney(10000)}</div>
-      <button class="mc-buy" onclick="VV.buyOneStar('${pos}')" ${canAfford?'':'disabled'}>${canAfford?T('market_buy'):T('market_sold')}</button>
-    </div>`;
-  }).join('');
-}
-
-function benchCardHtml(c, me) {
-  const sellPrice = Math.floor(c.stars * 10000 / 2);
-  return `<div class="bc">
-    <img src="${c.url}" alt="" class="bc-img" loading="lazy">
-    <div class="bc-meta">
-      <span class="mc-pos" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
-      <span class="mc-stars">${'★'.repeat(c.stars)}</span>
-    </div>
-    <button class="bc-sell" onclick="VV.sellBenchCard('${c.id}')" data-tip="${T('market_sell_t')}">💰 ${T('market_sell')} ${fmtMoney(sellPrice)}’</button>
-  </div>`;
-}
-
-function buyOneStar(pos) {
-  const me = state.game.players[0];
-  if (me.money < 10000) { toast(state.lang==='de'?'Zu teuer':'Too expensive', 'bad'); return; }
-  const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === pos);
-  if (!opts.length) return;
-  const c = choice(opts);
-  const cur = me.team[pos];
-  if (cur && cur.stars >= c.stars) {
-    if (cur) me.bench.push(cur);
-  }
-  me.team[pos] = c;
-  me.money -= 10000;
-  animateMoneyChange(me, -10000);
-  toast(state.lang==='de'?`Gekauft: ${c.name}`:`Bought: ${c.name}`, 'good');
-  beep(880, 60);
-  refreshTopbar(); refreshTeamPanel(); renderMarket(); refreshFloatingPanel();
-  logEntry(`💰 ${state.lang==='de'?'Gekauft':'Bought'}: ${c.name} (1★) -10’000’`, 'win');
-}
-
-function sellBenchCard(id) {
-  const me = state.game.players[0];
-  const idx = me.bench.findIndex(c => c.id === id);
-  if (idx < 0) return;
-  const c = me.bench[idx];
-  const price = Math.floor(c.stars * 10000 / 2);
-  if (!confirm(state.lang==='de'?`${c.name} für ${fmtMoney(price)}’ verkaufen?`:`Sell ${c.name} for ${fmtMoney(price)}?`)) return;
-  me.bench.splice(idx, 1);
-  me.money += price;
-  animateMoneyChange(me, +price);
-  toast(`+${fmtMoney(price)}’`, 'gold');
-  beep(820, 80);
-  logEntry(`💰 ${state.lang==='de'?'Verkauft':'Sold'}: ${c.name} +${fmtMoney(price)}’`, 'win');
-  refreshTopbar(); refreshTeamPanel(); renderMarket(); refreshFloatingPanel();
-}
-
-function sellStarter(pos) {
-  const me = state.game.players[0];
-  const c = me.team[pos]; if (!c) return;
-  const price = Math.floor(c.stars * 10000 / 2);
-  if (!confirm(state.lang==='de'?`${c.name} für ${fmtMoney(price)}’ verkaufen?`:`Sell ${c.name} for ${fmtMoney(price)}?`)) return;
-  // Replace from bench if available, else clear
-  const replIdx = me.bench.findIndex(b => b.pos === pos);
-  if (replIdx >= 0) me.team[pos] = me.bench.splice(replIdx, 1)[0];
-  else me.team[pos] = null;
-  me.money += price;
-  animateMoneyChange(me, +price);
-  toast(`+${fmtMoney(price)}’`, 'gold');
-  logEntry(`💰 ${state.lang==='de'?'Verkauft':'Sold'}: ${c.name} +${fmtMoney(price)}’`, 'win');
-  state.sellMode = false;
-  refreshTopbar(); refreshTeamPanel(); refreshFloatingPanel();
-  if (state.view === 'game') renderMarket();
-}
-
-function marketCardHtml(c, player, opts) {
-  const canAfford = player.money >= c.price;
-  const suggested = opts && opts.suggestedPos === c.pos;
-  return `<div class="mc ${canAfford?'':'poor'} ${suggested?'suggested':''}" data-tip="${escapeHTML(c.name)}">
-    <img class="mc-img" src="${c.url}" alt="" loading="lazy">
-    <div style="display:flex; justify-content:space-between; align-items:center;">
-      <span class="mc-pos" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
-      <span class="mc-stars">${'★'.repeat(c.stars)}</span>
-    </div>
-    <div class="mc-price">${fmtMoney(c.price)}</div>
-    <button class="mc-buy" onclick="VV.buyCard('${c.id}')" ${canAfford?'':'disabled'}>${canAfford?T('market_buy'):T('market_sold')}</button>
-  </div>`;
-}
-
-function buyCard(id) {
-  const c = ALL_CARDS.find(x => x.id === id);
-  const me = state.game.players[0];
-  if (!c) return;
-  if (me.money < c.price) { toast(state.lang==='de'?'Zu teuer':'Too expensive', 'bad'); return; }
-  const cur = me.team[c.pos];
-  if (cur && cur.stars >= c.stars) {
-    if (!confirm(state.lang==='de'?'Aktuelle Karte ist gleichstark oder stärker — trotzdem kaufen?':'Current card has equal or higher stars — buy anyway?')) return;
-  }
-  if (cur) me.bench.push(cur);
-  me.team[c.pos] = c;
-  me.money -= c.price;
-  state.game.market = state.game.market.filter(x => x.id !== c.id);
-  toast(state.lang==='de' ? `Gekauft: ${c.name}` : `Bought: ${c.name}`, 'good');
-  beep(880, 60);
-  refreshTopbar(); refreshTeamPanel();
-  renderMarket();
-}
-function endMarket() {
-  // Return unsold market cards to the auction deck (back of deck)
-  const g = state.game;
-  if (g && g.market && g.market.length) {
-    for (const c of g.market) g.auctionDeck.push(c);
-    g.market = [];
-  }
-  fire('endMarket');
-}
-function weakestPosition(p) {
-  let min = POSITIONS[0], minS = Infinity;
-  for (const k of POSITIONS) { const s = (p.team[k]&&p.team[k].stars)||0; if (s < minS) { minS = s; min = k; } }
-  return min;
-}
-
-// ────────────────────────────────────────────────────────────────
-//  SEASON END (single-season MVP variant)
-//  Even in single-season we apply: standings VP, payouts.
-//  We skip the protect/steal phase since the season ends here.
-// ────────────────────────────────────────────────────────────────
-async function runSeasonEnd() {
-  const g = state.game;
-  // Award season standings
-  const ranked = g.players.slice().sort((a,b) => (b.leaguePoints||0) - (a.leaguePoints||0));
-  const vpAward = [3, 2, 1, 0];
-  const moneyAward = [0, 20000, 30000, 50000];
-  for (let i = 0; i < ranked.length; i++) {
-    const p = ranked[i];
-    const _delta_vp = vpAward[i] || 0; p.vp += _delta_vp; if (_delta_vp) animateVpChange(p, _delta_vp);
-    p.money += moneyAward[i] || 0;
-    p.totalEarned += moneyAward[i] || 0;
-    logEntry(`${T('standings_title')} ${i+1}. ${escapeHTML(p.name)} → +${vpAward[i]||0} VP, +${fmtMoney(moneyAward[i]||0)}’`, 'tournament');
-  }
-  refreshTopbar();
-  await sleep(speedMs(800));
-}
-
-// ────────────────────────────────────────────────────────────────
-//  END GAME
-// ────────────────────────────────────────────────────────────────
-function checkWin() {
-  const g = state.game;
-  const w = g.players.find(p => p.vp >= 8);
-  if (w) { g.over = true; g.winner = w; setTimeout(endGame, speedMs(450)); return true; }
-  return false;
-}
-
-function endGame() {
-  const g = state.game;
-  if (!g.winner) g.winner = g.players.slice().sort((a,b) => b.vp - a.vp)[0];
-  setView('end');
-}
-
-function renderEnd() {
-  const app = $('#app');
-  const g = state.game;
-  const ranked = g.players.slice().sort((a,b) => b.vp - a.vp);
-  const winner = g.winner;
-  const remark = winner.vp >= 8 ? T('end_remarks_8vp') : T('end_remarks_season');
-  app.innerHTML = `
-    <div class="end-wrap">
-      <div class="end-h">${fmt(T('end_h_winner'), `<span class="winner">${escapeHTML(winner.name)}</span>`)}</div>
-      <div style="color:var(--silver); letter-spacing:3px; text-transform:uppercase; font-size:0.8rem;">${winner.vp}/8 ${T('vp')} · ${remark}</div>
-      <div class="end-board">
-        ${ranked.map((p,i)=>`
-          <div class="end-row ${i===0?'first':''}">
-            <span class="rank">${i+1}.</span>
-            <span style="font-size:1.4rem;">${p.emoji}</span>
-            <b>${escapeHTML(p.name)}</b>
-            <span class="stats">
-              <span class="stat">${T('vp')}: <b>${p.vp}</b></span>
-              <span class="stat">${T('end_stats_won')}: <b>${p.matchesWon}</b></span>
-              <span class="stat">${T('end_stats_money')}: <b>${fmtMoney(p.totalEarned)}</b></span>
-              <span class="stat">${T('end_stats_str')}: <b>★ ${teamStrength(p)}</b></span>
-            </span>
-          </div>`).join('')}
-      </div>
-      <div class="end-actions">
-        <button class="btn btn-primary btn-large" onclick="VV.playAgain()">${T('end_play_again')}</button>
-        <button class="btn btn-secondary btn-large" onclick="VV.toMenu()">${T('end_back_menu')}</button>
-        <button class="btn btn-ghost" onclick="VV.showFullHistory()">📜 ${state.lang==='de'?'Komplette Historie':'Full history'}</button>
-        <button class="btn btn-ghost" onclick="VV.exportLog()">📥 ${state.lang==='de'?'Log als .txt':'Log as .txt'}</button>
-      </div>
-    </div>`;
-  startConfetti(8000);
-  flash('win');
-  beep(900, 350);
-}
-
-function playAgain() { initSoloGame(); setView('draft'); }
-function toMenu() { state.game = null; setView('menu'); }
-
-function speedToggleHtml() {
-  const tags = [{ id:'normal', label:'🐢', t:T('speed_normal') }, { id:'fast', label:'⚡', t:T('speed_fast') }, { id:'auto', label:'🚀', t:T('speed_auto') }];
-  return `<div style="display:flex; gap:0.3rem; margin-bottom:0.4rem;">
-    <span style="font-size:0.65rem; letter-spacing:2px; color:var(--silver); text-transform:uppercase; align-self:center; margin-right:0.3rem;">${T('speed')}</span>
-    ${tags.map(s => `<button class="lang-pill ${state.speed===s.id?'active':''}" data-tip="${s.t}" onclick="VV.setSpeed('${s.id}')">${s.label}</button>`).join('')}
-  </div>`;
-}
-
-function continueAfterMatch() { fire('continueAfterMatch'); }
-function serveOnce() { fire('serveOnce'); }
-
-// ────────────────────────────────────────────────────────────────
-//  RENDER DISPATCH
-// ────────────────────────────────────────────────────────────────
-function render() {
-  switch (state.view) {
-    case 'splash': /* HTML default */ break;
-    case 'intro':       renderIntro(); break;
-    case 'menu':        renderMenu(); break;
-    case 'mp_submenu':  renderMpSubmenu(); break;
-    case 'draft':       renderDraft(); break;
-    case 'auction':     renderAuction(); break;
-    case 'starting':    renderStarting(); break;
-    case 'game':        renderGame(); break;
-    case 'end':         renderEnd(); break;
-  }
-}
-
-
-// ────────────────────────────────────────────────────────────────
-//  ANIMATED MONEY / VP / COUNTERS
-// ────────────────────────────────────────────────────────────────
-function animateMoneyChange(player, delta) {
-  // Add a small floating "+X" or "-X" near the topbar player card
-  const topbar = $('#topbar'); if (!topbar) return;
-  const idx = state.game.players.indexOf(player);
-  const card = topbar.children[idx];
-  if (!card) return;
-  const fl = document.createElement('div');
-  fl.className = 'money-float ' + (delta >= 0 ? 'pos' : 'neg');
-  fl.textContent = (delta >= 0 ? '+' : '') + fmtMoney(delta) + '’';
-  card.appendChild(fl);
-  setTimeout(() => fl.remove(), 1600);
-}
-function animateVpChange(player, delta) {
-  const topbar = $('#topbar'); if (!topbar) return;
-  const idx = state.game.players.indexOf(player);
-  const card = topbar.children[idx];
-  if (!card) return;
-  const fl = document.createElement('div');
-  fl.className = 'vp-float';
-  fl.textContent = (delta >= 0 ? '+' : '') + delta + ' VP';
-  card.appendChild(fl);
-  setTimeout(() => fl.remove(), 1800);
-  beep(900, 120);
-}
-
-// ────────────────────────────────────────────────────────────────
-//  FLOATING TEAM PANEL (always visible bottom-right)
-// ────────────────────────────────────────────────────────────────
-function ensureFloatingPanel() {
-  let fp = $('#floating-panel');
-  if (!fp) {
-    fp = document.createElement('div');
-    fp.id = 'floating-panel';
-    fp.className = 'fp collapsed';
-    document.body.appendChild(fp);
-    fp.addEventListener('click', e => {
-      if (e.target.closest('.fp-sell-btn') || e.target.closest('.fp-card')) return;
-      // toggle expand
-      fp.classList.toggle('expanded');
-      fp.classList.toggle('collapsed');
-    });
-    document.addEventListener('click', e => {
-      if (fp.classList.contains('expanded') && !fp.contains(e.target)) {
-        fp.classList.add('collapsed'); fp.classList.remove('expanded');
+    // ---- BLIND DRAFT auto-deal -----------------------------------
+    function drawByStars(starN, count) {
+      const pool = state.game.auctionDeck.filter(c => c.stars === starN);
+      const picked = [];
+      for (let i = 0; i < count && pool.length; i++) {
+        const idx = Math.floor(Math.random() * pool.length);
+        const c = pool.splice(idx, 1)[0];
+        // remove from main auction deck
+        const di = state.game.auctionDeck.indexOf(c);
+        if (di >= 0) state.game.auctionDeck.splice(di, 1);
+        picked.push(c);
       }
+      return picked;
+    }
+
+    players.forEach(p => {
+      const dealt = []
+        .concat(drawByStars(4, 1))
+        .concat(drawByStars(3, 2))
+        .concat(drawByStars(2, 3));
+      dealt.forEach(c => placeIntoTeamOrBench(p, c));
+    });
+
+    // Roll for starting player (D12).
+    let high = -1, hi = 0;
+    players.forEach((p, i) => { const r = rand(1,12); if (r > high) { high = r; hi = i; } });
+    state.game.currentPlayerIdx = hi;
+    state.game.startingPlayerIdx = hi;
+
+    log('🎲 Blind Draft abgeschlossen — Startspieler: ' + esc(players[hi].name), 'system');
+
+    // Move to draft (1-star pick by position).
+    setView('draft');
+    setTimeout(() => runDraftPhase().catch(err => console.error(err)), 200);
+  }
+
+  // =================================================================
+  // 12. DRAFT (1-star pick by position)
+  // =================================================================
+  async function runDraftPhase() {
+    const g = state.game;
+    // Each player picks 3 one-stars by chosen position.
+    for (let pi = 0; pi < g.players.length; pi++) {
+      const p = g.players[pi];
+      for (let pick = 0; pick < 3; pick++) {
+        const pool = g.oneStarPool.filter(c => !cardOwned(c));
+        if (!pool.length) break;
+        let card = null;
+        if (p.isHuman) {
+          card = await humanPickOneStar(p, pool);
+        } else {
+          // Bot picks weakest position to fill.
+          let weakest = null, weakestStars = Infinity;
+          for (const pos of POSITIONS) {
+            const c = p.team[pos];
+            const s = c ? c.stars : 0;
+            if (s < weakestStars) { weakestStars = s; weakest = pos; }
+          }
+          const wantPos = (weakest === 'outside2') ? 'outside' : weakest;
+          card = pool.find(c => c.pos === wantPos) || pool[0];
+          await sleep(ms('botBid'));
+        }
+        if (card) {
+          placeIntoTeamOrBench(p, card);
+          log(`📝 ${esc(p.name)} wählt 1★ ${esc(card.name)}`, 'system');
+          renderDraft();
+        }
+      }
+    }
+    // Auction phase next.
+    setView('auction');
+    setTimeout(() => runOpeningAuction().catch(err => console.error(err)), 300);
+  }
+
+  function renderDraft(rootMaybe) {
+    const root = rootMaybe || $('#vv-app');
+    if (!root) return;
+    if (state.view !== 'draft') return;
+    const g = state.game;
+    const human = g.players.find(p => p.isHuman);
+    root.innerHTML = `
+      <div class="draft-view">
+        <div class="draft-main">
+          <h2 style="font-family:var(--font-display);letter-spacing:4px;color:var(--gold);">DRAFT — 1★ Karten</h2>
+          <p class="muted">Klicke eine Karte an um sie zu wählen. ${T('week')} 1.</p>
+          <div id="draft-pool" class="draft-grid"></div>
+        </div>
+        <div class="draft-side">
+          <h3>${esc(human.name)} — ★ ${teamStrength(human.team)}</h3>
+          ${setupTeamPanelHtml(human)}
+        </div>
+      </div>`;
+    refreshDraftPool();
+  }
+
+  function refreshDraftPool() {
+    const cont = $('#draft-pool');
+    if (!cont) return;
+    const g = state.game;
+    const pool = g.oneStarPool.filter(c => !cardOwned(c));
+    cont.innerHTML = pool.map(c => cardHtml(c)).join('');
+  }
+
+  function humanPickOneStar(player, pool) {
+    return new Promise((resolve) => {
+      const cont = $('#draft-pool');
+      if (!cont) { resolve(pool[0]); return; }
+      cont.querySelectorAll('.vv-card').forEach((el) => {
+        el.addEventListener('click', () => {
+          const id = el.getAttribute('data-id');
+          const c = pool.find(x => x.id === id);
+          if (c) resolve(c);
+        });
+      });
+      // Safety: 30s default click — auto-pick weakest position fill.
+      setTimeout(() => {
+        if (state.skipping) {
+          let weakest = null, weakestStars = Infinity;
+          for (const pos of POSITIONS) {
+            const c = player.team[pos];
+            const s = c ? c.stars : 0;
+            if (s < weakestStars) { weakestStars = s; weakest = pos; }
+          }
+          const wantPos = (weakest === 'outside2') ? 'outside' : weakest;
+          const c = pool.find(x => x.pos === wantPos) || pool[0];
+          resolve(c);
+        }
+      }, 30000);
     });
   }
-  return fp;
-}
-function refreshFloatingPanel() {
-  // Floating panel is disabled — team management is in the permanent gpanel-team
-  const fp = $('#floating-panel'); if (fp) fp.style.display = 'none';
-  return;
-  const fp2 = ensureFloatingPanel();
-  fp2.style.display = '';
-  const me = state.game.players[0];
-  const expanded = fp.classList.contains('expanded');
-  const sellMode = !!state.sellMode;
-  fp.innerHTML = `
-    <div class="fp-head">
-      <div class="fp-title">${state.lang==='de'?'Mein Team':'My Team'} · <span style="color:var(--gold)">★ ${teamStrength(me)}</span></div>
-      <div class="fp-controls">
-        <button class="fp-sell-btn ${sellMode?'on':''}" data-tip="${state.lang==='de'?'Verkaufs-Modus':'Sell mode'}" onclick="event.stopPropagation(); VV.toggleSellMode()">🔴</button>
-      </div>
-    </div>
-    <div class="fp-court">
-      ${POSITIONS.map(pos => {
-        const c = me.team[pos];
-        const dis = c && c.disabled ? 'disabled' : '';
-        const sub = c && c._isSub ? 'is-sub' : '';
-        const subTip = c && c._isSub ? ` · ${T('sub_tooltip')}` : '';
-        const tip = c ? `${escapeHTML(c.name)} · ${c.stars}★${c.disabled?' · '+(c.disabledReason||'-'):''}${subTip}` : posLabel(pos);
-        return `<div class="fp-card pos-${pos} ${dis} ${sub} ${sellMode?'sellable':''}" style="border-color:${posColor(pos)};" data-pos="${pos}" data-tip="${tip}" onclick="event.stopPropagation(); VV.handleFloatingClick('${pos}')">
-          ${c ? `<img src="${c.url}" alt="" loading="lazy"><div class="fp-stars">${'★'.repeat(c.stars)}</div>` : `<div class="fp-empty">?</div>`}
-          <span class="fp-pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
-          ${c && c.disabled?'<div class="fp-dis-overlay">⛔</div>':''}
-          ${c && c._isSub?`<div class="fp-sub-badge">${T('sub_label')}</div>`:''}
-        </div>`;
-      }).join('')}
-    </div>
-    ${expanded ? `<div class="fp-bench">
-      <div class="fp-bench-h">${state.lang==='de'?'Bench / Ersatz':'Bench / Substitutes'} (${me.bench.length})</div>
-      <div class="fp-bench-grid">
-        ${me.bench.map(c => `
-          <div class="fp-card bench ${sellMode?'sellable':''}" data-id="${c.id}" onclick="event.stopPropagation(); VV.handleFloatingBenchClick('${c.id}')">
-            <img src="${c.url}" alt="" loading="lazy">
-            <div class="fp-stars">${'★'.repeat(c.stars)}</div>
-            <span class="fp-pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
-          </div>`).join('') || `<span style="font-size:0.7rem; color:var(--silver);">—</span>`}
-      </div>
-    </div>` : ''}
-    <div class="fp-foot">${state.lang==='de'?'Klick zum Erweitern':'Click to expand'}</div>`;
-}
-function toggleFloatingPanel() {
-  const fp = ensureFloatingPanel();
-  fp.classList.toggle('expanded');
-  fp.classList.toggle('collapsed');
-}
-function toggleSellMode() {
-  state.sellMode = !state.sellMode;
-  refreshTeamPanel(); refreshFloatingPanel();
-  toast(state.sellMode ? (state.lang==='de'?'Verkaufs-Modus aktiv — klicke auf eine Karte':'Sell mode active — click a card') : (state.lang==='de'?'Verkaufs-Modus aus':'Sell mode off'), state.sellMode?'gold':'good', 1800);
-}
-function handleFloatingClick(pos) {
-  if (state.sellMode) { sellStarter(pos); refreshTeamPanel(); }
-}
-function handleFloatingBenchClick(id) {
-  if (state.sellMode) { sellBenchCard(id); refreshTeamPanel(); }
-}
 
-// ────────────────────────────────────────────────────────────────
-//  EXPORT GAME LOG
-// ────────────────────────────────────────────────────────────────
-function exportLog() {
-  if (!state.game) return;
-  const lines = ['Volley Vendetta — Game Log', new Date().toISOString(), ''];
-  for (const e of state.game.log) {
-    // strip HTML
-    const text = e.text.replace(/<[^>]+>/g, '');
-    lines.push(text);
+  function cardHtml(card, opts) {
+    if (!card) return '';
+    opts = opts || {};
+    const cls = ['vv-card', opts.benched ? 'benched' : '', opts.injured ? 'injured' : '']
+      .filter(Boolean).join(' ');
+    return `
+      <div class="${cls}" data-id="${esc(card.id)}" data-pos="${esc(card.pos)}">
+        <img class="vc-img" src="${esc(card.url)}" alt="${esc(card.name)}"
+             onerror="this.style.background='#222';this.removeAttribute('src')">
+        <div class="vc-name">${esc(card.name)}</div>
+        <div class="vc-pos">${esc(POS_LABEL[card.pos] || card.pos)}</div>
+      </div>`;
   }
-  const blob = new Blob([lines.join('\n')], { type:'text/plain;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `volley-vendetta-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.txt`;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 500);
-}
-function showFullHistory() {
-  if (!state.game) return;
-  const div = document.createElement('div'); div.className = 'modal-popup';
-  div.innerHTML = `
-    <div class="modal-card" style="max-width:680px; max-height:85vh; display:flex; flex-direction:column;">
-      <div class="modal-h">${state.lang==='de'?'Komplette Spiel-Historie':'Full game log'}</div>
-      <div class="full-log" style="flex:1; overflow-y:auto; text-align:left; padding:0.6rem; background:rgba(0,0,0,0.4); border:1px solid var(--line); border-radius:3px; font-size:0.82rem;">
-        ${state.game.log.map(e => `<div class="log-entry ${e.kind||''}"><span class="ts">·</span>${e.text}</div>`).join('')}
+
+  // =================================================================
+  // 13. OPENING AUCTION (6 cards)
+  // =================================================================
+  async function runOpeningAuction() {
+    const g = state.game;
+    const human = g.players.find(p => p.isHuman);
+    // Reveal 6 cards from auction deck.
+    const lot = [];
+    while (lot.length < 6 && g.auctionDeck.length) {
+      lot.push(g.auctionDeck.shift());
+    }
+    for (let i = 0; i < lot.length; i++) {
+      const card = lot[i];
+      renderAuctionCard(card, i + 1, lot.length);
+      const result = await runAuctionRound(card, false);
+      if (result.winner) {
+        result.winner.money -= result.bid;
+        placeIntoTeamOrBench(result.winner, card);
+        log(`💰 ${esc(result.winner.name)} ersteigert ${esc(card.name)} für ${fmtMoney(result.bid)}`, 'event');
+      } else {
+        // Unsold: stays in market for shop access until sold.
+        g.unsoldMarket.push(card);
+        log(`⚠ ${esc(card.name)} nicht verkauft — geht in den Markt`, 'system');
+      }
+      await sleep(800);
+    }
+    // Move to game proper.
+    setView('game');
+    setTimeout(() => startSeason().catch(err => console.error(err)), 300);
+  }
+
+  function renderAuction(root) {
+    if (!root) root = $('#vv-app');
+    const human = state.game.players.find(p => p.isHuman);
+    root.innerHTML = `
+      <div class="draft-view">
+        <div class="draft-main auction-view" id="auction-main">
+          <h2 style="font-family:var(--font-display);letter-spacing:4px;color:var(--gold);">ERÖFFNUNGS-AUKTION</h2>
+          <div id="auction-card-display" class="auction-card-display">— —</div>
+          <div id="auction-bids" class="auction-bids"></div>
+          <div id="auction-controls" class="bid-controls"></div>
+        </div>
+        <div class="draft-side">
+          <h3>${esc(human.name)} — ★ ${teamStrength(human.team)} — ${fmtMoney(human.money)}</h3>
+          <div id="setup-team-panel">${setupTeamPanelHtml(human)}</div>
+        </div>
+      </div>`;
+  }
+
+  function renderAuctionCard(card, idx, total) {
+    const c = $('#auction-card-display');
+    if (!c) return;
+    c.innerHTML = `
+      ${cardHtml(card)}
+      <div class="auction-info">
+        <div class="ai-name">${esc(card.name)}</div>
+        <div class="ai-stars">${stars(card.stars)} (${card.stars}★)</div>
+        <div class="muted">Mindestgebot: ${fmtMoney(card.stars * 10000)}</div>
+        <div class="muted">Auktion ${idx}/${total}</div>
+        <div class="ai-bid" id="auction-current-bid">— ${T('bid')}</div>
+      </div>`;
+  }
+
+  // Run auction round across all players in turn order, repeatedly until
+  // only one remains (or all pass on the first round).
+  async function runAuctionRound(card, isInGameTransfer) {
+    const g = state.game;
+    const minBid = card.stars * 10000;
+    let currentBid = 0;
+    let leader = null;
+    let active = g.players.slice();              // start with all players
+    let order  = g.players.slice(g.startingPlayerIdx).concat(g.players.slice(0, g.startingPlayerIdx));
+    const passed = new Set();
+    const bidsList = $('#auction-bids') || (isInGameTransfer ? $('#event-detail') : null);
+    // Helper to render bid
+    function logBid(p, text, classes) {
+      if (!bidsList) return;
+      const div = document.createElement('div');
+      div.className = 'bid-line ' + (classes || '');
+      div.innerHTML = `${esc(p.emoji)} ${esc(p.name)} — ${esc(text)}`;
+      bidsList.appendChild(div);
+    }
+    // Safety cap on rounds.
+    let safety = 24;
+    while (safety-- > 0) {
+      let activeThisRound = order.filter(p => !passed.has(p.id));
+      if (activeThisRound.length <= 1) break;
+      let bidThisRound = false;
+      for (const p of activeThisRound) {
+        if (passed.has(p.id)) continue;
+        const myMin = Math.max(minBid, currentBid + 1000);
+        if (p.isHuman) {
+          const r = await humanBidPrompt(card, currentBid, myMin, isInGameTransfer);
+          if (r && r.pass) {
+            passed.add(p.id);
+            logBid(p, T('pass'), 'passed');
+          } else if (r && r.bid > 0) {
+            currentBid = r.bid; leader = p;
+            updateCurrentBid(currentBid, leader);
+            logBid(p, fmtMoney(r.bid), 'winning');
+            bidThisRound = true;
+          }
+        } else {
+          await sleep(ms('botBid'));
+          let dec = { pass: true };
+          try {
+            dec = window.VV_BOTS.shouldBid(p, card, currentBid, myMin,
+                                            g.players.filter(x => x !== p));
+            if (!dec) dec = { pass: true };
+          } catch (e) { dec = { pass: true }; }
+          // Force pass if not enough money or below min.
+          if (dec.bid && dec.bid < myMin) dec = { pass: true };
+          if (dec.bid && dec.bid > p.money) dec = { pass: true };
+          if (dec.pass) {
+            passed.add(p.id);
+            logBid(p, T('pass'), 'passed');
+          } else {
+            currentBid = dec.bid; leader = p;
+            updateCurrentBid(currentBid, leader);
+            logBid(p, fmtMoney(dec.bid), 'winning');
+            bidThisRound = true;
+          }
+        }
+        if (bidsList) bidsList.scrollTop = bidsList.scrollHeight;
+      }
+      if (!bidThisRound) break;
+    }
+    return { winner: leader, bid: currentBid };
+  }
+
+  function updateCurrentBid(amount, leader) {
+    const c = $('#auction-current-bid');
+    if (c) c.textContent = (leader ? leader.name + ' — ' : '') + fmtMoney(amount);
+    const c2 = $('#event-current-bid');
+    if (c2) c2.textContent = (leader ? leader.name + ' — ' : '') + fmtMoney(amount);
+  }
+
+  function humanBidPrompt(card, currentBid, minBid, isInGameTransfer) {
+    return new Promise((resolve) => {
+      const target = isInGameTransfer ? $('#event-detail') : $('#auction-controls');
+      if (!target) { resolve({ pass: true }); return; }
+      target.innerHTML = `
+        <div class="bid-controls">
+          <input type="number" id="${isInGameTransfer ? 'event-' : ''}auction-input"
+                 min="${minBid}" step="1000" value="${minBid}">
+          <button class="vv-btn primary" id="bid-yes-btn">${T('bid')}</button>
+          <button class="vv-btn ghost"   id="bid-pass-btn">${T('pass')}</button>
+        </div>`;
+      const inp = target.querySelector('input');
+      const yes = target.querySelector('#bid-yes-btn');
+      const no  = target.querySelector('#bid-pass-btn');
+      let resolved = false;
+      function done(r) { if (resolved) return; resolved = true; target.innerHTML = ''; resolve(r); }
+      yes.addEventListener('click', () => {
+        const v = parseInt(inp.value || '0', 10) || 0;
+        if (v < minBid) { inp.style.outline = '2px solid var(--red)'; return; }
+        done({ bid: v });
+      });
+      no.addEventListener('click', () => done({ pass: true }));
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') yes.click(); });
+      // Safety timeout 30s — pass.
+      setTimeout(() => done({ pass: true }), 30000);
+    });
+  }
+
+  // =================================================================
+  // 14. MAIN GAME RENDER (5-zone fixed viewport)
+  // =================================================================
+  function renderGame(root) {
+    if (!root) root = $('#vv-app');
+    if (!state.game) return;
+    root.innerHTML = `
+      <div class="vv-game">
+        <header class="gh">
+          <div class="gh-logo">VOLLEY VENDETTA</div>
+          <div class="gh-week" id="gh-week">${T('week')} ${state.game.week}/6 · S${state.game.season}</div>
+          <div class="gh-right">
+            <div class="gh-lang">
+              <button data-lang="de" class="${state.lang==='de'?'active':''}">DE</button>
+              <button data-lang="en" class="${state.lang==='en'?'active':''}">EN</button>
+            </div>
+          </div>
+        </header>
+        <section class="gtop">
+          <div class="gtop-bots" id="gtop-bots"></div>
+          <div id="gtop-you"></div>
+        </section>
+        <nav class="gphase" id="gphase">
+          <button class="phase-tab active" data-phase="event"   id="ph-event">EVENT</button>
+          <button class="phase-tab"        data-phase="league"  id="ph-league">LEAGUE</button>
+          <button class="phase-tab"        data-phase="market"  id="ph-market">MARKET</button>
+          <button class="phase-tab"        data-phase="weekend" id="ph-weekend">WEEKEND</button>
+          <div class="phase-week">${T('week')} ${state.game.week}/6</div>
+        </nav>
+        <main class="gmid">
+          <div class="gpanel gpanel-board" id="gpanel-board">
+            <div class="gpanel-header">🗺️ GAME BOARD</div>
+            <div class="gpanel-body" id="gpanel-board-body">
+              <div class="vv-board-wrap" id="vv-board-wrap">
+                <div class="vv-board-img"></div>
+                <div class="vv-cone" id="vv-cone">
+                  <svg viewBox="0 0 22 28">
+                    <polygon class="cone-body" points="11,2 20,24 2,24"/>
+                    <ellipse class="cone-base" cx="11" cy="24" rx="9" ry="2"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="gpanel gpanel-team" id="gpanel-team">
+            <div class="gpanel-header">
+              🏐 MY TEAM
+              <span class="ph-strength" id="ph-strength">★ —</span>
+            </div>
+            <div class="gpanel-body" id="gpanel-team-body"></div>
+          </div>
+        </main>
+        <footer class="gbot">
+          <div class="gbot-cell actions-cell">
+            <h3>ACTIONS</h3>
+            <div class="speed-toggle" id="speed-toggle">
+              <button data-speed="normal" class="active">Normal</button>
+              <button data-speed="fast">Schnell</button>
+              <button data-speed="auto">Auto</button>
+            </div>
+            <div class="action-buttons" id="action-buttons"></div>
+            <button class="vv-btn skip-btn" id="skip-btn">${T('skip')}</button>
+          </div>
+          <div class="gbot-cell">
+            <div class="dice-panel">
+              <div class="dice-panel-label" id="dice-label">🎲 D3</div>
+              <div class="dice-panel-result" id="dice-result">—</div>
+              <button class="dice-panel-btn" id="dice-btn" disabled>${T('roll')}</button>
+            </div>
+          </div>
+          <div class="gbot-cell log-cell">
+            <h3>LOG</h3>
+            <div class="log-list" id="log-list"></div>
+          </div>
+          <div class="gbot-cell stage-cell">
+            <h3>STAGE</h3>
+            <div class="stage-content" id="stage"></div>
+          </div>
+        </footer>
+      </div>`;
+    bindPhaseTabs();
+    bindLangButtons();
+    bindSpeedToggle();
+    bindSkipButton();
+    bindDiceButton();
+    refreshTopbar();
+    refreshTeamPanel();
+    refreshConePosition();
+    refreshStage();
+  }
+
+  // ---- Phase / language / speed bindings -----------------------------
+  function bindPhaseTabs() {
+    $$('#gphase .phase-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const ph = btn.getAttribute('data-phase');
+        $$('#gphase .phase-tab').forEach(b => b.classList.toggle('active', b === btn));
+        if (ph === 'market')  openMarketModal();
+        if (ph === 'league')  openLeagueModal();
+        if (ph === 'weekend') openWeekendModal();
+        if (ph === 'event')   openEventInfoModal();
+      });
+    });
+  }
+  function bindLangButtons() {
+    $$('.gh-lang button').forEach(b => {
+      b.addEventListener('click', () => {
+        state.lang = b.getAttribute('data-lang');
+        render();
+      });
+    });
+  }
+
+  // CRITICAL — setSpeed MUST NOT call render(). See spec §4.6.
+  function bindSpeedToggle() {
+    $$('#speed-toggle button').forEach(b => {
+      b.addEventListener('click', () => {
+        state.speed = b.getAttribute('data-speed');
+        $$('#speed-toggle button').forEach(x =>
+          x.classList.toggle('active', x === b));
+        if (state.speed === 'auto') {
+          // Auto-fire any pending waiters so the bot speed flows.
+          ['coneRollNow','coneContinue','continueAfterMatch','serveOnce','endMarket']
+            .forEach(fire);
+        }
+        log('⚡ Tempo: ' + state.speed, 'system');
+      });
+    });
+  }
+  function bindSkipButton() {
+    $('#skip-btn').addEventListener('click', skipAll);
+  }
+  function bindDiceButton() {
+    $('#dice-btn').addEventListener('click', dicePanelRoll);
+  }
+
+  // =================================================================
+  // 15. TOPBAR / TEAM PANEL / CONE / STAGE refresh
+  // =================================================================
+  function refreshTopbar() {
+    const g = state.game;
+    const bots = g.players.filter(p => !p.isHuman);
+    const human = g.players.find(p => p.isHuman);
+    const cur = g.players[g.currentPlayerIdx];
+
+    function pcHtml(p, isYou) {
+      const active = (p === cur) ? 'active' : '';
+      const cls = 'player-card ' + active + (isYou ? ' you' : '');
+      return `
+        <div class="${cls}">
+          <div class="pc-name">${esc(p.emoji)} ${esc(p.name)}</div>
+          <div class="pc-row"><span class="lbl">💰</span><span class="val">${fmtMoney(p.money)}</span></div>
+          <div class="pc-row"><span class="lbl">★</span><span class="val">${teamStrength(p.team)}</span></div>
+          <div class="pc-row"><span class="lbl">VP</span><span class="val">${p.vp}</span></div>
+          <div class="pc-row"><span class="lbl">LP</span><span class="val">${p.lp}</span></div>
+        </div>`;
+    }
+    $('#gtop-bots').innerHTML = bots.map(b => pcHtml(b, false)).join('');
+    $('#gtop-you').innerHTML  = pcHtml(human, true);
+    const w = $('#gh-week'); if (w) w.textContent = `${T('week')} ${g.week}/6 · S${g.season}`;
+  }
+
+  function refreshTeamPanel() {
+    const human = state.game.players.find(p => p.isHuman);
+    const body = $('#gpanel-team-body');
+    if (!body) return;
+    body.innerHTML = teamPanelHtml(human);
+    $('#ph-strength').textContent = '★ ' + teamStrength(human.team);
+    bindTeamCardClicks();
+  }
+
+  function teamPanelHtml(player) {
+    function slotHtml(pos) {
+      const c = player.team[pos];
+      const num = POS_SLOT_NUM[pos];
+      const slotClass = ['vv-slot', c ? '' : 'empty'].filter(Boolean).join(' ');
+      return `<div class="${slotClass}" data-pos="${esc(pos)}">
+                <span class="pos-num">${num}</span>
+                ${c ? cardHtml(c) : esc(POS_LABEL[pos])}
+              </div>`;
+    }
+    const benchHtml = (player.bench || []).map(c =>
+      cardHtml(c, { benched: true })).join('');
+    return `
+      <div class="team-actions">
+        <button class="vv-btn small" id="team-sell-toggle">🛒 Verkaufen</button>
+        <button class="vv-btn small" id="team-market-btn">🏪 Markt</button>
       </div>
-      <div style="display:flex; gap:0.6rem; margin-top:0.8rem;">
-        <button class="btn btn-secondary" onclick="VV.exportLog()">📥 ${state.lang==='de'?'Als .txt herunterladen':'Download as .txt'}</button>
-        <button class="btn btn-primary" onclick="this.closest('.modal-popup').remove()">${state.lang==='de'?'Schliessen':'Close'}</button>
+      <div class="vv-formation">
+        <div class="vv-net"></div>
+        <div class="vv-row">${FRONT_ROW.map(slotHtml).join('')}</div>
+        <div class="vv-row-label">FRONT</div>
+        <div class="vv-row">${BACK_ROW.map(slotHtml).join('')}</div>
+        <div class="vv-row-label">BACK</div>
       </div>
-    </div>`;
-  document.body.appendChild(div);
-  setTimeout(() => div.classList.add('open'), 10);
-}
+      <div class="vv-bench">
+        <h4>${T('bench')} (${(player.bench || []).length})</h4>
+        <div class="vv-bench-row">${benchHtml || '<span class="muted">leer</span>'}</div>
+      </div>`;
+  }
 
+  function setupTeamPanelHtml(player) {
+    return teamPanelHtml(player);
+  }
 
-// ────────────────────────────────────────────────────────────────
-//  PUBLIC API
-// ────────────────────────────────────────────────────────────────
-window.VV = {
-  setView, setLang, setSpeed,
-  advanceIntro, skipIntro,
-  startSolo, openMultiplayer, createRoom, showJoinForm,
-  draftDraw, draftRedraw, draftPick1, draftFinish,
-  rollStartingDice,
-  coneRollNow, coneContinue, dicePanel_roll, skipAll,
-  buyCard, endMarket, buyOneStar, sellBenchCard, sellStarter,
-  serveOnce, continueAfterMatch,
-  playAgain, toMenu,
-  toggleFloatingPanel, toggleSellMode, toggleLog,
-  handleFloatingClick, handleFloatingBenchClick,
-  exportLog, showFullHistory,
-};
+  function bindTeamCardClicks() {
+    const sellToggle = $('#team-sell-toggle');
+    if (sellToggle) {
+      sellToggle.addEventListener('click', () => {
+        document.body.classList.toggle('sell-mode');
+        sellToggle.textContent = document.body.classList.contains('sell-mode')
+          ? '✕ Abbrechen' : '🛒 Verkaufen';
+      });
+    }
+    const marketBtn = $('#team-market-btn');
+    if (marketBtn) marketBtn.addEventListener('click', openMarketModal);
+    $$('#gpanel-team .vv-card').forEach(el => {
+      el.addEventListener('click', () => {
+        if (!document.body.classList.contains('sell-mode')) return;
+        const id = el.getAttribute('data-id');
+        sellCardById(id);
+      });
+    });
+  }
 
-if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
-else boot();
+  function sellCardById(cardId) {
+    const human = state.game.players.find(p => p.isHuman);
+    let card = null, slot = null;
+    for (const p of POSITIONS) {
+      if (human.team[p] && human.team[p].id === cardId) { card = human.team[p]; slot = p; break; }
+    }
+    if (!card) {
+      const idx = human.bench.findIndex(c => c.id === cardId);
+      if (idx >= 0) { card = human.bench[idx]; human.bench.splice(idx, 1); }
+    } else {
+      human.team[slot] = null;
+    }
+    if (card) {
+      const price = card.stars * 5000;
+      human.money += price;
+      state.game.unsoldMarket.push(card);
+      log(`💸 ${esc(human.name)} verkauft ${esc(card.name)} für ${fmtMoney(price)}`, 'event');
+      // If we cleared a starter, try to substitute.
+      if (slot && !human.team[slot]) replaceStarter(human, slot, 'sold');
+      refreshTeamPanel();
+      refreshTopbar();
+    }
+  }
 
+  function refreshConePosition() {
+    const cone = $('#vv-cone');
+    if (!cone) return;
+    const pos = BOARD_GRID[Math.min(state.game.coneDay, BOARD_GRID.length - 1)];
+    cone.style.left = pos.leftPct + '%';
+    cone.style.top  = pos.topPct + '%';
+  }
+
+  function refreshStage() {
+    const s = $('#stage');
+    if (!s) return;
+    const g = state.game;
+    const cur = g.players[g.currentPlayerIdx];
+    const dayInWeek = (g.coneDay % 8) + 1;
+    s.innerHTML = `
+      <div class="stage-week">${T('week')} ${g.week}/6</div>
+      <div class="stage-day">${T('day')} ${dayInWeek}/8 · Feld ${g.coneDay + 1}/48</div>
+      <div class="stage-turn">${cur.isHuman ? T('yourTurn') : T('botTurn') + ' — ' + esc(cur.name)}</div>
+      <div id="stage-event"></div>`;
+  }
+
+  // =================================================================
+  // 16. DICE PANEL (CSS animation, no 3D)
+  // =================================================================
+  let _diceShuffleHandle = null;
+  function diceSetLabel(text) {
+    const l = $('#dice-label'); if (l) l.textContent = text;
+  }
+  function diceShuffle(faces) {
+    const r = $('#dice-result');
+    if (!r) return;
+    if (_diceShuffleHandle) clearInterval(_diceShuffleHandle);
+    r.classList.remove('landed');
+    r.classList.add('shuffling');
+    _diceShuffleHandle = setInterval(() => {
+      r.textContent = String(rand(1, faces));
+    }, 80);
+  }
+  function diceLand(value) {
+    const r = $('#dice-result');
+    if (!r) return;
+    if (_diceShuffleHandle) { clearInterval(_diceShuffleHandle); _diceShuffleHandle = null; }
+    r.classList.remove('shuffling');
+    r.classList.add('landed');
+    r.textContent = String(value);
+  }
+
+  // Roll a die (faces 3, 6, 12) with shuffle animation. Returns the result.
+  async function rollDie(faces) {
+    diceShuffle(faces);
+    await sleep(state.skipping ? 0 : 700);
+    const result = rand(1, faces);
+    diceLand(result);
+    await sleep(state.skipping ? 0 : 200);
+    return result;
+  }
+
+  // The dice button is context-aware — it fires whichever waiter is active.
+  function dicePanelRoll() {
+    if (_waiters.coneRollNow)        return fire('coneRollNow');
+    if (_waiters.serveOnce)          return fire('serveOnce');
+    if (_waiters.coneContinue)       return fire('coneContinue');
+    if (_waiters.continueAfterMatch) return fire('continueAfterMatch');
+    if (_waiters.endMarket)          return fire('endMarket');
+    if (_waiters.seasonContinue)     return fire('seasonContinue');
+  }
+
+  function setDiceButton(text, enabled) {
+    const b = $('#dice-btn');
+    if (!b) return;
+    b.textContent = text;
+    b.disabled = !enabled;
+  }
+
+  function setActions(html) {
+    const c = $('#action-buttons');
+    if (c) c.innerHTML = html;
+  }
+
+  // =================================================================
+  // 17. SEASON / WEEK / TURN LOOP
+  // =================================================================
+  async function startSeason() {
+    refreshTopbar();
+    refreshTeamPanel();
+    refreshStage();
+    log('🏐 Saison ' + state.game.season + ' beginnt', 'event');
+    try { await runSeason(); } catch (err) { console.error('runSeason crashed', err); }
+  }
+
+  async function runSeason() {
+    const g = state.game;
+    while (g.coneDay < g.coneTotal) {
+      // Check for VP winner
+      const winner = g.players.find(p => p.vp >= 8);
+      if (winner) { showResultScreen(winner); return; }
+
+      const cur = g.players[g.currentPlayerIdx];
+      await runConeRoll(cur);
+
+      // Move to next player.
+      g.currentPlayerIdx = (g.currentPlayerIdx + 1) % g.players.length;
+      refreshTopbar();
+      refreshStage();
+      await sleep(200);
+    }
+    // End of season — run season-end.
+    await runSeasonEnd();
+    // Next season.
+    g.season++;
+    g.week = 1;
+    g.coneDay = 0;
+    g.players.forEach(p => { p.lp = 0; });
+    g.cupWinner = null;
+    g.leagueWinner = null;
+    refreshTopbar(); refreshConePosition(); refreshStage();
+    await sleep(600);
+    return runSeason();
+  }
+
+  // ----- Cone roll (wrapped) -----------------------------------------
+  async function runConeRoll(player) {
+    try { return await _runConeRollInner(player); }
+    catch (err) {
+      console.error('runConeRoll error', err);
+      log('⚠ Fehler beim Würfeln — überspringe', 'error');
+    }
+  }
+
+  async function _runConeRollInner(player) {
+    const g = state.game;
+    diceSetLabel('🎲 D3 — ' + player.name);
+    if (player.isHuman) {
+      setDiceButton(T('roll'), true);
+      setActions(`<div class="muted">Klicke "${T('roll')}" um zu würfeln.</div>`);
+      // No timeout for human roll — pure click required.
+      await waitFor('coneRollNow', null);
+    } else {
+      setDiceButton('—', false);
+      setActions(`<div class="muted">Bot ${esc(player.name)} ist dran…</div>`);
+      await sleep(ms('coneRoll'));
+    }
+    const roll = await rollDie(3);
+    log(`🎲 ${esc(player.name)} würfelt ${roll}`, 'event');
+
+    const dayBefore = g.coneDay;
+    let dayAfter = Math.min(g.coneTotal, dayBefore + roll);
+    g.coneDay = dayAfter;
+    refreshConePosition();
+    await sleep(state.skipping ? 0 : 600);
+
+    // Determine which day(s) get triggered. Per spec: tournament (day 4)
+    // and league (day 8) trigger when cone PASSES or LANDS on them.
+    const newWeek = Math.floor((dayAfter - 1) / 8) + 1;
+    if (newWeek !== g.week) g.week = newWeek;
+
+    // Walk through each day passed/landed for events.
+    for (let d = dayBefore + 1; d <= dayAfter; d++) {
+      try { await resolveDay(d, player); }
+      catch (err) {
+        console.error('resolveDay error', err);
+        log('⚠ Event-Fehler übersprungen', 'error');
+      }
+      // Re-check VP winner (cup/league might have ended the season)
+      const winner = g.players.find(p => p.vp >= 8);
+      if (winner) { showResultScreen(winner); return; }
+    }
+
+    // After the cone roll resolves, prompt continue
+    if (player.isHuman) {
+      setDiceButton(T('continue'), true);
+      await waitFor('coneContinue', null);
+    } else {
+      await sleep(ms('continueAfter'));
+    }
+    setDiceButton('—', false);
+    setActions('');
+  }
+
+  // =================================================================
+  // 18. RESOLVE DAY (event dispatcher)
+  // =================================================================
+  async function resolveDay(absDay, player) {
+    const dayInWeek = ((absDay - 1) % 8) + 1;
+    const week = Math.floor((absDay - 1) / 8) + 1;
+
+    // Days 4 and 8 are intercepted before generic event mapping.
+    if (dayInWeek === 8) {
+      // League match always triggers when cone lands on or passes day 8.
+      await runEventSpace('league', player, week);
+      return;
+    }
+    if (dayInWeek === 4) {
+      // Tournament — depends on week and season.
+      await runTournamentByWeek(week, player);
+      return;
+    }
+    // Generic event by day-in-week.
+    const ev = DAY_EVENT[dayInWeek];
+    if (!ev) return;
+    await runEventSpace(ev, player, week);
+  }
+
+  // ----- Tournament dispatcher ---------------------------------------
+  async function runTournamentByWeek(week, player) {
+    const g = state.game;
+    if (week === 1) {
+      if (g.season >= 2 && g.cupWinner && g.leagueWinner) {
+        await runSuperCup(player);
+      } else {
+        log('🏆 Super Cup — Saison 1 übersprungen', 'system');
+      }
+      return;
+    }
+    if (week === 3) { await runCupSemi(player); return; }
+    if (week === 5) { await runCupFinal(player); return; }
+    // Weeks 2, 4, 6 — Champions League (Season 2+)
+    if (g.season >= 2) {
+      await runCLGroupStage(player);
+    } else {
+      log('🏆 CL — Saison 1 übersprungen', 'system');
+    }
+  }
+
+  // =================================================================
+  // 19. EVENT SPACE HANDLERS
+  // =================================================================
+  async function runEventSpace(type, player, week) {
+    try { return await _runEventSpaceInner(type, player, week); }
+    catch (err) {
+      console.error('runEventSpace error', err);
+      log('⚠ Event-Fehler überspr.', 'error');
+    }
+  }
+  async function _runEventSpaceInner(type, player, week) {
+    if (type === 'redcard')  return runRedCard(player);
+    if (type === 'transfer') return runTransfer(player);
+    if (type === 'action')   return runActionCard(player);
+    if (type === 'vnl')      return runVNL(player);
+    if (type === 'injury')   return runInjury(player);
+    if (type === 'league')   return runLeagueWeek(player, week);
+  }
+
+  // ---- Red Card -----------------------------------------------------
+  async function runRedCard(player) {
+    log(`🟥 ${esc(player.name)} — Rote Karte!`, 'event');
+    const r = await rollD6Visual();
+    const slot = POSITIONS[r - 1];
+    const c = player.team[slot];
+    if (c) {
+      replaceStarter(player, slot, 'redcard');
+      await showEventPopup({
+        type: 'red', icon: '🟥', title: T('redcard'),
+        player: player,
+        detail: `${esc(c.name)} (${POS_LABEL[slot]}) gesperrt — kehrt nach nächstem Ligaspiel zurück.`
+      });
+    } else {
+      await showEventPopup({
+        type: 'red', icon: '🟥', title: T('redcard'),
+        player: player,
+        detail: `Keine Sperre — ${POS_LABEL[slot]} unbesetzt.`
+      });
+    }
+    refreshTeamPanel();
+  }
+
+  // ---- Injury -------------------------------------------------------
+  async function runInjury(player) {
+    log(`🤕 ${esc(player.name)} — Verletzung`, 'event');
+    const r = await rollD6Visual();
+    const slot = POSITIONS[r - 1];
+    const c = player.team[slot];
+    if (c) {
+      replaceStarter(player, slot, 'injury');
+      await showEventPopup({
+        type: 'red', icon: '🤕', title: T('injury'),
+        player: player,
+        detail: `${esc(c.name)} (${POS_LABEL[slot]}) verletzt — fällt bis zum nächsten Ligaspiel aus.`
+      });
+    } else {
+      await showEventPopup({
+        type: 'red', icon: '🤕', title: T('injury'),
+        player: player,
+        detail: `Keine Verletzung — ${POS_LABEL[slot]} unbesetzt.`
+      });
+    }
+    refreshTeamPanel();
+  }
+
+  // ---- VNL / National Team -----------------------------------------
+  async function runVNL(player) {
+    log(`🏳️ ${esc(player.name)} — VNL Aufgebot`, 'event');
+    // Pick best starter (highest stars) — they miss this week.
+    const starters = teamStarters(player.team);
+    if (!starters.length) {
+      await showEventPopup({type:'blue', icon:'🏳️', title:T('vnl'), player:player,
+        detail:'Kein Spieler einberufen.'});
+      return;
+    }
+    const c = starters.reduce((a,b) => (a.stars >= b.stars ? a : b));
+    let slot = null;
+    for (const p of POSITIONS) if (player.team[p] === c) { slot = p; break; }
+    replaceStarter(player, slot, 'vnl');
+    await showEventPopup({
+      type:'blue', icon:'🏳️', title:T('vnl'), player:player,
+      detail:`${esc(c.name)} (${POS_LABEL[slot]}) im Nationalteam — fehlt diese Woche.`
+    });
+    refreshTeamPanel();
+  }
+
+  // ---- Action Card (digital: +5k payout) ---------------------------
+  async function runActionCard(player) {
+    player.money += 5000;
+    log(`⚡ ${esc(player.name)} — Aktionskarte: +5'000`, 'event');
+    await showEventPopup({
+      type:'green', icon:'⚡', title:T('action'), player:player,
+      detail:`+ 5'000 ${T('money')} (Aktion).`
+    });
+    refreshTopbar();
+  }
+
+  // ---- Transfer (in-game auction) ----------------------------------
+  async function runTransfer(player) {
+    const g = state.game;
+    if (!g.auctionDeck.length) {
+      log('🔄 Auktionsdeck leer — kein Transfer', 'system');
+      return;
+    }
+    const card = g.auctionDeck.shift();
+    log(`🔄 Transfer: ${esc(card.name)} (${stars(card.stars)})`, 'event');
+
+    // Show popup with card visible, bids inside #event-detail.
+    const popupP = showEventPopup({
+      type:'orange', icon:'🔄', title:T('transfer'), player:player,
+      detail: cardHtml(card),
+      noAutoClose: true
+    });
+
+    // Tiny delay so DOM settles
+    await sleep(200);
+    // Run auction inside the popup. Use a custom flow tied to event-detail.
+    const result = await runInGameAuction(card);
+    // Apply result.
+    if (result.winner) {
+      result.winner.money -= result.bid;
+      placeIntoTeamOrBench(result.winner, card);
+      log(`💰 ${esc(result.winner.name)} ersteigert ${esc(card.name)} für ${fmtMoney(result.bid)}`, 'event');
+    } else {
+      g.unsoldMarket.push(card);
+      log(`⚠ Transfer ${esc(card.name)} — kein Käufer`, 'system');
+    }
+    // Close popup if still open.
+    closeEventPopup();
+    await popupP;
+    refreshTopbar();
+    refreshTeamPanel();
+  }
+
+  // In-game auction inside event-detail.
+  async function runInGameAuction(card) {
+    const g = state.game;
+    const minBid = card.stars * 10000;
+    let currentBid = 0;
+    let leader = null;
+    const passed = new Set();
+    // Show a bid container inside event-detail.
+    const det = $('#event-detail');
+    if (!det) return { winner: null, bid: 0 };
+    det.innerHTML += `
+      <div style="margin-top:6px;color:var(--silver-2)">Mindestgebot ${fmtMoney(minBid)}</div>
+      <div id="event-bids" class="auction-bids" style="width:100%;max-width:420px"></div>
+      <div id="event-current-bid" class="ai-bid">— ${T('bid')}</div>
+      <div id="event-detail-controls"></div>`;
+
+    function logBid(p, text, classes) {
+      const list = $('#event-bids'); if (!list) return;
+      const div = document.createElement('div');
+      div.className = 'bid-line ' + (classes || '');
+      div.innerHTML = `${esc(p.emoji)} ${esc(p.name)} — ${esc(text)}`;
+      list.appendChild(div);
+      list.scrollTop = list.scrollHeight;
+    }
+    let safety = 24;
+    let order = g.players.slice(g.currentPlayerIdx).concat(g.players.slice(0, g.currentPlayerIdx));
+    while (safety-- > 0) {
+      const active = order.filter(p => !passed.has(p.id));
+      if (active.length <= 1) break;
+      let bidThisRound = false;
+      for (const p of active) {
+        if (passed.has(p.id)) continue;
+        const myMin = Math.max(minBid, currentBid + 1000);
+        if (p.isHuman) {
+          const r = await humanBidPrompt(card, currentBid, myMin, true);
+          if (r.pass) { passed.add(p.id); logBid(p, T('pass'), 'passed'); }
+          else { currentBid = r.bid; leader = p;
+                 logBid(p, fmtMoney(r.bid), 'winning');
+                 updateCurrentBid(currentBid, leader);
+                 bidThisRound = true; }
+        } else {
+          await sleep(ms('botBid'));
+          let dec = { pass: true };
+          try { dec = window.VV_BOTS.shouldBid(p, card, currentBid, myMin,
+                  g.players.filter(x => x !== p)) || { pass: true }; }
+          catch (e) { dec = { pass: true }; }
+          if (dec.bid && (dec.bid < myMin || dec.bid > p.money)) dec = { pass: true };
+          if (dec.pass) { passed.add(p.id); logBid(p, T('pass'), 'passed'); }
+          else { currentBid = dec.bid; leader = p;
+                 logBid(p, fmtMoney(dec.bid), 'winning');
+                 updateCurrentBid(currentBid, leader);
+                 bidThisRound = true; }
+        }
+      }
+      if (!bidThisRound) break;
+    }
+    return { winner: leader, bid: currentBid };
+  }
+
+  // =================================================================
+  // 20. EVENT POPUP (Promise + 8s auto-close + OK/X)
+  // =================================================================
+  function showEventPopup(opts) {
+    return new Promise((resolve) => {
+      // Don't show during skip.
+      if (state.skipping) { setTimeout(resolve, 0); return; }
+      // Remove any existing popup first.
+      $$('.event-popup-banner').forEach(el => el.remove());
+      const pop = document.createElement('div');
+      pop.className = 'event-popup-banner ' + (opts.type || 'gold');
+      pop.innerHTML = `
+        <button class="epb-close" aria-label="close">✕</button>
+        <div class="epb-icon">${opts.icon || '🏐'}</div>
+        <div class="epb-text">
+          <div class="epb-title">${esc(opts.title || '')}</div>
+          ${opts.player ? `<div class="epb-player">${esc(opts.player.emoji||'')} ${esc(opts.player.name||'')}</div>` : ''}
+        </div>
+        <div id="event-detail" class="epb-detail">${opts.detail || ''}</div>
+        ${opts.noAutoClose ? '' : `
+          <button class="epb-ok">${T('ok')}</button>
+          <div class="epb-progress"><div class="epb-progress-bar"></div></div>`}`;
+      document.body.appendChild(pop);
+
+      let resolved = false;
+      function done() {
+        if (resolved) return;
+        resolved = true;
+        if (pop.parentNode) pop.parentNode.removeChild(pop);
+        resolve();
+      }
+      pop._eventClose = done;
+
+      pop.querySelector('.epb-close').addEventListener('click', done);
+      const ok = pop.querySelector('.epb-ok');
+      if (ok) ok.addEventListener('click', done);
+
+      if (!opts.noAutoClose) {
+        setTimeout(done, ms('eventAuto'));
+      }
+      // 30s safety
+      setTimeout(done, 30000);
+    });
+  }
+
+  function closeEventPopup() {
+    const pop = $('.event-popup-banner');
+    if (pop && typeof pop._eventClose === 'function') pop._eventClose();
+    else if (pop) pop.remove();
+  }
+
+  // ---- Visual D6 roll for events ------------------------------------
+  async function rollD6Visual() {
+    diceSetLabel('🎲 D6');
+    return await rollDie(6);
+  }
+
+  // =================================================================
+  // 21. LEAGUE — runLeagueWeek (pairs play classic 12-criteria)
+  // =================================================================
+  async function runLeagueWeek(triggerPlayer, week) {
+    const g = state.game;
+    log(`⚽ Ligaspieltag — Woche ${week}`, 'event');
+    // Determine pairs. With 4 players, 2 home/away pairs.
+    const players = g.players.slice();
+    const shuffled = shuffle(players);
+    const pairs = [];
+    for (let i = 0; i + 1 < shuffled.length; i += 2) {
+      pairs.push([shuffled[i], shuffled[i + 1]]);
+    }
+    if (shuffled.length % 2 === 1) {
+      // Bye player
+      const bye = shuffled[shuffled.length - 1];
+      bye.money += 5000;
+      log(`💤 ${esc(bye.name)} hat Bye — +5'000`, 'system');
+    }
+    for (const pair of pairs) {
+      await runMatchClassic(pair[0], pair[1], 'league');
+    }
+    // After league match, restore sidelined players.
+    for (const p of g.players) restoreSidelined(p);
+    // Track league-table leader (for super cup next season).
+    let leader = g.players.slice().sort((a,b)=>b.lp-a.lp)[0];
+    g.leagueWinner = leader;
+    refreshTopbar();
+    refreshTeamPanel();
+  }
+
+  // =================================================================
+  // 22. CLASSIC LEAGUE MATCH — 12 criteria, 4 rolls (+2 if crunchtime)
+  // =================================================================
+  async function runMatchClassic(home, away, kind) {
+    log(`⚔ ${esc(home.name)} vs ${esc(away.name)} — ${kind}`, 'match');
+    showOpponentBoard(away, home);    // show opponent on board panel
+    let homePts = 0, awayPts = 0;
+    let extraRolls = 0;
+    let crunchUsed = false;
+    const used = new Set();
+
+    // Helper: pick a fresh criterion (avoid repeats unless we run out).
+    function nextCrit() {
+      let attempts = 0;
+      let n;
+      do { n = rand(1, 12); attempts++; } while (used.has(n) && attempts < 50);
+      if (used.has(n)) n = rand(1, 12);
+      used.add(n);
+      return n;
+    }
+
+    let totalRolls = 4;
+    for (let r = 0; r < totalRolls; r++) {
+      const crit = nextCrit();
+      const result = applyCriterion(crit, home, away);
+      if (crit === 10 && !crunchUsed) {
+        crunchUsed = true;
+        totalRolls += 2;
+        log('🔥 Crunchtime — 2 weitere Würfe!', 'match');
+      }
+      if (result.winner === home) { homePts++; }
+      else if (result.winner === away) { awayPts++; }
+      // Money rain (criterion 12)
+      if (crit === 12) { home.money += 5000; away.money += 5000; }
+      log(`🏐 K${crit} ${esc(result.text)} → ${homePts}:${awayPts}`, 'match');
+      await sleep(ms('rallyView'));
+    }
+
+    // Determine outcome.
+    let winner = null, isDraw = false;
+    if (homePts > awayPts) winner = home;
+    else if (awayPts > homePts) winner = away;
+    else { isDraw = true; }
+
+    if (kind === 'league') {
+      if (isDraw) {
+        home.money += 5000; away.money += 5000;
+        home.lp += 1; away.lp += 1;
+        log(`🤝 Unentschieden ${homePts}:${awayPts} — beide +5'000, +1 LP`, 'match');
+      } else {
+        winner.money += 10000 + 5000;
+        const loser = (winner === home) ? away : home;
+        loser.money = Math.max(0, loser.money - 5000);
+        winner.lp += 3;
+        log(`🏆 ${esc(winner.name)} gewinnt ${homePts}:${awayPts} — +10k +5k`, 'match');
+      }
+    } else if (kind === 'cup-semi') {
+      if (winner) winner.money += 20000;
+    } else if (kind === 'cup-final') {
+      if (winner) {
+        winner.money += 20000;
+        winner.vp += 2;
+        const loser = winner === home ? away : home;
+        loser.vp += 1;
+        state.game.cupWinner = winner;
+        log(`🏆 ${esc(winner.name)} gewinnt den Pokal! +2 VP`, 'match');
+      }
+    } else if (kind === 'supercup') {
+      if (winner) { winner.money += 15000; log(`🏆 ${esc(winner.name)} — Super Cup!`, 'match'); }
+    } else if (kind === 'cl-group') {
+      if (winner) winner.money += 20000;
+    } else if (kind === 'cl-final') {
+      if (winner) { winner.money += 35000; winner.vp += 3;
+                    log(`🏆 ${esc(winner.name)} — CL Champion! +3 VP`, 'match'); }
+    }
+
+    showMatchResultBanner(winner, isDraw, homePts, awayPts, home, away);
+    await sleep(ms('rallyView') + 600);
+    closeMatchResultBanner();
+    restoreBoardPanel();
+    refreshTopbar();
+    refreshTeamPanel();
+    return { winner, isDraw, homePts, awayPts };
+  }
+
+  // ---- Apply a single criterion -------------------------------------
+  function applyCriterion(crit, home, away) {
+    switch (crit) {
+      case 1: { // Total team
+        const h = teamStrength(home.team), a = teamStrength(away.team);
+        return { winner: h>a?home:(a>h?away:null), text:`Total ${h} vs ${a}` };
+      }
+      case 2: { // Front-row attackers
+        const h = teamFront(home.team).reduce((s,c)=>s+c.stars,0);
+        const a = teamFront(away.team).reduce((s,c)=>s+c.stars,0);
+        return { winner: h>a?home:(a>h?away:null), text:`Front ${h} vs ${a}` };
+      }
+      case 3: { // Back-row defenders
+        const h = teamBack(home.team).reduce((s,c)=>s+c.stars,0);
+        const a = teamBack(away.team).reduce((s,c)=>s+c.stars,0);
+        return { winner: h>a?home:(a>h?away:null), text:`Back ${h} vs ${a}` };
+      }
+      case 4: { // Dice duel
+        const h = rand(1,12), a = rand(1,12);
+        return { winner: h>a?home:(a>h?away:null), text:`Würfelduell ${h} vs ${a}` };
+      }
+      case 5: { // Middle blocker
+        const h = home.team.middle, a = away.team.middle;
+        const hs = h?h.stars:0, as = a?a.stars:0;
+        return { winner: hs>as?home:(as>hs?away:null), text:`MB ${hs} vs ${as}` };
+      }
+      case 6: { // Service: home back-right (libero) vs away libero
+        const h = home.team.libero, a = away.team.libero;
+        const hs = h?h.stars:0, as = a?a.stars:0;
+        return { winner: hs>as?home:(as>hs?away:null), text:`Aufschlag ${hs} vs ${as}` };
+      }
+      case 7: { // Diagonal + Setter
+        const h = (home.team.diagonal?home.team.diagonal.stars:0)+(home.team.setter?home.team.setter.stars:0);
+        const a = (away.team.diagonal?away.team.diagonal.stars:0)+(away.team.setter?away.team.setter.stars:0);
+        return { winner: h>a?home:(a>h?away:null), text:`OPP+S ${h} vs ${a}` };
+      }
+      case 8: { // Outside back vs Diagonal
+        const h = (home.team.outside2?home.team.outside2.stars:0);
+        const a = (away.team.diagonal?away.team.diagonal.stars:0);
+        return { winner: h>a?home:(a>h?away:null), text:`OH-back vs OPP ${h} vs ${a}` };
+      }
+      case 9: { // Block challenge
+        const block = (home.team.outside?home.team.outside.stars:0)+(home.team.middle?home.team.middle.stars:0);
+        const r = rand(1,12);
+        return { winner: block >= r ? home : away, text:`Block ${block} vs Würfel ${r}` };
+      }
+      case 10: { // Crunchtime — winner is whoever has more total stars now (also +2 rolls)
+        const h = teamStrength(home.team), a = teamStrength(away.team);
+        return { winner: h>a?home:(a>h?away:null), text:`Crunch ${h} vs ${a}` };
+      }
+      case 11: { // Injury during match
+        const r = rand(1,12);
+        const target = r <= 6 ? home : away;
+        const starters = teamStarters(target.team);
+        if (starters.length) {
+          const c = choice(starters);
+          let slot = null; for (const p of POSITIONS) if (target.team[p]===c) {slot=p;break;}
+          target.team[slot] = null; target.injured.push({card:c, slot:slot});
+          // Try to substitute from bench
+          const wantPos = (slot==='outside2')?'outside':slot;
+          const idx = target.bench.findIndex(b=>b.pos===wantPos);
+          if (idx>=0) { target.team[slot] = target.bench.splice(idx,1)[0]; }
+          return { winner: null, text:`Verletzung: ${esc(c.name)}` };
+        }
+        return { winner: null, text:'Keine Verletzung' };
+      }
+      case 12: { // Money rain
+        return { winner: null, text:'Geldregen +5k beide' };
+      }
+    }
+    return { winner: null, text:'??' };
+  }
+
+  // ---- Opponent display on the board panel --------------------------
+  function showOpponentBoard(opponent, you) {
+    const body = $('#gpanel-board-body');
+    if (!body) return;
+    body.innerHTML = `
+      <div class="opponent-display">
+        <div class="od-header">⚔ ${esc(opponent.emoji)} ${esc(opponent.name)}</div>
+        <div class="od-meta">★ ${teamStrength(opponent.team)} · ${fmtMoney(opponent.money)}</div>
+        ${teamPanelHtml(opponent).replace(/<div class="team-actions"[\s\S]*?<\/div>/, '')}
+      </div>`;
+  }
+
+  function restoreBoardPanel() {
+    const body = $('#gpanel-board-body');
+    if (!body) return;
+    body.innerHTML = `
+      <div class="vv-board-wrap" id="vv-board-wrap">
+        <div class="vv-board-img"></div>
+        <div class="vv-cone" id="vv-cone">
+          <svg viewBox="0 0 22 28">
+            <polygon class="cone-body" points="11,2 20,24 2,24"/>
+            <ellipse class="cone-base" cx="11" cy="24" rx="9" ry="2"/>
+          </svg>
+        </div>
+      </div>`;
+    refreshConePosition();
+  }
+
+  function showMatchResultBanner(winner, isDraw, h, a, home, away) {
+    if (state.skipping) return;
+    const human = state.game.players.find(p=>p.isHuman);
+    const involved = home === human || away === human;
+    let cls = '', title = '';
+    if (isDraw) { title = T('draw'); cls = ''; }
+    else if (winner === human) { title = T('win'); cls = 'win'; }
+    else if (involved) { title = T('loss'); cls = 'loss'; }
+    else { title = `${esc(winner.name)} gewinnt`; }
+    const banner = document.createElement('div');
+    banner.className = 'match-result-banner ' + cls;
+    banner.innerHTML = `
+      <div class="mrb-title">${title}</div>
+      <div class="mrb-score">${h} : ${a}</div>
+      <div class="muted">${esc(home.name)} vs ${esc(away.name)}</div>`;
+    document.body.appendChild(banner);
+  }
+  function closeMatchResultBanner() {
+    $$('.match-result-banner').forEach(b => b.remove());
+  }
+
+  // =================================================================
+  // 23. CUP / SUPER CUP / CL
+  // =================================================================
+  async function runCupSemi(triggerPlayer) {
+    const g = state.game;
+    log('🏆 Pokal — Halbfinale', 'event');
+    // Everyone rolls D12 once; two highest play each other.
+    const rolls = g.players.map(p => ({ p, r: rand(1, 12) }));
+    rolls.sort((a, b) => b.r - a.r);
+    const top2 = rolls.slice(0, 2);
+    const semiPlayers = [top2[0].p, top2[1].p];
+    log(`Halbfinale: ${esc(semiPlayers[0].name)} vs ${esc(semiPlayers[1].name)}`, 'match');
+    const result = await runMatchClassic(semiPlayers[0], semiPlayers[1], 'cup-semi');
+    g.cupSemiWinner = result.winner || semiPlayers[0];
+  }
+
+  async function runCupFinal(triggerPlayer) {
+    const g = state.game;
+    if (!g.cupSemiWinner) {
+      log('🏆 Pokalfinale — kein Halbfinalsieger', 'system');
+      return;
+    }
+    log('🏆 Pokal — Finale', 'event');
+    // Pair semi winner against highest-LP opponent.
+    const others = g.players.filter(p => p !== g.cupSemiWinner);
+    others.sort((a, b) => b.lp - a.lp);
+    const opp = others[0];
+    await runMatchClassic(g.cupSemiWinner, opp, 'cup-final');
+  }
+
+  async function runSuperCup(triggerPlayer) {
+    const g = state.game;
+    log('🏆 Super Cup', 'event');
+    const a = g.leagueWinner, b = g.cupWinner;
+    if (a && b && a !== b) {
+      await runMatchClassic(a, b, 'supercup');
+    } else if (a) {
+      a.money += 15000;
+      log(`🏆 ${esc(a.name)} — Super Cup ohne Gegner +15k`, 'match');
+    }
+  }
+
+  async function runCLGroupStage(triggerPlayer) {
+    const g = state.game;
+    log('🏆 Champions League — Gruppenphase', 'event');
+    // Pair top 2 LP with bottom 2.
+    const sorted = g.players.slice().sort((x,y) => y.lp - x.lp);
+    if (sorted.length < 4) return;
+    await runMatchClassic(sorted[0], sorted[3], 'cl-group');
+    await runMatchClassic(sorted[1], sorted[2], 'cl-group');
+  }
+
+  // =================================================================
+  // 24. SEASON END
+  // =================================================================
+  async function runSeasonEnd() {
+    const g = state.game;
+    log('🏁 Saisonende', 'event');
+    const ranked = g.players.slice().sort((a, b) =>
+      (b.lp - a.lp) || (teamStrength(b.team) - teamStrength(a.team)));
+    // VP awards: 1st 3, 2nd 2, 3rd 1, 4th 0
+    if (ranked[0]) ranked[0].vp += 3;
+    if (ranked[1]) { ranked[1].vp += 2; ranked[1].money += 20000; }
+    if (ranked[2]) { ranked[2].vp += 1; ranked[2].money += 30000; }
+    if (ranked[3]) { ranked[3].money += 50000; }
+    log(`🥇 ${esc(ranked[0].name)} +3VP, 🥈 ${esc(ranked[1].name)} +2VP +20k, 🥉 ${esc(ranked[2].name)} +1VP +30k, 4. ${esc(ranked[3].name)} +50k`, 'event');
+    refreshTopbar();
+
+    // Check VP winner now (mid-season trigger handled elsewhere too)
+    const winner = g.players.find(p => p.vp >= 8);
+    if (winner) { showResultScreen(winner); return; }
+
+    // Drop-off + steal phase
+    await runDropOff(ranked);
+    await runStealPhase(ranked);
+
+    // New auction (6 cards). 4th place bids first.
+    const lot = [];
+    while (lot.length < 6 && g.auctionDeck.length) lot.push(g.auctionDeck.shift());
+    if (lot.length) {
+      log('🪙 Saison-Auktion: 6 neue Karten', 'event');
+      const oldStart = g.startingPlayerIdx;
+      g.startingPlayerIdx = g.players.indexOf(ranked[3]);
+      // Run a round per card, similar to opening but inside an event popup.
+      for (const c of lot) {
+        const popupP = showEventPopup({
+          type:'gold', icon:'🪙', title:'Saison-Auktion',
+          player: ranked[3], detail: cardHtml(c), noAutoClose: true
+        });
+        await sleep(200);
+        const result = await runInGameAuction(c);
+        if (result.winner) {
+          result.winner.money -= result.bid;
+          placeIntoTeamOrBench(result.winner, c);
+          log(`💰 ${esc(result.winner.name)} ersteigert ${esc(c.name)} für ${fmtMoney(result.bid)}`, 'event');
+        } else {
+          g.unsoldMarket.push(c);
+        }
+        closeEventPopup();
+        await popupP;
+      }
+      g.startingPlayerIdx = oldStart;
+    }
+    // Reset bookkeeping for next season
+    g.players.forEach(p => { p.lp = 0; p.injured = []; p.redcards = []; p.vnl = []; });
+    g.cupWinner = null;
+    g.leagueWinner = null;
+  }
+
+  async function runDropOff(ranked) {
+    const g = state.game;
+    log('📤 Drop-off Phase', 'event');
+    for (const p of g.players) {
+      // Pick protect
+      let protectSlot;
+      if (p.isHuman) protectSlot = await humanPickProtect(p);
+      else { try { protectSlot = window.VV_BOTS.pickProtect(p) || 'outside'; } catch(e) { protectSlot = 'outside'; } }
+      // Roll D6 — that position drops off (unless protected).
+      const r = await rollD6Visual();
+      const slot = POSITIONS[r - 1];
+      if (slot === protectSlot) {
+        log(`🛡 ${esc(p.name)} schützt ${POS_LABEL[slot]} — kein Verlust`, 'system');
+      } else {
+        const c = p.team[slot];
+        if (c) {
+          p.team[slot] = null;
+          g.auctionDeck.push(c);
+          log(`📤 ${esc(p.name)} verliert ${esc(c.name)} (${POS_LABEL[slot]})`, 'event');
+        } else {
+          log(`— ${esc(p.name)} ${POS_LABEL[slot]} unbesetzt`, 'system');
+        }
+      }
+    }
+    refreshTopbar(); refreshTeamPanel();
+  }
+
+  async function humanPickProtect(player) {
+    return new Promise((resolve) => {
+      const opts = POSITIONS.filter(p => player.team[p]).map(p => ({
+        pos: p, name: player.team[p].name
+      }));
+      if (!opts.length) { resolve('outside'); return; }
+      // Show in event popup with buttons
+      const buttonsHtml = opts.map(o =>
+        `<button class="vv-btn small" data-protect="${o.pos}">${POS_LABEL[o.pos]} — ${esc(o.name)}</button>`).join('');
+      showEventPopup({
+        type: 'gold', icon: '🛡', title: T('protect'),
+        player: player,
+        detail: `<div class="spaced">${buttonsHtml}</div>`,
+        noAutoClose: true
+      }).then(() => resolve('outside')); // safety
+      setTimeout(() => {
+        $$('.epb-detail [data-protect]').forEach(b => {
+          b.addEventListener('click', () => {
+            const slot = b.getAttribute('data-protect');
+            closeEventPopup();
+            resolve(slot);
+          });
+        });
+      }, 100);
+      setTimeout(() => resolve(opts[0].pos), 30000);
+    });
+  }
+
+  async function runStealPhase(ranked) {
+    log('📥 Trade & Steal', 'event');
+    const fourth = ranked[3], third = ranked[2], second = ranked[1], first = ranked[0];
+    // 4th can steal/swap from 1st OR 2nd
+    if (fourth && first) {
+      await runOneSteal(fourth, [first, second]);
+    }
+    // 3rd can steal/swap from 4th
+    if (third && fourth) {
+      await runOneSteal(third, [fourth]);
+    }
+    refreshTopbar(); refreshTeamPanel();
+  }
+
+  async function runOneSteal(thief, candidates) {
+    if (!thief || !candidates.length) return;
+    let target = candidates[0];
+    let slot = null;
+    if (thief.isHuman) {
+      // Show event popup to pick target + slot.
+      const buttonsHtml = candidates.flatMap(t =>
+        POSITIONS.filter(p => t.team[p]).map(p =>
+          `<button class="vv-btn small" data-target="${t.id}" data-slot="${p}">${esc(t.name)} → ${POS_LABEL[p]} ${esc(t.team[p].name)}</button>`
+        )).join('');
+      const det = `<div class="spaced">${buttonsHtml}<button class="vv-btn ghost small" id="steal-skip">${T('cancel')}</button></div>`;
+      const popupP = showEventPopup({
+        type:'gold', icon:'📥', title:T('steal'), player:thief,
+        detail: det, noAutoClose: true
+      });
+      const choice = await new Promise((res) => {
+        setTimeout(() => {
+          $$('.epb-detail [data-target]').forEach(b => {
+            b.addEventListener('click', () => {
+              res({ target: state.game.players.find(p=>p.id===b.getAttribute('data-target')),
+                    slot: b.getAttribute('data-slot') });
+            });
+          });
+          const skip = $('#steal-skip');
+          if (skip) skip.addEventListener('click', () => res(null));
+        }, 100);
+        setTimeout(() => res(null), 30000);
+      });
+      closeEventPopup();
+      await popupP;
+      if (!choice) return;
+      target = choice.target; slot = choice.slot;
+    } else {
+      // Bot: pick best gain
+      let best = null, bestGain = 0;
+      for (const cand of candidates) {
+        try {
+          const sl = window.VV_BOTS.pickSteal(thief, cand);
+          if (!sl) continue;
+          const theirs = cand.team[sl];
+          const mine   = thief.team[sl];
+          const gain = (theirs ? theirs.stars : 0) - (mine ? mine.stars : 0);
+          if (gain > bestGain) { bestGain = gain; best = { target: cand, slot: sl }; }
+        } catch(e) {}
+      }
+      if (!best) return;
+      target = best.target; slot = best.slot;
+    }
+    if (!target.team[slot]) return;
+    // Swap (or steal — keep target's slot empty).
+    const got = target.team[slot];
+    const offered = thief.team[slot];
+    target.team[slot] = offered;
+    thief.team[slot] = got;
+    log(`📥 ${esc(thief.name)} klaut ${POS_LABEL[slot]} ${esc(got.name)} von ${esc(target.name)}`, 'event');
+  }
+
+  // =================================================================
+  // 25. MARKET MODAL
+  // =================================================================
+  function openMarketModal() {
+    const g = state.game;
+    if (!g) return;
+    const human = g.players.find(p => p.isHuman);
+    const oneStars = g.oneStarPool.filter(c => !cardOwned(c));
+    const unsold = g.unsoldMarket.filter(c => !cardOwned(c));
+
+    const back = document.createElement('div');
+    back.className = 'market-modal-back';
+    back.innerHTML = `
+      <div class="market-modal">
+        <h2>🏪 ${T('market')}</h2>
+        <p class="muted">${esc(human.name)} — ${fmtMoney(human.money)}</p>
+        <div class="market-section">
+          <h3>1★ Karten — ${fmtMoney(10000)} pro Karte</h3>
+          <div class="market-grid" id="market-1star">
+            ${oneStars.map(c =>
+              `<div class="market-item" data-id="${esc(c.id)}" data-price="10000">
+                ${cardHtml(c)}<span class="price">${fmtMoney(10000)}</span>
+              </div>`).join('') || '<span class="muted">leer</span>'}
+          </div>
+        </div>
+        <div class="market-section">
+          <h3>Markt — unverkaufte Auktionskarten</h3>
+          <div class="market-grid" id="market-unsold">
+            ${unsold.map(c =>
+              `<div class="market-item" data-id="${esc(c.id)}" data-price="${c.stars*10000}">
+                ${cardHtml(c)}<span class="price">${fmtMoney(c.stars*10000)}</span>
+              </div>`).join('') || '<span class="muted">leer</span>'}
+          </div>
+        </div>
+        <div class="row-flex" style="justify-content:flex-end;margin-top:10px">
+          <button class="vv-btn" id="market-close">${T('cancel')}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(back);
+
+    back.querySelector('#market-close').addEventListener('click', () => back.remove());
+    back.addEventListener('click', (e) => { if (e.target === back) back.remove(); });
+    $$('.market-item', back).forEach(el => {
+      el.addEventListener('click', () => {
+        const id = el.getAttribute('data-id');
+        const price = parseInt(el.getAttribute('data-price'), 10) || 0;
+        if (human.money < price) { log('❌ Zu wenig Geld', 'system'); return; }
+        const all = oneStars.concat(unsold);
+        const card = all.find(c => c.id === id);
+        if (!card) return;
+        human.money -= price;
+        // Remove from pool
+        if (card.stars === 1) g.oneStarPool = g.oneStarPool.filter(x => x.id !== id);
+        else g.unsoldMarket = g.unsoldMarket.filter(x => x.id !== id);
+        placeIntoTeamOrBench(human, card);
+        log(`🏪 ${esc(human.name)} kauft ${esc(card.name)} für ${fmtMoney(price)}`, 'event');
+        back.remove();
+        refreshTopbar(); refreshTeamPanel();
+      });
+    });
+  }
+
+  // ---- League / Weekend / Event info modals -------------------------
+  function openLeagueModal() {
+    const g = state.game;
+    const sorted = g.players.slice().sort((a,b) => b.lp - a.lp);
+    const rows = sorted.map((p, i) => `
+      <tr class="${i===0 ? 'gold-row' : ''}">
+        <td>${i+1}.</td><td>${esc(p.emoji)} ${esc(p.name)}</td>
+        <td>${p.lp}</td><td>${p.vp}</td><td>${fmtMoney(p.money)}</td>
+      </tr>`).join('');
+    const back = document.createElement('div');
+    back.className = 'market-modal-back';
+    back.innerHTML = `
+      <div class="market-modal">
+        <h2>🏆 LIGA — Saison ${g.season}</h2>
+        <table class="result-table">
+          <thead><tr><th>#</th><th>${T('name')}</th><th>${T('lp')}</th><th>${T('vp')}</th><th>${T('money')}</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="row-flex" style="justify-content:flex-end;margin-top:10px">
+          <button class="vv-btn" id="league-close">${T('cancel')}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(back);
+    back.querySelector('#league-close').addEventListener('click', () => back.remove());
+    back.addEventListener('click', (e) => { if (e.target === back) back.remove(); });
+  }
+
+  function openWeekendModal() {
+    const g = state.game;
+    const cur = g.players[g.currentPlayerIdx];
+    const dayInWeek = (g.coneDay % 8) + 1;
+    const back = document.createElement('div');
+    back.className = 'market-modal-back';
+    back.innerHTML = `
+      <div class="market-modal">
+        <h2>📅 ${T('week')} ${g.week}/6</h2>
+        <p>${T('day')} ${dayInWeek}/8 · Feld ${g.coneDay+1}/48</p>
+        <p>Aktiv: ${esc(cur.emoji)} ${esc(cur.name)}</p>
+        <p class="muted">Nächster Spieltag wenn Kegel Tag 8 erreicht/passiert.</p>
+        <div class="row-flex" style="justify-content:flex-end">
+          <button class="vv-btn" id="we-close">${T('cancel')}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(back);
+    back.querySelector('#we-close').addEventListener('click', () => back.remove());
+    back.addEventListener('click', (e) => { if (e.target === back) back.remove(); });
+  }
+
+  function openEventInfoModal() {
+    const back = document.createElement('div');
+    back.className = 'market-modal-back';
+    back.innerHTML = `
+      <div class="market-modal">
+        <h2>🎲 EVENTS</h2>
+        <table class="result-table">
+          <thead><tr><th>Tag</th><th>Event</th><th>Effekt</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>🟥 Rote Karte</td><td>D6 → Sperre bis nächstes Ligaspiel</td></tr>
+            <tr><td>2</td><td>🔄 Transfer</td><td>Karte aus Auktionsdeck — alle bieten</td></tr>
+            <tr><td>3</td><td>⚡ Aktion</td><td>+5k</td></tr>
+            <tr><td>4</td><td>🏆 Turnier</td><td>Pokal/CL/SuperCup je Woche</td></tr>
+            <tr><td>5</td><td>🏳️ VNL</td><td>Stärkster Spieler fehlt diese Woche</td></tr>
+            <tr><td>6</td><td>⚡ Aktion</td><td>+5k</td></tr>
+            <tr><td>7</td><td>🤕 Verletzung</td><td>D6 → Spieler verletzt</td></tr>
+            <tr><td>8</td><td>⚽ Liga</td><td>Pairing & 12-Kriterien Match</td></tr>
+          </tbody>
+        </table>
+        <div class="row-flex" style="justify-content:flex-end;margin-top:10px">
+          <button class="vv-btn" id="ev-close">${T('cancel')}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(back);
+    back.querySelector('#ev-close').addEventListener('click', () => back.remove());
+    back.addEventListener('click', (e) => { if (e.target === back) back.remove(); });
+  }
+
+  // =================================================================
+  // 26. RESULT SCREEN (game won)
+  // =================================================================
+  function showResultScreen(winner) {
+    state.view = 'result';
+    const root = $('#vv-app');
+    if (!root) return;
+    const g = state.game;
+    const ranked = g.players.slice().sort((a, b) => b.vp - a.vp);
+    root.innerHTML = `
+      <div class="result-overlay">
+        <div class="result-card">
+          <h2>🏆 ${esc(winner.name)} GEWINNT!</h2>
+          <p>Sieg mit ${winner.vp} Victory Points nach Saison ${g.season}.</p>
+          <table class="result-table">
+            <thead><tr><th>#</th><th>${T('name')}</th><th>${T('vp')}</th><th>${T('lp')}</th><th>${T('money')}</th><th>★</th></tr></thead>
+            <tbody>
+              ${ranked.map((p, i) => `
+                <tr class="${i===0?'gold-row':''}">
+                  <td>${i+1}.</td><td>${esc(p.emoji)} ${esc(p.name)}</td>
+                  <td>${p.vp}</td><td>${p.lp}</td><td>${fmtMoney(p.money)}</td><td>${teamStrength(p.team)}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+          <div class="row-flex" style="justify-content:flex-end;margin-top:14px">
+            <button class="vv-btn primary" id="result-restart">Neues Spiel</button>
+          </div>
+        </div>
+      </div>`;
+    $('#result-restart').addEventListener('click', () => {
+      state.game = null; state.view = 'splash'; render();
+    });
+  }
+
+  // =================================================================
+  // 27. BOOTSTRAP
+  // =================================================================
+  document.addEventListener('DOMContentLoaded', () => {
+    if (!$('#vv-app')) {
+      const div = document.createElement('div');
+      div.id = 'vv-app';
+      document.body.appendChild(div);
+    }
+    render();
+  });
+
+  // If DOM already ready
+  if (document.readyState !== 'loading') {
+    if (!$('#vv-app')) {
+      const div = document.createElement('div');
+      div.id = 'vv-app';
+      document.body.appendChild(div);
+    }
+    render();
+  }
+
+  // Expose for debugging.
+  window.VV = {
+    state, render, log, skipAll,
+    POSITIONS, BOARD_GRID,
+    rollDie
+  };
 })();

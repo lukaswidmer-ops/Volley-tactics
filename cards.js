@@ -1,71 +1,152 @@
-// Volley Vendetta – Karten-Konfiguration
-const CARDS = {
-  outside: {
-    label_de: "Aussenangreifer",
-    label_en: "Outside Hitter",
-    color: "#e84317",
-    colorDark: "#2d0f0f",
-    folder: "",
-    files: [
-      "outside_01.png.png", "outside_02.png.png", "outside_03.png.png", "outside_04.png.png", "outside_05.png.png",
-      "outside_06.png.png", "outside_07.png.png", "outside_08.png.png", "outside_09.png.png", "outside_10.png.png",
-      "outside_11.png.png", "outside_12.png.png", "outside_13.png.png", "outside_14.png.png", "outside_15.png.png",
-      "outside_16.png.png", "outside_17.png.png", "outside_18.png.png", "outside_19.png.png", "outside_20.png.png",
-      "outside_21.png.png", "outside_22.png.png", "outside_23.png.png", "outside_24.png.png", "outside_25.png.png",
-      "outside_26.png.png", "outside_27.png.png", "outside_28.png.png", "outside_29.png.png",
-    ]
-  },
-  diagonal: {
-    label_de: "Diagonalangreifer",
-    label_en: "Diagonal",
-    color: "#4f46e5",
-    colorDark: "#0d0e2d",
-    folder: "Diagonal",
-    files: [
-      "diagonal_01.png.png", "diagonal_02.png.png", "diagonal_03.png.png", "diagonal_05.png.png",
-      "diagonal_06.png.png", "diagonal_07.png.png", "diagonal_08.png.png", "diagonal_09.png.png", "diagonal_10.png.png",
-      "diagonal_11.png.png", "diagonal_12.png.png", "diagonal_13.png.png", "diagonal_14.png.png", "diagonal_15.png.png",
-      "diagonal_16.png.png", "diagonal_17.png.png", "diagonal_18.png.png", "diagonal_19.png.png",
-    ]
-  },
-  libero: {
-    label_de: "Libero",
-    label_en: "Libero",
-    color: "#ca8a04",
-    colorDark: "#2a2000",
-    folder: "Liberos",
-    files: [
-      "libero_01.png.png", "libero_02.png.png", "libero_03.png.png", "libero_04.png.png", "libero_05.png.png",
-      "libero_06.png.png", "libero_07.png.png", "libero_08.png.png", "libero_09.png.png", "libero_10.png.png",
-      "libero_11.png.png", "libero_12.png.png", "libero_13.png.png", "libero_14.png.png", "libero_15.png.png",
-      "libero_16.png.png", "libero_17.png.png", "libero_18.png.png",
-    ]
-  },
-  middle: {
-    label_de: "Mittelblocker",
-    label_en: "Middle Blocker",
-    color: "#16a34a",
-    colorDark: "#0d2a0d",
-    folder: "",
-    files: [
-      "middle_01.png.png", "middle_02.png.png", "middle_03.png.png", "middle_04.png.png", "middle_05.png.png",
-      "middle_06.png.png", "middle_07.png.png", "middle_08.png.png", "middle_09.png.png", "middle_10.png.png",
-      "middle_11.png.png", "middle_12.png.png", "middle_13.png.png", "middle_14.png.png", "middle_15.png.png",
-      "middle_16.png.png", "middle_17.png.png", "middle_18.png.png", "middle_19.png.png", "middle_20.png.png",
-      "middle_21.png.png", "middle_22.png.png", "middle_23.png.png", "middle_24.png.png", "middle_25.png.png",
-    ]
-  },
-  setter: {
-    label_de: "Zuspieler",
-    label_en: "Setter",
-    color: "#0ea5e9",
-    colorDark: "#0d1a2d",
-    folder: "Passeur",
-    files: [
-      "setter_01.png.png", "setter_02.png.png", "setter_03.png.png", "setter_04.png.png", "setter_05.png.png",
-      "setter_06.png.png", "setter_07.png.png", "setter_08.png.png", "setter_09.png.png", "setter_10.png.png",
-      "setter_11.png.png", "setter_12.png.png", "setter_13.png.png", "setter_14.png.png", "setter_15.png.png",
-      "setter_16.png.png", "setter_17.png.png", "setter_18.png.png", "setter_19.png.png",
-    ]
-  },
-};
+/* ===========================================================
+   VOLLEY VENDETTA — Card Database
+   -----------------------------------------------------------
+   Each card: { id, name, pos, stars, url, nation }
+   Positions: 'outside' | 'middle' | 'setter' | 'diagonal' | 'libero'
+   URL pattern: cards/<slug>-<stars>star.jpg
+
+   The image already shows name / stars / stats / position, so the
+   game does NOT render any star overlay on top of the card art.
+   =========================================================== */
+
+(function () {
+  'use strict';
+
+  // Slugify a name into a safe filename component.
+  function slug(s) {
+    return String(s)
+      .toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+
+  // Master roster. Mix of real-ish volleyball player surnames spread across
+  // positions and star bands, plus generic fillers so every position has
+  // enough depth for a 4-player season-long economy.
+  //
+  // Format per row:  [name, position, stars, nation]
+  const ROSTER = [
+    // --- OUTSIDE HITTERS (red) ----------------------------------------
+    ['Earvin Ngapeth',     'outside',  5, 'FR'],
+    ['Wilfredo Leon',      'outside',  5, 'PL'],
+    ['Yuji Nishida',       'outside',  4, 'JP'],
+    ['Ricardo Lucarelli',  'outside',  4, 'BR'],
+    ['Aaron Russell',      'outside',  4, 'US'],
+    ['Tomas Kooy',         'outside',  3, 'NL'],
+    ['Tine Urnaut',        'outside',  3, 'SI'],
+    ['Klemen Cebulj',      'outside',  3, 'SI'],
+    ['Mikhail Karpov',     'outside',  3, 'RU'],
+    ['Oleh Plotnytskyi',   'outside',  2, 'UA'],
+    ['Kamil Semeniuk',     'outside',  2, 'PL'],
+    ['Yacine Louati',      'outside',  2, 'FR'],
+    ['Trevor Clevenot',    'outside',  2, 'FR'],
+    ['Petar Krsmanovic',   'outside',  2, 'RS'],
+    ['Stefan Chrtiansky',  'outside',  2, 'SK'],
+    ['Carlos Ramos',       'outside',  1, 'CU'],
+    ['Lukas Berger',       'outside',  1, 'AT'],
+    ['Dmitry Volkov',      'outside',  1, 'RU'],
+    ['Marek Beer',         'outside',  1, 'CZ'],
+    ['Adrien Rouzier',     'outside',  1, 'FR'],
+    ['Sven Hoffmann',      'outside',  1, 'DE'],
+    ['Jiri Sramek',        'outside',  1, 'CZ'],
+
+    // --- MIDDLE BLOCKERS (green) ---------------------------------------
+    ['Robertlandy Simon',  'middle',   5, 'CU'],
+    ['Lucas Saatkamp',     'middle',   4, 'BR'],
+    ['Srecko Lisinac',     'middle',   4, 'RS'],
+    ['Max Holt',           'middle',   3, 'US'],
+    ['Roberto Russo',      'middle',   3, 'IT'],
+    ['Dmytro Pashytskyy',  'middle',   3, 'UA'],
+    ['Jakub Kochanowski',  'middle',   2, 'PL'],
+    ['Karol Klos',         'middle',   2, 'PL'],
+    ['Mateusz Bieniek',    'middle',   2, 'PL'],
+    ['Ali Ramazani',       'middle',   2, 'IR'],
+    ['Marko Podrascanin',  'middle',   2, 'RS'],
+    ['Erik Schöll',        'middle',   1, 'AT'],
+    ['Sam Deroo',          'middle',   1, 'BE'],
+    ['Pawel Maslowski',    'middle',   1, 'PL'],
+    ['Tobias Krick',       'middle',   1, 'DE'],
+    ['Filip Sestan',       'middle',   1, 'HR'],
+    ['Anton Brehme',       'middle',   1, 'DE'],
+
+    // --- SETTERS (light blue) ------------------------------------------
+    ['Bruno Rezende',      'setter',   5, 'BR'],
+    ['Micah Christenson',  'setter',   4, 'US'],
+    ['Fabio De Cecco',     'setter',   4, 'IT'],
+    ['Igor Kolakovic',     'setter',   3, 'RS'],
+    ['Antoine Brizard',    'setter',   3, 'FR'],
+    ['Salvador Hidalgo',   'setter',   3, 'AR'],
+    ['Dragan Travica',     'setter',   2, 'IT'],
+    ['Pierre Pujol',       'setter',   2, 'FR'],
+    ['Marcin Janusz',      'setter',   2, 'PL'],
+    ['Lukas Kampa',        'setter',   2, 'DE'],
+    ['Konstantin Bakun',   'setter',   1, 'RU'],
+    ['Roland Heyer',       'setter',   1, 'CH'],
+    ['Marius Wlazly',      'setter',   1, 'PL'],
+    ['Tomas Rousseaux',    'setter',   1, 'BE'],
+
+    // --- DIAGONALS / OPPOSITES (dark blue) -----------------------------
+    ['Ivan Zaytsev',       'diagonal', 5, 'IT'],
+    ['Bartosz Kurek',      'diagonal', 4, 'PL'],
+    ['Yoandy Leal',        'diagonal', 4, 'BR'],
+    ['Aleksandar Atanasijevic','diagonal', 3, 'RS'],
+    ['Renee Teppan',       'diagonal', 3, 'EE'],
+    ['Tsvetan Sokolov',    'diagonal', 3, 'BG'],
+    ['Maxwell Holt',       'diagonal', 2, 'US'],
+    ['Pavel Pankov',       'diagonal', 2, 'RU'],
+    ['Felix Fischer',      'diagonal', 2, 'DE'],
+    ['Damiano Catania',    'diagonal', 2, 'IT'],
+    ['Adrian Aciobanitei', 'diagonal', 2, 'RO'],
+    ['Kasper Kraemer',     'diagonal', 1, 'DK'],
+    ['Niels Klapwijk',     'diagonal', 1, 'NL'],
+    ['Jure Okrosa',        'diagonal', 1, 'SI'],
+    ['Andrija Geric',      'diagonal', 1, 'RS'],
+    ['Lukas Maase',        'diagonal', 1, 'DE'],
+
+    // --- LIBEROS (yellow) ----------------------------------------------
+    ['Jenia Grebennikov',  'libero',   5, 'FR'],
+    ['Erik Shoji',         'libero',   4, 'US'],
+    ['Massimo Colaci',     'libero',   3, 'IT'],
+    ['Pawel Zatorski',     'libero',   3, 'PL'],
+    ['Salvador Saenz',     'libero',   2, 'CU'],
+    ['Jose Massa',         'libero',   2, 'AR'],
+    ['Dustin Watten',      'libero',   2, 'US'],
+    ['Damir Petric',       'libero',   2, 'HR'],
+    ['Ferdinand Tille',    'libero',   1, 'DE'],
+    ['Markus Steuerwald',  'libero',   1, 'DE'],
+    ['Tomas Hudacek',      'libero',   1, 'SK'],
+    ['Yevhen Konovalov',   'libero',   1, 'UA'],
+    ['Ola Holm',           'libero',   1, 'NO'],
+    ['Petar Petric',       'libero',   1, 'BA']
+  ];
+
+  function buildAllCards() {
+    const out = [];
+    let id = 1;
+    for (const row of ROSTER) {
+      const [name, pos, stars, nation] = row;
+      const url = 'cards/' + slug(name) + '-' + stars + 'star.jpg';
+      out.push({
+        id: 'c' + (id++),
+        name: name,
+        pos: pos,
+        stars: stars,
+        url: url,
+        nation: nation
+      });
+    }
+    return out;
+  }
+
+  // Expose for game.js (loaded later as a separate <script>).
+  if (typeof window !== 'undefined') {
+    window.buildAllCards = buildAllCards;
+    // Keep a snapshot too — handy for debugging in the console.
+    window.VV_CARDS_DB = buildAllCards();
+  }
+  // Node test harness compatibility.
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { buildAllCards: buildAllCards };
+  }
+})();
