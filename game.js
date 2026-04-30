@@ -754,10 +754,11 @@ function animateDicePanel(type, finalValue) {
   });
 }
 
-// dicePanel_roll: called by the dice panel button — fires the current waiter
-function dicePanel_roll() {
+// dicePanel_roll: fires the currently active waiter
+// `force=true` lets non-dice buttons trigger even if dice button is disabled.
+function dicePanel_roll(force) {
   const btn = document.getElementById('dice-panel-btn');
-  if (btn && btn.disabled) return;
+  if (!force && btn && btn.disabled) return;
   // Multi-purpose: also acts as "Continue" if that's what the game is waiting for
   if (_waiters['coneContinue']) { fire('coneContinue'); return; }
   if (_waiters['continueAfterMatch']) { fire('continueAfterMatch'); return; }
@@ -1970,8 +1971,8 @@ async function runConeRoll(player) {
 
 // Route both action buttons through the same waiter-dispatch logic.
 // This prevents dead clicks when UI labels and active waiter briefly desync.
-function coneRollNow() { dicePanel_roll(); }
-function coneContinue() { dicePanel_roll(); }
+function coneRollNow() { dicePanel_roll(true); }
+function coneContinue() { dicePanel_roll(true); }
 function setActiveBanner(p) {
   // Big floating banner
   let banner = $('#turn-banner');
