@@ -1892,13 +1892,15 @@ async function runConeRoll(player) {
   const start = g.coneDay;
   const end = start + advance;
   appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🎲 ${v} (${state.lang==='de'?'+':'+'}${advance})`);
-  // Advance day-by-day, resolve any landings/passes
+  // Advance day-by-day — triggers for every day passed OR landed on (spec §2.8)
+  // Stop at day 8 (end of week / league match): cone must not cross into next week's events
   for (let d = start + 1; d <= end; d++) {
     g.coneDay = d;
     refreshBoard();
     await sleep(speedMs(220));
     await resolveDay(g.coneDay, player);
     if (g.over) return;
+    if (dayInWeekOf(d) === 8) break; // league match day = end of week, stop here
   }
   if (!g.over) {
     setActionsHtml(`<h3>${T('phase_event')}</h3>
