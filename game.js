@@ -668,9 +668,21 @@ function waitFor(name, autoMs) {
     }
     _waiters[name] = resolve;
     refreshDebugHud();
-    const done = () => { if (_waiters[name]) { delete _waiters[name]; resolve(); } };
-    if (autoMs) setTimeout(done, autoMs);
-    setTimeout(done, 15000); // 15s safety timeout – verhindert permanentes Hängen
+    // Timers must only clear *this* registration. A 15s safety from a *previous*
+    // waitFor(sameName) could otherwise fire later, delete a new waiter, and leave
+    // the new Promise hanging forever (HUD: pending set, waiters empty).
+    let tAuto = 0, tSafe = 0;
+    const done = () => {
+      if (_waiters[name] !== resolve) return;
+      if (tAuto) clearTimeout(tAuto);
+      if (tSafe) clearTimeout(tSafe);
+      tAuto = tSafe = 0;
+      delete _waiters[name];
+      resolve();
+      refreshDebugHud();
+    };
+    if (autoMs) tAuto = setTimeout(done, autoMs);
+    tSafe = setTimeout(done, 15000); // 15s safety timeout – verhindert permanentes Hängen
   });
 }
 function fire(name, val) {
@@ -2021,6 +2033,8 @@ async function runConeRoll(player) {
     const lastDayWasLeague = dayInWeekOf(g.coneDay) === 8;
     _expectedAdvance = 'coneContinue';
     delete _pendingFires['coneRollNow']; // must not carry over into continue step
+    const stageSub = document.querySelector('#stage .stage-sub');
+    if (stageSub) stageSub.textContent = `${player.name} — ${T('cone_continue')}`;
     setActionsHtml(`<h3>${T('phase_event')}</h3>${speedToggleHtml()}`);
     const dpBtn2 = document.getElementById('dice-panel-btn');
     if (dpBtn2) { dpBtn2.disabled = false; dpBtn2.classList.add('pulse'); dpBtn2.textContent = '▶ ' + T('cone_continue'); }
