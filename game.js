@@ -635,6 +635,10 @@ function skipAll() {
 }
 
 // ── Generic full-screen game popup ──
+// Registry for custom close-actions per popup (e.g. endMarket, pass-bid)
+const _popupCloseCallbacks = {};
+function registerPopupClose(id, fn) { _popupCloseCallbacks[id] = fn; }
+
 function openGamePopup(id, title, bodyHtml) {
   let pop = document.getElementById(id);
   if (!pop) {
@@ -642,21 +646,34 @@ function openGamePopup(id, title, bodyHtml) {
     pop.id = id;
     pop.className = 'game-popup';
     document.body.appendChild(pop);
-    pop.addEventListener('click', e => { if (e.target === pop) closeGamePopup(id); });
+    // Backdrop click → run close callback (if any) then close
+    pop.addEventListener('click', e => {
+      if (e.target === pop) {
+        if (_popupCloseCallbacks[id]) _popupCloseCallbacks[id]();
+        closeGamePopup(id);
+      }
+    });
   }
   pop.innerHTML = `
     <div class="game-popup-inner">
       <div class="game-popup-head">
         <span class="game-popup-title">${title}</span>
-        <button class="game-popup-close" onclick="document.getElementById('${id}').remove()">✕</button>
+        <button class="game-popup-close" id="${id}-close-btn">✕</button>
       </div>
       <div class="game-popup-body" id="${id}-body">${bodyHtml}</div>
     </div>`;
-  requestAnimationFrame(() => pop.classList.add('open'));
+  requestAnimationFrame(() => {
+    pop.classList.add('open');
+    const closeBtn = document.getElementById(`${id}-close-btn`);
+    if (closeBtn) closeBtn.onclick = () => {
+      if (_popupCloseCallbacks[id]) _popupCloseCallbacks[id]();
+      closeGamePopup(id);
+    };
+  });
 }
 function closeGamePopup(id) {
   const pop = document.getElementById(id);
-  if (pop) { pop.classList.remove('open'); setTimeout(() => pop.remove(), 200); }
+  if (pop) { pop.classList.remove('open'); setTimeout(() => { pop.remove(); delete _popupCloseCallbacks[id]; }, 200); }
 }
 function updateGamePopupBody(id, bodyHtml) {
   const body = document.getElementById(id + '-body');
@@ -954,7 +971,7 @@ function setupTeamPanelHtml(p) {
       <div class="vb-row-label" style="margin-top:0.4rem">${state.lang==='de'?'Hinten':'Back'}</div>
       <div class="vb-row vb-row-3">
         ${setupSlotHtml(s.diagonal, 'diagonal')}
-        ${setupSlotHtml(s.outside,  'outside')}
+        ${setupSlotHtml(s.outside2, 'outside2')}
         ${setupSlotHtml(s.libero,   'libero')}
       </div>
     </div>
@@ -1320,7 +1337,7 @@ async function runAuctionForCard(card, idx, total) {
         await sleep(speedMs(300));
         const opps = order.filter(o => o !== p);
         const decision = window.VV_BOTS.shouldBid(p, card, currentBid, minNext, opps);
-        if (decision.pass) {
+        if (decision.pass || decision.bid > p.money || decision.bid < minNext) {
           passes.add(p.id);
           appendAuctionFeed(`${p.emoji} ${escapeHTML(p.name)} → ${T('auction_pass')}`);
         } else {
@@ -1348,7 +1365,7 @@ async function runAuctionForCard(card, idx, total) {
     beep(900, 120);
   } else {
     appendAuctionFeed(`<b style="color:var(--silver)">${T('auction_no_one')}</b>`);
-    state.game.auctionDeck.push(card);  // back on the pile
+    state.game.marketPile.push(card); // unsold → available in market phase
   }
   refreshTopbar();
   await sleep(speedMs(800));
@@ -1551,7 +1568,6 @@ function playerYouHtml(p, g) {
       <div class="yc-stat"><span class="yc-key">${T('str')}</span><span class="yc-val">★ ${str}</span></div>
       <div class="yc-stat"><span class="yc-key">L-Pts</span><span class="yc-val">${p.leaguePoints||0}</span></div>
     </div>
-    <div class="yc-vp">${range(8).map(i=>`<span class="${i<p.vp?'fill':''}"></span>`).join('')}</div>
   </div>`;
 }
 
@@ -1840,7 +1856,15 @@ async function runSeason() {
       const active = g.players[g.activeIdx];
       // Active player rolls 3-die (or auto in fast mode)
       setPhase('event');
-      await runConeRoll(active);
+      try {
+        await runConeRoll(active);
+      } catch (err) {
+        console.error('[VV] runConeRoll crashed:', err);
+        // Fire any pending waiters so the game can try to continue
+        ['coneRollNow','coneContinue','continueAfterMatch','serveOnce','endMarket'].forEach(fire);
+        toast(`⚠️ Fehler: ${err.message || err} — Spiel versucht fortzufahren`, 'bad', 5000);
+        await sleep(1500);
+      }
       if (g.over) return;
       // Move to next active player (clockwise)
       g.activeIdx = (g.activeIdx + 1) % g.players.length;
@@ -1946,6 +1970,7 @@ async function resolveDay(day, triggerPlayer) {
   const w = weekOfDay(day);
   const dInW = dayInWeekOf(day);
   const ev = weekEventByWeek(w);
+  try {
   if (dInW === ev?.day) {
     // Tournament
     appendConeLog(`<b>${T('week_event_'+ev.type)}</b>`);
@@ -1963,6 +1988,11 @@ async function resolveDay(day, triggerPlayer) {
   // Fixed event per day-in-week (spec §2.7)
   const evType = eventTypeForDay(dInW);
   await runEventSpace(evType, triggerPlayer);
+  } catch (err) {
+    console.error('[VV] resolveDay crashed (day=' + day + '):', err);
+    ['coneRollNow','coneContinue','continueAfterMatch','serveOnce','endMarket'].forEach(fire);
+    toast(`⚠️ Event-Fehler (Tag ${day}): ${err.message || err}`, 'bad', 4000);
+  }
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -1979,6 +2009,7 @@ async function runEventSpace(type, player) {
     injury:   { h:T('cone_event_injury'),   p:T('cone_event_injury_p'),   icon:'🩹' },
   };
   const e = map[type];
+  if (!e) { console.warn('[VV] Unknown event type:', type); return; }
   // Render event modal-ish
   stage.innerHTML += `
     <div class="event-card">
@@ -2062,6 +2093,9 @@ function humanBidPopup(p, card, minNext) {
         <button class="btn btn-primary" id="bid-popup-do">${T('auction_bid')}</button>
         <button class="btn btn-secondary" id="bid-popup-pass">${T('auction_pass')}</button>
       </div>`;
+    const passAndClose = () => { closeGamePopup(id); resolve({ pass: true }); };
+    // ✕ and backdrop close = same as "pass"
+    registerPopupClose(id, () => resolve({ pass: true }));
     openGamePopup(id, `\ud83d\udd01 ${T('cone_event_transfer')} \u2014 ${escapeHTML(p.name)}`, body);
     setTimeout(() => {
       const doBtn = document.getElementById('bid-popup-do');
@@ -2072,7 +2106,7 @@ function humanBidPopup(p, card, minNext) {
         closeGamePopup(id);
         resolve({ bid: v });
       };
-      if (passBtn) passBtn.onclick = () => { closeGamePopup(id); resolve({ pass: true }); };
+      if (passBtn) passBtn.onclick = passAndClose;
       if (input) {
         input.focus();
         input.addEventListener('keydown', e => { if (e.key === 'Enter' && doBtn) doBtn.click(); });
@@ -2106,18 +2140,12 @@ function showActionCardPopup() {
 }
 
 async function applyVnlEvent(player) {
-  // Disable cards that match the player's flag (we don't have flags per card, so simulate ~30% chance per starter)
-  let count = 0;
-  for (const pos of POSITIONS) {
-    const c = player.team[pos];
-    if (c && !c.disabled && !c._isSub && Math.random() < 0.30) {
-      disablePlayerOnTeam(player, pos, T('cone_event_vnl'));
-      count++;
-    }
-  }
-  appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🚩 ${count} ${state.lang==='de'?'Spieler verfügbar erst nach Liga':'players unavailable until league match'}`);
-  refreshTeamPanel();
-  refreshFloatingPanel();
+  // VNL/Nationalteam: kein Spieleffekt in dieser Version — nur Infotext
+  const msg = state.lang === 'de'
+    ? 'In Zukunft fallen hier Spieler mit der Nationalität vom Spielbrett aus.'
+    : 'In the future, players with the nationality shown on the board will be unavailable here.';
+  appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🚩 ${state.lang==='de'?'VNL':'VNL'} · <i style="color:var(--silver)">${msg}</i>`);
+  toast(`🚩 VNL — ${msg}`, '', 3500);
 }
 
 async function applyInjury(player) {
@@ -2601,11 +2629,13 @@ function courtMiniHtml(player, rotation) {
   //   slot 4 = pos3 (front-middle)
   //   slot 5 = pos2 (front-right)
   //
-  // Base formation (rotation 0) — 5-1 with two OHs and two MBs:
-  //   Front: [MB1=pos4] [OH1=pos3] [S=pos2]
-  //   Back:  [OPP=pos5] [OH2=pos6] [MB2=pos1 → Libero-Tausch]
-  // Both OHs rotate fully through all 6 positions.
-  // Both MBs are replaced by Libero whenever they are in the back row.
+  // ROT 1 (r=0, S at pos 2 front-right):  Front: MB | OH | S   Back: D | OH | L  (server = back-right)
+  // ROT 2 (r=1, S at pos 1 back-right):   Front: D  | MB | OH  Back: OH| L  | S
+  // ROT 3 (r=2, S at pos 6 back-mid):     Front: OH | D  | MB  Back: L | S  | OH
+  // ROT 4 (r=3, S at pos 5 back-left):    Front: MB | OH | D   Back: S | OH | L
+  // ROT 5 (r=4, S at pos 4 front-left):   Front: S  | MB | OH  Back: OH| L  | D
+  // ROT 6 (r=5, S at pos 3 front-mid):    Front: OH | S  | MB  Back: L | D  | OH
+  // OH2/MB2 share the same label as OH/MB on the court but keep distinct colors.
   const basePositions = ['middle2', 'outside2', 'diagonal', 'middle', 'outside', 'setter'];
 
   const r = ((rotation || 0) % 6 + 6) % 6;
@@ -2628,14 +2658,17 @@ function courtMiniHtml(player, rotation) {
 
   function cell(slotIdx, kInRow, isBackRow) {
     let pos = getPos(slotIdx);
-    // outside2 in front row → display as OH (same role, distinguish only by color)
-    if (!isBackRow && pos === 'outside2') pos = 'outside';
     // MB in back row → Libero swap
     const isSwap = isBackRow && liberoSwapSlots.has(slotIdx);
     if (isSwap) pos = 'libero';
 
-    const label = posShort(pos);
+    // Keep distinct colors (outside vs outside2, middle vs middle2) but unify labels
+    // so the court display matches the spec: both OHs = "OH", both MBs in front = "MB"
     const color = posColor(pos);
+    let labelPos = pos;
+    if (pos === 'outside2') labelPos = 'outside';
+    if (pos === 'middle2')  labelPos = 'middle';
+    const label = posShort(labelPos);
     const cls   = isSwap ? 'is-libero-sub' : '';
     const tip   = isSwap ? `${label} · ${swapTip}` : label;
     const srv   = isBackRow && kInRow === 2 ? ' 🏐' : '';
@@ -2654,6 +2687,7 @@ function courtMiniHtml(player, rotation) {
 
 async function runLeagueMatch() {
   const g = state.game;
+  setPhase('match');
   // Pair human (home this week) vs strongest bot
   const me = g.players[0];
   const opp = g.players.filter(p => p !== me).sort((a,b)=>teamStrength(b)-teamStrength(a))[0];
@@ -2822,9 +2856,13 @@ function renderMarket() {
   if (existing && existing.classList.contains('open')) {
     updateGamePopupBody('market-popup', body);
   } else {
+    // ✕ / backdrop close = same as "Fertig kaufen" (run full endMarket logic)
+    registerPopupClose('market-popup', () => { if (_waiters['endMarket']) endMarket(); });
     openGamePopup('market-popup', title, body);
   }
-  setActionsHtml(`<h3>${T('phase_buy')}</h3>${speedToggleHtml()}`);
+  // Also expose "Fertig" in the actions panel so the user can always find it
+  setActionsHtml(`<h3>${T('phase_buy')}</h3>${speedToggleHtml()}
+    <button class="action-btn pulse" onclick="VV.endMarket()">${T('finish_buying')}</button>`);
 }
 
 function oneStarMarketHtml(me, weakPos) {
@@ -2866,9 +2904,7 @@ function buyOneStar(pos) {
   if (!opts.length) return;
   const c = choice(opts);
   const cur = me.team[pos];
-  if (cur && cur.stars >= c.stars) {
-    if (cur) me.bench.push(cur);
-  }
+  if (cur) me.bench.push(cur); // always move existing card to bench
   me.team[pos] = c;
   me.money -= 10000;
   animateMoneyChange(me, -10000);
@@ -2916,7 +2952,10 @@ function sellStarter(pos) {
 
 function marketCardHtml(c, player, opts) {
   const canAfford = player.money >= c.price;
-  const suggested = opts && opts.suggestedPos === c.pos;
+  // weakestPosition can return outside2/middle2; cards only have outside/middle — map both directions
+  const _poolPos = { outside2: 'outside', middle2: 'middle' };
+  const _sp = opts && opts.suggestedPos;
+  const suggested = _sp && (c.pos === _sp || c.pos === (_poolPos[_sp] || _sp));
   return `<div class="mc ${canAfford?'':'poor'} ${suggested?'suggested':''}" data-tip="${escapeHTML(c.name)}">
     <img class="mc-img" src="${c.url}" alt="" loading="lazy">
     <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -2997,6 +3036,7 @@ function checkWin() {
 
 function endGame() {
   const g = state.game;
+  g.over = true; // ensure consistent state regardless of how game ended
   if (!g.winner) g.winner = g.players.slice().sort((a,b) => b.vp - a.vp)[0];
   setView('end');
 }
