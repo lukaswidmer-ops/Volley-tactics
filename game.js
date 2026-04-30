@@ -1921,22 +1921,25 @@ async function runSeason() {
     // Strict < so the loop exits the moment coneDay hits the league-match boundary (day 8, 16, 24…)
     const targetEndOfWeek = g.week * 8;
     while (g.coneDay < targetEndOfWeek && !g.over) {
-      const active = g.players[g.activeIdx];
-      // Active player rolls 3-die (or auto in fast mode)
-      setPhase('event');
       try {
+        const active = g.players[g.activeIdx];
+        // Active player rolls 3-die (or auto in fast mode)
+        setPhase('event');
         await runConeRoll(active);
+        if (g.over) return;
+        // Move to next active player (clockwise)
+        g.activeIdx = (g.activeIdx + 1) % g.players.length;
+        _expectedAdvance = 'coneRollNow';
+        refreshTopbar();
       } catch (err) {
-        console.error('[VV] runConeRoll crashed:', err);
-        // Fire any pending waiters so the game can try to continue
+        console.error('[VV] season-step crashed:', err);
+        // Fire any pending waiters so the game can continue from a clean state
         ['coneRollNow','coneContinue','continueAfterMatch','serveOnce','endMarket'].forEach(fire);
+        _expectedAdvance = 'coneRollNow';
         toast(`⚠️ Fehler: ${err.message || err} — Spiel versucht fortzufahren`, 'bad', 5000);
+        refreshTopbar();
         await sleep(1500);
       }
-      if (g.over) return;
-      // Move to next active player (clockwise)
-      g.activeIdx = (g.activeIdx + 1) % g.players.length;
-      refreshTopbar();
     }
     // Week complete — market phase
     setPhase('buy');
