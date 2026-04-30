@@ -475,7 +475,7 @@ const T = (k) => (i18n[state.lang] && i18n[state.lang][k]) || k;
 const fmt = (str, ...args) => { let i=0; return str.replace(/%[ds]|%(\d+)/g, () => args[i++]); };
 const fmtMoney = n => (n||0).toLocaleString('de-CH').replace(/,/g,'’');
 const choice = arr => arr[Math.floor(Math.random()*arr.length)];
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+const sleep = ms => new Promise(r => setTimeout(r, (state.skipping ? 0 : ms)));
 const range = n => Array.from({length:n}, (_,i)=>i);
 function hash(str) { let h=0; for (let i=0;i<str.length;i++) h=((h<<5)-h)+str.charCodeAt(i); return Math.abs(h); }
 function speedMs(ms) {
@@ -519,6 +519,7 @@ const state = {
   mode: null,
   speed: localStorage.getItem('vv_speed') || 'normal',
   game: null,
+  skipping: false,
 };
 
 // ────────────────────────────────────────────────────────────────
@@ -609,15 +610,25 @@ function setSpeed(s) { state.speed = s; localStorage.setItem('vv_speed', s); ren
 const _waiters = {};
 function waitFor(name, autoMs) {
   return new Promise(resolve => {
+    if (state.skipping) { setTimeout(resolve, 0); return; }
     if (!name) { setTimeout(resolve, autoMs||1); return; }
     _waiters[name] = resolve;
-    if (autoMs) setTimeout(() => { if (_waiters[name]) { delete _waiters[name]; resolve(); } }, autoMs);
+    const done = () => { if (_waiters[name]) { delete _waiters[name]; resolve(); } };
+    if (autoMs) setTimeout(done, autoMs);
+    setTimeout(done, 30000); // 30s safety timeout – verhindert permanentes Hängen
   });
 }
 function fire(name, val) {
   const r = _waiters[name];
   if (r) { delete _waiters[name]; r(val); }
 }
+function skipAll() {
+  state.skipping = true;
+  ['coneRollNow','coneContinue','continueAfterMatch','serveOnce','endMarket'].forEach(fire);
+  document.querySelectorAll('.modal-popup, .event-popup-banner').forEach(m => m.remove());
+  setTimeout(() => { state.skipping = false; }, 3000);
+}
+
 // Sets #actions content and always recreates #stage inside it,
 // so that subsequent $(`#stage`) lookups work correctly.
 function setActionsHtml(html) {
@@ -1076,6 +1087,7 @@ function initSoloGame() {
     weekResults: [],
     over: false, winner: null,
     leagueMatchesPlayed: 0,
+    season: 1,
   };
   // Build auction deck: all 2-5 star cards (1-star are fixed-price separate)
   const aDeck = ALL_CARDS.filter(c => c.stars >= 2).slice().sort(()=>Math.random()-0.5);
@@ -1590,9 +1602,9 @@ function dayOf(week, dayInWeek) { return (week - 1)*8 + dayInWeek; }
 function weekOfDay(day) { return Math.floor((day - 1) / 8) + 1; }
 function dayInWeekOf(day) { return ((day - 1) % 8) + 1; }
 
-// Random event for non-special days
-const EVENT_TYPES = ['red', 'transfer', 'action', 'vnl', 'injury'];
-function randomEventType() { return choice(EVENT_TYPES); }
+// Fixed event per day-in-week (per spec): Day 4=tournament, Day 8=league handled separately
+const DAY_EVENT = { 1:'red', 2:'transfer', 3:'action', 5:'vnl', 6:'action', 7:'injury' };
+function eventTypeForDay(d) { return DAY_EVENT[d] || 'action'; }
 
 function renderGame() {
   const app = $('#app');
@@ -1636,6 +1648,7 @@ function renderGame() {
           <div class="dice-panel-label" id="dice-panel-label">🎲 D3</div>
           <div class="dice-panel-result" id="dice-panel-result">—</div>
           <button class="dice-panel-btn" id="dice-panel-btn" disabled onclick="VV.dicePanel_roll()">Würfeln</button>
+          <button class="skip-btn" onclick="VV.skipAll()" title="Alles überspringen">⏭</button>
         </div>
         <div class="log" id="log"></div>
       </div>
@@ -2013,8 +2026,8 @@ async function resolveDay(day, triggerPlayer) {
     restoreDisabledCards(true);
     return;
   }
-  // Otherwise: random event for the trigger player only
-  const evType = randomEventType();
+  // Fixed event per day-in-week (spec §2.7)
+  const evType = eventTypeForDay(dInW);
   await runEventSpace(evType, triggerPlayer);
 }
 
@@ -2102,9 +2115,12 @@ async function applyTransfer(player) {
 }
 
 async function applyActionCard(player) {
-  // Surprise — show a popup that says it only exists in the physical game
+  player.money += 5000;
+  player.totalEarned += 5000;
+  animateMoneyChange(player, 5000);
   showActionCardPopup();
-  appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🎴 ${T('cone_event_action')}`);
+  appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🎴 ${T('cone_event_action')} +5'`);
+  refreshTopbar();
 }
 
 function showActionCardPopup() {
@@ -2315,6 +2331,10 @@ async function runCupFinal(ev) {
 // "current best two by team strength" (placeholder until multi-season).
 async function runSuperCup(ev) {
   const g = state.game;
+  if (g.season <= 1) {
+    appendConeLog(`<i style="color:var(--silver)">${state.lang==='de'?'Super Cup — startet ab Saison 2':'Super Cup — starts from Season 2'}</i>`);
+    return;
+  }
   const sorted = g.players.slice().sort((a,b) => teamStrength(b) - teamStrength(a));
   const home = sorted[0]; const away = sorted[1];
   const stage = $('#stage');
@@ -2447,15 +2467,16 @@ async function runMatchClassic(home, away, isTournament) {
     beep(result.winner === 'home' ? 740 : result.winner === 'away' ? 480 : 540, 60);
   }
 
-  // Determine winner by points; tie → coin flip
+  // Determine winner; for tournament ties use coin flip, league ties return null (draw)
   let winner;
+  const tied = M.homePoints === M.awayPoints;
   if (M.homePoints > M.awayPoints) winner = home;
   else if (M.awayPoints > M.homePoints) winner = away;
-  else winner = Math.random() < 0.5 ? home : away;
+  else winner = isTournament ? (Math.random() < 0.5 ? home : away) : null; // draw in league
 
   // Show summary
   await showMatchSummary(M, winner);
-  flash(winner === home ? 'win' : 'loss');
+  if (winner) flash(winner === home ? 'win' : 'loss');
   return winner;
 }
 
@@ -2558,8 +2579,11 @@ async function showMatchSummary(M, winner) {
   const stage = $('#stage');
   const lang = state.lang;
   const summary = `${escapeHTML(M.home.name)} ${M.homePoints}:${M.awayPoints} ${escapeHTML(M.away.name)}`;
+  const headLine = winner
+    ? `${winner === M.home ? '🏆 ' : ''}${escapeHTML(winner.name)} ${state.lang==='de'?'gewinnt':'wins'}`
+    : (state.lang==='de' ? '🤝 Unentschieden' : '🤝 Draw');
   stage.innerHTML = `
-    <div class="stage-h">${winner === M.home ? '🏆 ' : ''}${escapeHTML(winner.name)} ${state.lang==='de'?'gewinnt':'wins'}</div>
+    <div class="stage-h">${headLine}</div>
     <div class="stage-sub">${summary}</div>
     <div style="margin-top:1rem; display:flex; gap:0.4rem; flex-wrap:wrap; max-width:640px;">
       ${M.events.map(e => `<span class="crit-pill ${e.winner}">#${e.dice} ${T('crit_'+e.kind)}</span>`).join('')}
@@ -2633,8 +2657,15 @@ async function runLeagueMatch() {
   showOpponentBoard(away);
   const winner = await runMatchClassic(home, away, false);
   restoreBoardPanel();
-  // Award league points and money per rulebook
-  if (winner === home) {
+  // Award league points and money per rulebook (spec §2.9)
+  if (winner === null) {
+    // Draw: both +5k bank, both +1 LP
+    home.money += 5000; home.totalEarned += 5000; animateMoneyChange(home, 5000);
+    away.money += 5000; away.totalEarned += 5000; animateMoneyChange(away, 5000);
+    home.leaguePoints = (home.leaguePoints||0) + 1;
+    away.leaguePoints = (away.leaguePoints||0) + 1;
+    logEntry(`🏐 ${T('phase_match')}: 🤝 ${state.lang==='de'?'Unentschieden':'Draw'} — ${escapeHTML(home.name)} & ${escapeHTML(away.name)} je +5'`);
+  } else if (winner === home) {
     home.money += 10000; home.totalEarned += 10000; animateMoneyChange(home, 10000);
     if (away.money >= 5000) { away.money -= 5000; animateMoneyChange(away, -5000); home.money += 5000; home.totalEarned += 5000; animateMoneyChange(home, 5000); } else { home.money += away.money; away.money = 0; }
     home.matchesWon++; home.leaguePoints += 3;
@@ -3110,7 +3141,7 @@ window.VV = {
   startSolo, openMultiplayer, createRoom, showJoinForm,
   draftDraw, draftRedraw, draftPick1, draftFinish,
   rollStartingDice,
-  coneRollNow, coneContinue, dicePanel_roll,
+  coneRollNow, coneContinue, dicePanel_roll, skipAll,
   buyCard, endMarket, buyOneStar, sellBenchCard, sellStarter,
   serveOnce, continueAfterMatch,
   playAgain, toMenu,

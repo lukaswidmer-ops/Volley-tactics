@@ -441,6 +441,8 @@ button { font-family:inherit; cursor:pointer; }
 .dice-panel-btn:hover:not(:disabled) { background: rgba(232,67,23,0.25); }
 .dice-panel-btn:disabled { opacity: 0.3; cursor: not-allowed; border-color: var(--line); }
 .dice-panel-btn.pulse { animation: pulseBtn 1.2s ease-in-out infinite; }
+.skip-btn { margin-top:0.4rem; width:100%; padding:0.3rem; background:transparent; border:1px solid rgba(255,255,255,0.1); border-radius:3px; color:rgba(255,255,255,0.35); font-size:0.75rem; cursor:pointer; transition:color 0.2s, border-color 0.2s; }
+.skip-btn:hover { color:rgba(255,255,255,0.7); border-color:rgba(255,255,255,0.3); }
 .actions {
   display: flex;
   flex-direction: column;
