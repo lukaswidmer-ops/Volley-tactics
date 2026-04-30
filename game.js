@@ -799,15 +799,20 @@ function animateDicePanel(type, finalValue) {
 
 // dicePanel_roll: fires the currently active waiter
 // `force=true` lets non-dice buttons trigger even if dice button is disabled.
-function dicePanel_roll(force) {
+function dicePanel_roll(force, preferredWaiter) {
   _lastAdvanceSource = force ? 'action-btn' : 'dice-btn';
   const btn = document.getElementById('dice-panel-btn');
   if (!force && btn && btn.disabled) return;
-  // Multi-purpose: also acts as "Continue" if that's what the game is waiting for
-  if (_waiters['coneContinue']) { fire('coneContinue'); return; }
-  if (_waiters['continueAfterMatch']) { fire('continueAfterMatch'); return; }
+  // Prefer explicit intent from the clicked action button.
+  if (preferredWaiter && _waiters[preferredWaiter]) { fire(preferredWaiter); return; }
+  // Then prefer what the flow expects next.
+  if (_expectedAdvance && _waiters[_expectedAdvance]) { fire(_expectedAdvance); return; }
+  // Fallback: first active waiter wins.
   if (_waiters['serveOnce']) { fire('serveOnce'); return; }
+  if (_waiters['continueAfterMatch']) { fire('continueAfterMatch'); return; }
+  if (_waiters['coneContinue']) { fire('coneContinue'); return; }
   if (_waiters['coneRollNow']) { fire('coneRollNow'); return; }
+  if (_waiters['endMarket']) { fire('endMarket'); return; }
   // No active waiter yet (e.g. short animation/event gap):
   // queue the action that is expected next in the current flow.
   fire(_expectedAdvance || 'coneRollNow');
@@ -2022,8 +2027,8 @@ async function runConeRoll(player) {
 
 // Route both action buttons through the same waiter-dispatch logic.
 // This prevents dead clicks when UI labels and active waiter briefly desync.
-function coneRollNow() { dicePanel_roll(true); }
-function coneContinue() { dicePanel_roll(true); }
+function coneRollNow() { dicePanel_roll(true, 'coneRollNow'); }
+function coneContinue() { dicePanel_roll(true, 'coneContinue'); }
 function setActiveBanner(p) {
   // Big floating banner
   let banner = $('#turn-banner');
@@ -2563,7 +2568,9 @@ async function runMatchClassic(home, away, isTournament) {
         dpBtn.classList.add('pulse');
         dpBtn.textContent = '🏐 ' + T('serve');
       }
-      await waitFor('serveOnce');
+      // Safety: continue automatically after a short delay so the match never stalls
+      // if a click is missed or focus changed.
+      await waitFor('serveOnce', speedMs(3500));
       if (dpBtn) {
         dpBtn.disabled = true;
         dpBtn.classList.remove('pulse');
@@ -2924,38 +2931,50 @@ async function runWeekendMatches(week) {
   const schedule = WEEKEND_SCHEDULE[week - 1];
   if (!schedule) return;
   const me = g.players[0];
-  // User request: only one weekend match should be played (the human match).
-  const humanPair = schedule.find(([hi, ai]) => g.players[hi] === me || g.players[ai] === me);
-  if (!humanPair) return;
-  const [hi, ai] = humanPair;
-  const home = g.players[hi];
-  const away = g.players[ai];
-  if (!home || !away) return;
+  // Each team plays exactly once per weekend (2 matches total for 4 teams).
+  // Guard against bad schedules that accidentally include a team twice.
+  const played = new Set();
+  for (let mi = 0; mi < schedule.length; mi++) {
+    const [hi, ai] = schedule[mi];
+    const home = g.players[hi];
+    const away = g.players[ai];
+    if (!home || !away) continue;
+    if (played.has(home.id) || played.has(away.id)) {
+      console.warn('[VV] Weekend duplicate prevented:', week, home.name, away.name);
+      continue;
+    }
+    played.add(home.id); played.add(away.id);
 
-  const opp = home === me ? away : home;
-  showOpponentBoard(opp);
+    const isHumanMatch = (home === me || away === me);
+    const matchLabel = mi === 0 ? T('weekend_match1') : T('weekend_match2');
 
-  const stage = $('#stage');
-  if (stage) {
-    stage.innerHTML = `
-      <div class="stage-h">🏅 ${T('weekend_match')} · ${T('week')} ${week}</div>
-      <div class="stage-sub">${escapeHTML(home.name)} vs ${escapeHTML(away.name)}</div>`;
+    if (isHumanMatch) {
+      const opp = home === me ? away : home;
+      showOpponentBoard(opp);
+    }
+
+    const stage = $('#stage');
+    if (stage) {
+      stage.innerHTML = `
+        <div class="stage-h">🏅 ${T('weekend_match')} · ${T('week')} ${week} · ${matchLabel}</div>
+        <div class="stage-sub">${escapeHTML(home.name)} vs ${escapeHTML(away.name)}</div>`;
+    }
+
+    const winner = await runMatchClassic(home, away, true);
+    if (winner) {
+      winner.money += 3000;
+      winner.totalEarned += 3000;
+      animateMoneyChange(winner, 3000);
+      const loser = winner === home ? away : home;
+      logEntry(`🏅 ${T('weekend_match')} W${week} ${matchLabel}: <b>${escapeHTML(winner.name)}</b> +3' · ${escapeHTML(loser.name)}`, 'tournament');
+    } else {
+      logEntry(`🏅 ${T('weekend_match')} W${week} ${matchLabel}: 🤝 ${escapeHTML(home.name)} — ${escapeHTML(away.name)}`);
+    }
+
+    if (isHumanMatch) restoreBoardPanel();
+    refreshTopbar();
+    if (checkWin()) return;
   }
-
-  const winner = await runMatchClassic(home, away, true);
-  if (winner) {
-    winner.money += 3000;
-    winner.totalEarned += 3000;
-    animateMoneyChange(winner, 3000);
-    const loser = winner === home ? away : home;
-    logEntry(`🏅 ${T('weekend_match')} W${week}: <b>${escapeHTML(winner.name)}</b> +3' · ${escapeHTML(loser.name)}`, 'tournament');
-  } else {
-    logEntry(`🏅 ${T('weekend_match')} W${week}: 🤝 ${escapeHTML(home.name)} — ${escapeHTML(away.name)}`);
-  }
-
-  restoreBoardPanel();
-  refreshTopbar();
-  if (checkWin()) return;
 }
 
 function marketBodyHtml(me, weakPos) {
@@ -3218,8 +3237,8 @@ function toMenu() { state.game = null; setView('menu'); }
 
 function speedToggleHtml() { return ''; } // speed buttons removed — clicking them during a match caused render() to rebuild the DOM and lose all waitFor listeners
 
-function continueAfterMatch() { fire('continueAfterMatch'); }
-function serveOnce() { fire('serveOnce'); }
+function continueAfterMatch() { dicePanel_roll(true, 'continueAfterMatch'); }
+function serveOnce() { dicePanel_roll(true, 'serveOnce'); }
 
 // ────────────────────────────────────────────────────────────────
 //  RENDER DISPATCH
