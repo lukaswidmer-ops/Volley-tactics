@@ -71,7 +71,7 @@ const i18n = {
     week: 'Woche', of: 'von',
     phase_event: 'Event', phase_match: 'Liga', phase_buy: 'Markt', phase_weekend: 'Wochenende', phase_done: 'Ende',
     weekend_match: 'Wochenend-Spiel', weekend_match1: 'Spiel 1', weekend_match2: 'Spiel 2',
-    weekend_win: 'Sieg! +1 VP, +3\'000', weekend_loss: 'Niederlage',
+    weekend_win: 'Sieg! +3\'000', weekend_loss: 'Niederlage',
     week_event_supercup: 'SuperCup', week_event_cl: 'Champions League',
     week_event_cup: 'Cup', week_event_cupfinal: 'Cup-Final', week_event_clfinal: 'CL-Final',
     week_event_league: 'Liga',
@@ -238,7 +238,7 @@ const i18n = {
     week: 'Week', of: 'of',
     phase_event: 'Event', phase_match: 'League', phase_buy: 'Market', phase_weekend: 'Weekend', phase_done: 'Done',
     weekend_match: 'Weekend Match', weekend_match1: 'Match 1', weekend_match2: 'Match 2',
-    weekend_win: 'Win! +1 VP, +3\'000', weekend_loss: 'Defeat',
+    weekend_win: 'Win! +3\'000', weekend_loss: 'Defeat',
     week_event_supercup: 'Super Cup', week_event_cl: 'Champions League',
     week_event_cup: 'Cup', week_event_cupfinal: 'Cup Final', week_event_clfinal: 'CL Final',
     week_event_league: 'League',
@@ -1832,9 +1832,10 @@ async function runSeason() {
   const g = state.game;
   while (g.week <= 6 && !g.over) {
     refreshBoard();
-    // For each week: simulate cone advancement until past day 8
+    // For each week: simulate cone advancement until cone reaches day 8 (league match)
+    // Strict < so the loop exits the moment coneDay hits the league-match boundary (day 8, 16, 24…)
     const targetEndOfWeek = g.week * 8;
-    while (g.coneDay <= targetEndOfWeek && !g.over) {
+    while (g.coneDay < targetEndOfWeek && !g.over) {
       const active = g.players[g.activeIdx];
       // Active player rolls 3-die (or auto in fast mode)
       setPhase('event');
@@ -2302,7 +2303,7 @@ async function runCupFinal(ev) {
   winner.totalEarned += ev.prize;
   winner.vp += 2; animateVpChange(winner, 2);
   loser.vp += 1; animateVpChange(loser, 1);
-  logEntry(`<b>${T('week_event_cupfinal')}</b> → ${escapeHTML(winner.name)} +2 VP, +${fmtMoney(ev.prize)}’ · ${escapeHTML(loser.name)} +1 VP`, 'tournament');
+  logEntry(`<b>${T('week_event_cupfinal')}</b> → ${escapeHTML(winner.name)} +2 VP +${fmtMoney(ev.prize)}' · ${escapeHTML(loser.name)} +1 VP`, 'tournament');
   flash('win');
   beep(900, 200);
   refreshTopbar();
@@ -2775,17 +2776,14 @@ async function runWeekendMatches(week) {
 
     const winner = await runMatchClassic(home, away, true);
 
-    // Award VP + money for weekend win (no draw in cup-style)
+    // Weekend win: only money reward — VP awarded exclusively at season end by league standings
     if (winner) {
-      winner.vp += 1;
       winner.money += 3000;
       winner.totalEarned += 3000;
       animateMoneyChange(winner, 3000);
-      animateVpChange(winner, 1);
       const loser = winner === home ? away : home;
-      logEntry(`🏅 ${T('weekend_match')} W${week} ${matchLabel}: <b>${escapeHTML(winner.name)}</b> +1 VP +3' · ${escapeHTML(loser.name)}`, 'tournament');
+      logEntry(`🏅 ${T('weekend_match')} W${week} ${matchLabel}: <b>${escapeHTML(winner.name)}</b> +3' · ${escapeHTML(loser.name)}`, 'tournament');
     } else {
-      // draw: both +0 (weekend matches go to sudden death via coin flip in runMatchClassic with isTournament=true)
       logEntry(`🏅 ${T('weekend_match')} W${week} ${matchLabel}: 🤝 ${escapeHTML(home.name)} — ${escapeHTML(away.name)}`);
     }
 
