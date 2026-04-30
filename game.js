@@ -69,7 +69,9 @@ const i18n = {
     pos_short_diagonal: 'OPP', pos_short_libero: 'L',
 
     week: 'Woche', of: 'von',
-    phase_event: 'Event', phase_match: 'Liga', phase_buy: 'Markt', phase_done: 'Wochenende',
+    phase_event: 'Event', phase_match: 'Liga', phase_buy: 'Markt', phase_weekend: 'Wochenende', phase_done: 'Ende',
+    weekend_match: 'Wochenend-Spiel', weekend_match1: 'Spiel 1', weekend_match2: 'Spiel 2',
+    weekend_win: 'Sieg! +1 VP, +3\'000', weekend_loss: 'Niederlage',
     week_event_supercup: 'SuperCup', week_event_cl: 'Champions League',
     week_event_cup: 'Cup', week_event_cupfinal: 'Cup-Final', week_event_clfinal: 'CL-Final',
     week_event_league: 'Liga',
@@ -234,7 +236,9 @@ const i18n = {
     pos_short_diagonal: 'OPP', pos_short_libero: 'L',
 
     week: 'Week', of: 'of',
-    phase_event: 'Event', phase_match: 'League', phase_buy: 'Market', phase_done: 'Weekend',
+    phase_event: 'Event', phase_match: 'League', phase_buy: 'Market', phase_weekend: 'Weekend', phase_done: 'Done',
+    weekend_match: 'Weekend Match', weekend_match1: 'Match 1', weekend_match2: 'Match 2',
+    weekend_win: 'Win! +1 VP, +3\'000', weekend_loss: 'Defeat',
     week_event_supercup: 'Super Cup', week_event_cl: 'Champions League',
     week_event_cup: 'Cup', week_event_cupfinal: 'Cup Final', week_event_clfinal: 'CL Final',
     week_event_league: 'League',
@@ -616,7 +620,7 @@ function waitFor(name, autoMs) {
     _waiters[name] = resolve;
     const done = () => { if (_waiters[name]) { delete _waiters[name]; resolve(); } };
     if (autoMs) setTimeout(done, autoMs);
-    setTimeout(done, 8000); // 8s safety timeout – verhindert permanentes Hängen
+    setTimeout(done, 15000); // 15s safety timeout – verhindert permanentes Hängen
   });
 }
 function fire(name, val) {
@@ -662,10 +666,7 @@ function updateGamePopupBody(id, bodyHtml) {
 function setActionsHtml(html) {
   const el = $('#actions');
   if (!el) return;
-  // Buttons go above the log; stage lives permanently in #stage-panel
-  const log = el.querySelector('#log');
   el.innerHTML = html;
-  if (log) el.appendChild(log);
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -1481,6 +1482,8 @@ function renderGame() {
       <div class="topbar" id="topbar">
         <div class="topbar-bots">${g.players.filter(p=>!p.isHuman).map((p)=>playerCardHtml(p,g.players.indexOf(p),true)).join('')}</div>
         <div class="topbar-sep"></div>
+        <div class="topbar-log-area"><div class="log" id="log"></div></div>
+        <div class="topbar-sep"></div>
         ${playerYouHtml(g.players[0], g)}
       </div>
       <div class="phase-bar" id="phase-bar"></div>
@@ -1501,9 +1504,7 @@ function renderGame() {
         </div>
       </div>
       <div class="gbot">
-        <div class="actions" id="actions">
-          <div class="log" id="log"></div>
-        </div>
+        <div class="actions" id="actions"></div>
         <div class="dice-panel" id="dice-panel">
           <div class="dice-panel-label" id="dice-panel-label">🎲 D3</div>
           <div class="dice-panel-result" id="dice-panel-result">—</div>
@@ -1739,10 +1740,16 @@ function slotHtml(card, pos) {
 function refreshTopbar() {
   const tb = $('#topbar'); if (!tb || !state.game) return;
   const g = state.game;
-  tb.innerHTML = `
-    <div class="topbar-bots">${g.players.filter(p=>!p.isHuman).map(p=>playerCardHtml(p,g.players.indexOf(p),true)).join('')}</div>
-    <div class="topbar-sep"></div>
-    ${playerYouHtml(g.players[0], g)}`;
+  // Update only bot-cards and YOU card — preserve topbar-log-area and #log
+  const botsEl = tb.querySelector('.topbar-bots');
+  if (botsEl) botsEl.innerHTML = g.players.filter(p=>!p.isHuman).map(p=>playerCardHtml(p,g.players.indexOf(p),true)).join('');
+  const youEl = tb.querySelector('.you-card');
+  if (youEl) {
+    const newYou = document.createElement('div');
+    newYou.innerHTML = playerYouHtml(g.players[0], g);
+    const yc = newYou.firstElementChild;
+    if (yc) youEl.replaceWith(yc);
+  }
   refreshFloatingPanel();
 }
 function refreshBoard() {
@@ -1803,12 +1810,13 @@ function restoreBoardPanel() {
 }
 function setPhase(active) {
   const phases = [
-    { id:'event', label:T('phase_event'), icon:'🏆' },
-    { id:'match', label:T('phase_match'), icon:'🏐' },
-    { id:'buy',   label:T('phase_buy'),   icon:'🛒' },
-    { id:'done',  label:T('phase_done'),  icon:'✅' },
+    { id:'event',   label:T('phase_event'),   icon:'🎲' },
+    { id:'match',   label:T('phase_match'),   icon:'🏐' },
+    { id:'buy',     label:T('phase_buy'),     icon:'🛒' },
+    { id:'weekend', label:T('phase_weekend'), icon:'🏅' },
+    { id:'done',    label:T('phase_done'),    icon:'✅' },
   ];
-  const order = ['event','match','buy','done'];
+  const order = ['event','match','buy','weekend','done'];
   const bar = $('#phase-bar'); if (!bar) return;
   bar.innerHTML = phases.map(p => {
     const cls = p.id === active ? 'active' : (order.indexOf(p.id) < order.indexOf(active) ? 'done' : '');
@@ -1839,6 +1847,10 @@ async function runSeason() {
     // Week complete — market phase
     setPhase('buy');
     await runMarketPhase();
+    if (g.over) return;
+    // Weekend matches
+    setPhase('weekend');
+    await runWeekendMatches(g.week);
     if (g.over) return;
     g.week += 1;
   }
@@ -1873,7 +1885,7 @@ async function runConeRoll(player) {
     if (dpBtn) { dpBtn.disabled = true; dpBtn.classList.remove('pulse'); }
   } else {
     if (dpBtn) dpBtn.disabled = true;
-    await sleep(speedMs(700));
+    await sleep(speedMs(1100));
   }
   const v = await performDiceRoll(3);
   const advance = v >= 3 ? 2 : 1;     // rule: 1=+1, 2=+1, 3=+2
@@ -1895,8 +1907,8 @@ async function runConeRoll(player) {
     // Also enable the dice-panel button as a second "Continue" trigger
     const dpBtn2 = document.getElementById('dice-panel-btn');
     if (dpBtn2) { dpBtn2.disabled = false; dpBtn2.classList.add('pulse'); dpBtn2.textContent = '▶ ' + T('cone_continue'); }
-    if (state.speed === 'auto' || !player.isHuman) setTimeout(()=>fire('coneContinue'), speedMs(400));
-    await waitFor('coneContinue', !player.isHuman ? speedMs(2000) : 0);
+    if (state.speed === 'auto' || !player.isHuman) setTimeout(()=>fire('coneContinue'), speedMs(900));
+    await waitFor('coneContinue', !player.isHuman ? speedMs(2500) : 0);
     if (dpBtn2) { dpBtn2.disabled = true; dpBtn2.classList.remove('pulse'); dpBtn2.textContent = '🎲 Würfeln'; }
   }
 }
@@ -2418,7 +2430,7 @@ async function runMatchClassic(home, away, isTournament) {
   const totalRolls = () => M.totalRolls + M.crunchExtra;
   while (M.iRoll < totalRolls() && !M.ended) {
     if (humanInMatch && state.speed !== 'auto') await waitFor('serveOnce');
-    else await sleep(speedMs(400));
+    else await sleep(speedMs(650));
     const dice = await performDiceRoll(12);
     M.rolls.push(dice);
     const result = await resolveCriterion(dice, M);
@@ -2568,7 +2580,7 @@ async function showMatchSummary(M, winner) {
     matchDpBtn.disabled = false; matchDpBtn.classList.add('pulse');
     matchDpBtn.textContent = '▶ ' + T('next_match');
   }
-  if (!humanInMatch || state.speed === 'auto') setTimeout(() => fire('continueAfterMatch'), speedMs(2000));
+  if (!humanInMatch || state.speed === 'auto') setTimeout(() => fire('continueAfterMatch'), speedMs(2800));
   await waitFor('continueAfterMatch', autoMs);
   if (matchDpBtn) { matchDpBtn.disabled = true; matchDpBtn.classList.remove('pulse'); matchDpBtn.textContent = '🎲 Würfeln'; }
   restoreBoardPanel();
@@ -2713,6 +2725,75 @@ async function runMarketPhase() {
     renderMarket();
   }
   await waitFor('endMarket', speedMs(state.speed === 'auto' ? 600 : 0));
+}
+
+// ────────────────────────────────────────────────────────────────
+//  WEEKEND MATCHES — Round-Robin schedule, 2 matches per week
+//  Players: index 0 = human (Lukas), 1 = BotA, 2 = BotB, 3 = BotC
+//  Each week: human always plays in Match 1; bot-vs-bot in Match 2
+// ────────────────────────────────────────────────────────────────
+const WEEKEND_SCHEDULE = [
+  // [match1: [homeIdx, awayIdx], match2: [homeIdx, awayIdx]]
+  [[0, 1], [2, 3]],  // Week 1
+  [[0, 2], [3, 1]],  // Week 2
+  [[0, 3], [1, 2]],  // Week 3
+  [[0, 1], [2, 3]],  // Week 4
+  [[0, 2], [3, 1]],  // Week 5
+  [[0, 3], [1, 2]],  // Week 6
+];
+
+async function runWeekendMatches(week) {
+  const g = state.game;
+  const schedule = WEEKEND_SCHEDULE[week - 1];
+  if (!schedule) return;
+  const me = g.players[0];
+
+  for (let mi = 0; mi < schedule.length; mi++) {
+    const [hi, ai] = schedule[mi];
+    const home = g.players[hi];
+    const away = g.players[ai];
+    if (!home || !away) continue;
+
+    const isHumanMatch = (home === me || away === me);
+    const matchLabel = mi === 0 ? T('weekend_match1') : T('weekend_match2');
+
+    // Show opponent panel for human match
+    if (isHumanMatch) {
+      const opp = home === me ? away : home;
+      showOpponentBoard(opp);
+    }
+
+    // Stage header
+    const stage = $('#stage');
+    if (stage) {
+      stage.innerHTML = `
+        <div class="stage-h">🏅 ${T('weekend_match')} · ${T('week')} ${week} · ${matchLabel}</div>
+        <div class="stage-sub">${escapeHTML(home.name)} vs ${escapeHTML(away.name)}</div>`;
+    }
+
+    const winner = await runMatchClassic(home, away, true);
+
+    // Award VP + money for weekend win (no draw in cup-style)
+    if (winner) {
+      winner.vp += 1;
+      winner.money += 3000;
+      winner.totalEarned += 3000;
+      animateMoneyChange(winner, 3000);
+      animateVpChange(winner, 1);
+      const loser = winner === home ? away : home;
+      logEntry(`🏅 ${T('weekend_match')} W${week} ${matchLabel}: <b>${escapeHTML(winner.name)}</b> +1 VP +3' · ${escapeHTML(loser.name)}`, 'tournament');
+    } else {
+      // draw: both +0 (weekend matches go to sudden death via coin flip in runMatchClassic with isTournament=true)
+      logEntry(`🏅 ${T('weekend_match')} W${week} ${matchLabel}: 🤝 ${escapeHTML(home.name)} — ${escapeHTML(away.name)}`);
+    }
+
+    if (isHumanMatch) restoreBoardPanel();
+    refreshTopbar();
+    if (checkWin()) return;
+
+    // Short pause between matches
+    if (mi === 0) await sleep(speedMs(600));
+  }
 }
 
 function marketBodyHtml(me, weakPos) {

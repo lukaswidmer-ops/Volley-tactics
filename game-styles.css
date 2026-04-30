@@ -127,8 +127,12 @@ button { font-family:inherit; cursor:pointer; }
 
 /* Zone 1 — Topbar */
 .topbar { display:flex; align-items:stretch; gap:0; padding:0; background:rgba(0,0,0,0.55); border-bottom:1px solid var(--line); flex-shrink:0; overflow:hidden; }
-.topbar-bots { display:flex; gap:0.5rem; padding:0.6rem 0.8rem; flex:1; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.topbar-bots { display:flex; gap:0.5rem; padding:0.6rem 0.8rem; flex:0 0 auto; overflow-x:auto; -webkit-overflow-scrolling:touch; }
 .topbar-sep { width:1px; background:var(--line); flex-shrink:0; }
+.topbar-log-area { flex:1; min-width:0; display:flex; flex-direction:column; padding:0.3rem 0.6rem; overflow:hidden; }
+.topbar-log-area .log { flex:1; min-height:0; overflow-y:auto; font-size:0.62rem; line-height:1.35; padding:0; border-top:none; margin-top:0; }
+.topbar-log-area .log-entry { padding:0.15rem 0; border-bottom:1px solid rgba(255,255,255,0.04); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.topbar-log-area .log-entry:last-child { border-bottom:none; }
 
 /* YOU card */
 .you-card { position:relative; flex-shrink:0; width:270px; padding:0.6rem 1rem; background:rgba(255,255,255,0.05); display:flex; flex-direction:column; justify-content:center; gap:0.25rem; transition:background 0.2s; }
@@ -270,7 +274,7 @@ button { font-family:inherit; cursor:pointer; }
   overflow: hidden;
 }
 
-/* Actions panel (contains buttons + log history) */
+/* Actions panel (buttons only, log is now in topbar) */
 .actions {
   display: flex;
   flex-direction: column;
@@ -280,6 +284,7 @@ button { font-family:inherit; cursor:pointer; }
   border: 1px solid var(--line);
   border-radius: 6px;
   overflow: hidden;
+  justify-content: center;
 }
 .actions h3 { font-size:0.6rem; letter-spacing:3px; text-transform:uppercase; color:var(--silver); margin-bottom:0.1rem; flex-shrink:0; }
 
