@@ -1608,7 +1608,11 @@ function renderGame() {
       </div>
     </div>
     <div class="game">
-      <div class="topbar" id="topbar">${g.players.map((p,i)=>playerCardHtml(p,i,true)).join('')}</div>
+      <div class="topbar" id="topbar">
+        <div class="topbar-bots">${g.players.filter(p=>!p.isHuman).map((p,i)=>playerCardHtml(p,g.players.indexOf(p),true)).join('')}</div>
+        <div class="topbar-sep"></div>
+        ${playerYouHtml(g.players[0], g)}
+      </div>
       <div class="phase-bar" id="phase-bar"></div>
       <div class="gmid">
         <div class="gpanel-board" id="board-panel">
@@ -1654,6 +1658,22 @@ function playerCardHtml(p, idx, withBars) {
       <div>L-Pts</div><b>${p.leaguePoints||0}</b>
     </div>
     ${withBars ? `<div class="pc-vp">${range(8).map(i=>`<span class="${i<p.vp?'fill':''}"></span>`).join('')}</div>` : ''}
+  </div>`;
+}
+
+function playerYouHtml(p, g) {
+  const isActive = g && g.players[g.activeIdx] === p;
+  const str = teamStrength(p);
+  return `<div class="you-card ${isActive?'active':''}" style="border-left:4px solid ${p.color};">
+    <div class="yc-label">${state.lang==='de'?'DU':'YOU'}</div>
+    <div class="yc-name">${p.emoji} ${escapeHTML(p.name)}</div>
+    <div class="yc-stats">
+      <div class="yc-stat"><span class="yc-key">${T('money')}</span><span class="yc-val">${fmtMoney(p.money)}'</span></div>
+      <div class="yc-stat"><span class="yc-key">${T('vp')}</span><span class="yc-val">${p.vp}/8</span></div>
+      <div class="yc-stat"><span class="yc-key">${T('str')}</span><span class="yc-val">★ ${str}</span></div>
+      <div class="yc-stat"><span class="yc-key">L-Pts</span><span class="yc-val">${p.leaguePoints||0}</span></div>
+    </div>
+    <div class="yc-vp">${range(8).map(i=>`<span class="${i<p.vp?'fill':''}"></span>`).join('')}</div>
   </div>`;
 }
 
@@ -1792,7 +1812,11 @@ function slotHtml(card, pos) {
 
 function refreshTopbar() {
   const tb = $('#topbar'); if (!tb || !state.game) return;
-  tb.innerHTML = state.game.players.map((p,i)=>playerCardHtml(p,i,true)).join('');
+  const g = state.game;
+  tb.innerHTML = `
+    <div class="topbar-bots">${g.players.filter(p=>!p.isHuman).map(p=>playerCardHtml(p,g.players.indexOf(p),true)).join('')}</div>
+    <div class="topbar-sep"></div>
+    ${playerYouHtml(g.players[0], g)}`;
   refreshFloatingPanel();
 }
 function refreshBoard() {
@@ -2333,7 +2357,9 @@ function showLockedFeaturePopup(title) {
       div.remove();
       resolve();
     });
-    if (state.speed === 'auto') setTimeout(() => { if (document.body.contains(div)) { div.remove(); resolve(); } }, 1200);
+    // Auto-close: fast for auto-speed, 2.5s otherwise (so bots never block)
+    const autoCloseMs = state.speed === 'auto' ? 1200 : speedMs(2500);
+    setTimeout(() => { if (document.body.contains(div)) { div.remove(); resolve(); } }, autoCloseMs);
   });
 }
 
@@ -2401,10 +2427,11 @@ async function runMatchClassic(home, away, isTournament) {
   }
   setActionUI(); paint();
 
+  const humanInMatch = (home === me || away === me);
   const totalRolls = () => M.totalRolls + M.crunchExtra;
   while (M.iRoll < totalRolls() && !M.ended) {
-    if (state.speed !== 'auto') await waitFor('serveOnce', speedMs(state.speed === 'auto' ? 240 : 0));
-    else await sleep(speedMs(220));
+    if (humanInMatch && state.speed !== 'auto') await waitFor('serveOnce');
+    else await sleep(speedMs(400));
     const dice = await performDiceRoll(12);
     M.rolls.push(dice);
     const result = await resolveCriterion(dice, M);
@@ -2540,7 +2567,11 @@ async function showMatchSummary(M, winner) {
     <div style="margin-top:1rem; text-align:center;">
       <button class="btn btn-primary" onclick="VV.continueAfterMatch()">${T('next_match')}</button>
     </div>`;
-  await waitFor('continueAfterMatch', speedMs(state.speed === 'auto' ? 600 : 0));
+  const me = state.game ? state.game.players[0] : null;
+  const humanInMatch = me && (M.home === me || M.away === me);
+  const autoMs = (!humanInMatch || state.speed === 'auto') ? speedMs(2000) : 0;
+  if (!humanInMatch || state.speed === 'auto') setTimeout(() => fire('continueAfterMatch'), speedMs(2000));
+  await waitFor('continueAfterMatch', autoMs);
   restoreBoardPanel();
 }
 

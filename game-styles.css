@@ -125,7 +125,23 @@ button { font-family:inherit; cursor:pointer; }
   overflow: hidden;
 }
 /* Zone 1 — Topbar (≈18%) */
-.topbar { display:flex; gap:0.5rem; padding:0.6rem 0.8rem; background:rgba(0,0,0,0.55); border-bottom:1px solid var(--line); overflow-x:auto; -webkit-overflow-scrolling:touch; flex-shrink:0; }
+.topbar { display:flex; align-items:stretch; gap:0; padding:0; background:rgba(0,0,0,0.55); border-bottom:1px solid var(--line); flex-shrink:0; overflow:hidden; }
+.topbar-bots { display:flex; gap:0.5rem; padding:0.6rem 0.8rem; flex:1; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.topbar-sep { width:1px; background:var(--line); flex-shrink:0; }
+
+/* ── YOU card — rechte Seite, größer ── */
+.you-card { position:relative; flex-shrink:0; width:220px; padding:0.6rem 1rem; background:rgba(255,255,255,0.05); display:flex; flex-direction:column; justify-content:center; gap:0.25rem; transition:background 0.2s; }
+.you-card.active { background:rgba(232,67,23,0.08); }
+.you-card.active::before { content:""; position:absolute; inset:0; pointer-events:none; box-shadow:inset 0 0 20px rgba(232,67,23,0.25); animation:halo 1.6s ease-in-out infinite; }
+.yc-label { font-family:'Barlow Condensed',sans-serif; font-weight:900; font-size:0.6rem; letter-spacing:4px; text-transform:uppercase; color:var(--gold); margin-bottom:0.1rem; }
+.yc-name { font-family:'Barlow Condensed',sans-serif; font-weight:800; font-size:1.1rem; letter-spacing:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.yc-stats { display:grid; grid-template-columns:1fr 1fr; gap:0.2rem 0.8rem; margin-top:0.3rem; }
+.yc-stat { display:flex; flex-direction:column; }
+.yc-key { font-size:0.6rem; letter-spacing:1px; text-transform:uppercase; color:var(--silver); line-height:1; }
+.yc-val { font-size:0.95rem; font-weight:700; color:#fff; line-height:1.2; }
+.yc-vp { display:flex; gap:2px; margin-top:0.4rem; }
+.yc-vp span { flex:1; height:4px; background:rgba(255,255,255,0.08); border-radius:1px; }
+.yc-vp span.fill { background:linear-gradient(90deg,var(--red),var(--gold)); }
 /* Phase bar */
 .phase-bar { display:flex; gap:0.35rem; padding:0.4rem 0.75rem; background:rgba(255,255,255,0.03); border-bottom:1px solid var(--line); align-items:center; flex-wrap:wrap; flex-shrink:0; font-size:0.7rem; }
 /* Zone 2+3 — Middle split (flex:1) */
@@ -641,7 +657,9 @@ button { font-family:inherit; cursor:pointer; }
   .market { grid-template-columns:repeat(auto-fill, minmax(110px, 1fr)); }
   .match-screen { grid-template-columns:1fr; gap:0.6rem; text-align:center; }
   .match-vs { font-size:1.4rem; }
-  .topbar { padding:0.5rem 0.7rem; gap:0.4rem; }
+  .topbar-bots { padding:0.5rem 0.6rem; gap:0.3rem; }
+  .you-card { width:180px; padding:0.5rem 0.75rem; }
+  .yc-val { font-size:0.85rem; }
   .gh { padding:0.7rem 0.9rem; gap:0.5rem; }
   .gh-mini { display:none; }
 }
