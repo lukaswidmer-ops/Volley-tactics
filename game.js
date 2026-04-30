@@ -624,6 +624,7 @@ const _pendingFires = {}; // catches fire() calls when no waiter is set up yet
 let _expectedAdvance = 'coneRollNow';
 let _lastAdvanceSource = '-';
 let _lastFired = '-';
+let _lastAdvanceClickAt = 0;
 function debugHudData() {
   const waiters = Object.keys(_waiters).filter(k => !!_waiters[k]).join(', ') || '-';
   const pending = Object.keys(_pendingFires).filter(k => !!_pendingFires[k]).join(', ') || '-';
@@ -800,6 +801,9 @@ function animateDicePanel(type, finalValue) {
 // dicePanel_roll: fires the currently active waiter
 // `force=true` lets non-dice buttons trigger even if dice button is disabled.
 function dicePanel_roll(force, preferredWaiter) {
+  const now = Date.now();
+  if (now - _lastAdvanceClickAt < 140) return; // anti-spam guard
+  _lastAdvanceClickAt = now;
   _lastAdvanceSource = force ? 'action-btn' : 'dice-btn';
   const btn = document.getElementById('dice-panel-btn');
   if (!force && btn && btn.disabled) return;
@@ -817,9 +821,9 @@ function dicePanel_roll(force, preferredWaiter) {
   // queue the action that is expected next in the current flow.
   fire(_expectedAdvance || 'coneRollNow');
   // Extra recovery: a "Continue" click during a tiny desync window can end up
-  // without an active coneContinue waiter. Queue the next roll as backup so
+  // without an active coneContinue waiter. Queue next roll as backup so
   // the flow cannot hard-stall in event phase.
-  if (preferredWaiter === 'coneContinue') fire('coneRollNow');
+  if (preferredWaiter === 'coneContinue' || _expectedAdvance === 'coneContinue') fire('coneRollNow');
   refreshDebugHud();
 }
 
