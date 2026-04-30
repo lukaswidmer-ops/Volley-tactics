@@ -818,12 +818,9 @@ function dicePanel_roll(force, preferredWaiter) {
   if (_waiters['coneRollNow']) { fire('coneRollNow'); return; }
   if (_waiters['endMarket']) { fire('endMarket'); return; }
   // No active waiter yet (e.g. short animation/event gap):
-  // queue the action that is expected next in the current flow.
+  // queue exactly ONE action — never fire two names; that leaves stale pendings
+  // (e.g. coneRollNow) and the next bot turn can resolve waitFor('coneRollNow') instantly → chaos.
   fire(_expectedAdvance || 'coneRollNow');
-  // Extra recovery: a "Continue" click during a tiny desync window can end up
-  // without an active coneContinue waiter. Queue next roll as backup so
-  // the flow cannot hard-stall in event phase.
-  if (preferredWaiter === 'coneContinue' || _expectedAdvance === 'coneContinue') fire('coneRollNow');
   refreshDebugHud();
 }
 
@@ -1968,6 +1965,10 @@ async function runSeason() {
 // One cone-roll turn for a player
 async function runConeRoll(player) {
   const g = state.game;
+  // New cone turn: clear stale pendings so a previous mistaken double-fire
+  // cannot make the next waitFor(...) resolve instantly or out of order.
+  delete _pendingFires['coneRollNow'];
+  delete _pendingFires['coneContinue'];
   setActiveBanner(player);
   setActionsHtml(`<h3>${T('phase_event')}</h3>${speedToggleHtml()}`);
   const stage = $('#stage');
@@ -2019,6 +2020,7 @@ async function runConeRoll(player) {
     // short pause — the match summary already served as the "end of turn" confirmation.
     const lastDayWasLeague = dayInWeekOf(g.coneDay) === 8;
     _expectedAdvance = 'coneContinue';
+    delete _pendingFires['coneRollNow']; // must not carry over into continue step
     setActionsHtml(`<h3>${T('phase_event')}</h3>${speedToggleHtml()}`);
     const dpBtn2 = document.getElementById('dice-panel-btn');
     if (dpBtn2) { dpBtn2.disabled = false; dpBtn2.classList.add('pulse'); dpBtn2.textContent = '▶ ' + T('cone_continue'); }
