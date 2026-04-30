@@ -828,9 +828,9 @@ button, a, input, select { font-family:inherit; }
 /* ── Game Popup (fullscreen modal for market, auction etc.) ── */
 .game-popup {
   position: fixed; inset: 0;
-  background: rgba(8,8,8,0.88);
+  background: rgba(8,8,8,0.92);
   backdrop-filter: blur(10px);
-  z-index: 900;
+  z-index: 2000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -838,8 +838,9 @@ button, a, input, select { font-family:inherit; }
   opacity: 0;
   transition: opacity 0.2s ease;
   pointer-events: none;
+  isolation: isolate;
 }
-.game-popup.open { opacity: 1; pointer-events: auto; }
+.game-popup.open { opacity: 1; pointer-events: all; }
 .game-popup-inner {
   width: 100%; max-width: 920px; max-height: 88vh;
   background: linear-gradient(180deg,#131313,#080808);

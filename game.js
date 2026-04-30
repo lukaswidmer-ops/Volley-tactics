@@ -1,4 +1,4 @@
-/* ================================================================
+﻿/* ================================================================
    VOLLEY VENDETTA — Online Game (Classic Mode, single season)
    Rule-faithful build per official rulebook (April 2026 edition).
    Pure vanilla JS, no build step.
@@ -2638,22 +2638,37 @@ async function runMarketPhase() {
   await waitFor('endMarket', speedMs(state.speed === 'auto' ? 600 : 0));
 }
 
+function marketBodyHtml(me, weakPos) {
+  const de = state.lang === 'de';
+  return `
+    <div class="gp-market-info">
+      <span>${T('market_budget')}: <b id="budget-num">${fmtMoney(me.money)}'</b></span>
+      <span>${T('market_team_strength')}: <b>&#9733; ${teamStrength(me)}</b></span>
+      <span>${T('market_suggest')}: <b style="color:var(--gold)">${posLabel(weakPos)}</b></span>
+    </div>
+    <div class="gp-section-h">${de?'Markt \u2014 2\u2605 bis 5\u2605':'Market \u2014 2\u2605 to 5\u2605'}</div>
+    <div class="market" id="market-grid">${state.game.market.map(c => marketCardHtml(c, me, { suggestedPos: weakPos })).join('')}</div>
+    <div class="gp-section-h" style="margin-top:1.2rem;">${de?'1-Stern-Markt':'1-Star Market'}</div>
+    <div class="market market-1star">${oneStarMarketHtml(me, weakPos)}</div>
+    ${me.bench.length ? `<div class="gp-section-h" style="margin-top:1.2rem;">${de?'Bench / Ersatz':'Bench / Substitutes'}</div><div class="bench-grid">${me.bench.map(c => benchCardHtml(c, me)).join('')}</div>` : ''}
+    <div class="gp-footer">
+      <button class="action-btn pulse" onclick="VV.endMarket()">${T('finish_buying')}</button>
+    </div>`;
+}
+
 function renderMarket() {
-  const stage = $('#stage'); if (!stage) return;
+  if (!state.game) return;
   const me = state.game.players[0];
   const weakPos = weakestPosition(me);
-  stage.innerHTML = `
-    <div class="stage-h">${T('market_h')}</div>
-    <div class="stage-sub">${T('market_budget')}: <b id="budget-num">${fmtMoney(me.money)}</b>’ · ${T('market_team_strength')}: <b>★ ${teamStrength(me)}</b> · ${T('market_suggest')}: <b style="color:var(--gold)">${posLabel(weakPos)}</b></div>
-    <h4 class="h-cond" style="font-size:1rem; letter-spacing:2px; margin-top:1rem; color:var(--silver);">${state.lang==='de'?'Markt — 2★ bis 5★':'Market — 2★ to 5★'}</h4>
-    <div class="market" id="market-grid">${state.game.market.map(c => marketCardHtml(c, me, { suggestedPos: weakPos })).join('')}</div>
-    <h4 class="h-cond" style="font-size:1rem; letter-spacing:2px; margin-top:1.4rem; color:var(--silver);">${state.lang==='de'?'1-Stern-Markt — immer kaufbar':'1-Star Market — always available'}</h4>
-    <div class="market market-1star">${oneStarMarketHtml(me, weakPos)}</div>
-    ${me.bench.length ? `<h4 class="h-cond" style="font-size:1rem; letter-spacing:2px; margin-top:1.4rem; color:var(--silver);">${state.lang==='de'?'Bench / Ersatz':'Bench / Substitutes'}</h4><div class="bench-grid">${me.bench.map(c => benchCardHtml(c, me)).join('')}</div>`:''}`;
-  const actions = $('#actions'); if (!actions) return;
-  setActionsHtml(`<h3>${T('phase_buy')}</h3>
-    ${speedToggleHtml()}
-    <button class="action-btn pulse" onclick="VV.endMarket()">${T('finish_buying')}</button>`);
+  const title = state.lang === 'de' ? 'MARKT' : 'MARKET';
+  const body = marketBodyHtml(me, weakPos);
+  const existing = document.getElementById('market-popup');
+  if (existing && existing.classList.contains('open')) {
+    updateGamePopupBody('market-popup', body);
+  } else {
+    openGamePopup('market-popup', title, body);
+  }
+  setActionsHtml(`<h3>${T('phase_buy')}</h3>${speedToggleHtml()}`);
 }
 
 function oneStarMarketHtml(me, weakPos) {
