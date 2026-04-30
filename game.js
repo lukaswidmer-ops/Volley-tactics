@@ -68,7 +68,10 @@ const i18n = {
     pos_short_outside: 'OH', pos_short_outside2: 'OH2', pos_short_middle: 'MB', pos_short_middle2: 'MB2', pos_short_setter: 'S',
     pos_short_diagonal: 'OPP', pos_short_libero: 'L',
 
-    week: 'Woche', of: 'von',
+    week: 'Woche', of: 'von', cal_day: 'Tag',
+    rally_even: 'Keiner punktet — Ballwechsel ohne Ergebnis.',
+    draft_deck_empty: 'Keine passende Karte mehr im Draft-Stapel.',
+    draft_pick_limit: 'Bereits 3× 1★ gewählt.',
     phase_event: 'Event', phase_match: 'Liga', phase_buy: 'Markt', phase_weekend: 'Wochenende', phase_done: 'Ende',
     weekend_match: 'Wochenend-Spiel', weekend_match1: 'Spiel 1', weekend_match2: 'Spiel 2',
     weekend_win: 'Sieg! +3\'000', weekend_loss: 'Niederlage',
@@ -235,7 +238,10 @@ const i18n = {
     pos_short_outside: 'OH', pos_short_outside2: 'OH2', pos_short_middle: 'MB', pos_short_middle2: 'MB2', pos_short_setter: 'S',
     pos_short_diagonal: 'OPP', pos_short_libero: 'L',
 
-    week: 'Week', of: 'of',
+    week: 'Week', of: 'of', cal_day: 'Day',
+    rally_even: 'No point — rally continues.',
+    draft_deck_empty: 'No matching card left in the draft deck.',
+    draft_pick_limit: 'You already picked 3× 1★ cards.',
     phase_event: 'Event', phase_match: 'League', phase_buy: 'Market', phase_weekend: 'Weekend', phase_done: 'Done',
     weekend_match: 'Weekend Match', weekend_match1: 'Match 1', weekend_match2: 'Match 2',
     weekend_win: 'Win! +3\'000', weekend_loss: 'Defeat',
@@ -371,7 +377,7 @@ const COMMENTARY = {
       'Reservespieler reingebracht und sofort den Punkt gemacht! 🔄',
       '%player% mit einem Lob in die Lücke — die Verteidigung steht falsch! 🎯',
       'Zweite Welle! Nach dem Block schlägt %player% noch ein zweites Mal zu! 🌊',
-      'Set perfectly placed — %player% spikes it into the joint zone! 🎯',
+      'Zuspiel sitzt perfekt — %player% hämmert in die Lücke! 🎯',
     ],
     away_score: [
       'Fehler im Aufbau — %team% nutzt die Chance sofort aus! ⚡',
@@ -512,7 +518,8 @@ const state = {
   introIdx: 0,
   playerName: localStorage.getItem('vv_name') || '',
   mode: null,
-  speed: localStorage.getItem('vv_speed') || 'normal',
+  // Always normal: speed UI was removed; old localStorage 'fast'/'auto' caused auto-advance without clicks.
+  speed: 'normal',
   game: null,
   skipping: false,
   debugHud: localStorage.getItem('vv_debug_hud') !== '0',
@@ -876,6 +883,8 @@ function startConfetti(durationMs = 8000) {
 //  BOOT, INTRO, MENU
 // ────────────────────────────────────────────────────────────────
 function boot() {
+  state.speed = 'normal';
+  localStorage.setItem('vv_speed', 'normal');
   ALL_CARDS = buildAllCards();
   const stBtn = $('#sound-toggle');
   if (stBtn) {
@@ -1221,7 +1230,7 @@ function placeIntoTeamOrBench(p, card) {
 function draftDraw(stars) {
   const me = state.game.players[0];
   const c = deckPoolForStars(stars);
-  if (!c) { toast('No cards left', 'bad'); return; }
+  if (!c) { toast(T('draft_deck_empty'), 'bad'); return; }
   placeIntoTeamOrBench(me, c);
   beep(740, 60);
   renderDraft();
@@ -1243,7 +1252,7 @@ function draftRedraw() {
 function draftPick1(pos) {
   const me = state.game.players[0];
   const counts = countByStars([...me.bench, ...Object.values(me.team).filter(Boolean)]);
-  if (counts[1] >= 3) { toast('Already 3× 1★', 'bad'); return; }
+  if (counts[1] >= 3) { toast(T('draft_pick_limit'), 'bad'); return; }
   // outside2/middle2 share the same card pool as outside/middle
   const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
   const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === poolPos);
@@ -1562,6 +1571,8 @@ function weekEventByWeek(w) {
 function dayOf(week, dayInWeek) { return (week - 1)*8 + dayInWeek; }
 function weekOfDay(day) { return Math.floor((day - 1) / 8) + 1; }
 function dayInWeekOf(day) { return ((day - 1) % 8) + 1; }
+/** Calendar week 1–6 on the 6×8 board from absolute cone day (matches week strip / phase bar). */
+function boardWeekDisplay(g) { return g && g.coneDay ? weekOfDay(g.coneDay) : 1; }
 
 // Fixed event per day-in-week (per spec): Day 4=tournament, Day 8=league handled separately
 const DAY_EVENT = { 1:'red', 2:'transfer', 3:'action', 5:'vnl', 6:'action', 7:'injury' };
@@ -1574,7 +1585,7 @@ function renderGame() {
     <div class="gh">
       <div class="gh-logo">VOLLEY VENDETTA</div>
       <div class="gh-spacer"></div>
-      <div class="gh-mini">${T('week')} ${g.week} ${T('of')} 6</div>
+      <div class="gh-mini">${T('week')} ${boardWeekDisplay(g)} ${T('of')} 6</div>
       <div class="gh-lang">
         <span class="lang-pill ${state.lang==='de'?'active':''}" onclick="VV.setLang('de')">DE</span>
         <span class="lang-pill ${state.lang==='en'?'active':''}" onclick="VV.setLang('en')">EN</span>
@@ -1680,7 +1691,7 @@ function weekStripHtml(g) {
     : EV_ICON[DAY_EVENT[dInW]] + ' ' + (T('cone_event_' + (DAY_EVENT[dInW]||'action')) || '');
   return `<div class="ws-head">
       <span class="ws-wlabel">${T('week')} ${w}<span style="color:var(--silver)">/6</span></span>
-      <span class="ws-dlabel">${state.lang==='de'?'Tag':'Day'} ${dInW}</span>
+      <span class="ws-dlabel">${T('cal_day')} ${dInW}</span>
     </div>
     <div class="ws-days">${days}</div>
     <div class="ws-ev">${evLabel}</div>`;
@@ -1923,7 +1934,7 @@ function setPhase(active) {
   bar.innerHTML = phases.map(p => {
     const cls = p.id === active ? 'active' : (order.indexOf(p.id) < order.indexOf(active) ? 'done' : '');
     return `<span class="phase ${cls}">${p.icon} ${p.label}</span>`;
-  }).join('') + `<div class="phase-log-strip" id="phase-log-strip"></div><span class="phase">${T('week')} ${state.game.week}/6</span>`;
+  }).join('') + `<div class="phase-log-strip" id="phase-log-strip"></div><span class="phase">${T('week')} ${state.game ? boardWeekDisplay(state.game) : 1}/6</span>`;
   refreshPhaseLog();
 }
 
@@ -1932,6 +1943,9 @@ function setPhase(active) {
 // ────────────────────────────────────────────────────────────────
 async function runSeason() {
   const g = state.game;
+  // `g.week` is the inner-loop index (1..6) for `targetEndOfWeek`; it increments right after
+  // the weekend while `coneDay` may still sit on the league boundary (e.g. 8). UI week labels
+  // use `boardWeekDisplay(g)` (= weekOfDay(coneDay)) so header, phase bar and week strip agree.
   while (g.week <= 6 && !g.over) {
     refreshBoard();
     // For each week: simulate cone advancement until cone reaches day 8 (league match)
@@ -1985,7 +1999,7 @@ async function runConeRoll(player) {
   setActionsHtml(`<h3>${T('phase_event')}</h3>${speedToggleHtml()}`);
   const stage = $('#stage');
   stage.innerHTML = `
-    <div class="stage-h">${T('week')} ${g.week} · Tag ${dayInWeekOf(g.coneDay)}</div>
+    <div class="stage-h">${T('week')} ${boardWeekDisplay(g)} · ${T('cal_day')} ${dayInWeekOf(g.coneDay)}</div>
     <div class="stage-sub">${escapeHTML(player.name)} ${player.isHuman?T('yourturn'):T('bot_thinking')+' …'}</div>
     <div class="dice-area" style="margin-top:1rem;">
       <div class="dice-num" id="dice-num">—</div>
@@ -2391,7 +2405,7 @@ async function runCupSemis(ev) {
   const g = state.game;
   const stage = $('#stage');
   stage.innerHTML = `
-    <div class="stage-h">${T('cup_h')} · ${T('week')} ${g.week}</div>
+    <div class="stage-h">${T('cup_h')} · ${T('week')} ${boardWeekDisplay(g)}</div>
     <div class="stage-sub">${T('cup_roll')}</div>
     <div id="cup-rolls" style="margin-top:0.6rem; display:flex; flex-direction:column; gap:0.4rem;"></div>
     <div class="dice-area" style="margin:0 auto;"><div class="dice-num" id="dice-num">—</div></div>`;
@@ -2471,7 +2485,7 @@ async function runSuperCup(ev) {
   const home = sorted[0]; const away = sorted[1];
   const stage = $('#stage');
   stage.innerHTML = `
-    <div class="stage-h">${T('week_event_supercup')} · ${T('week')} ${g.week}</div>
+    <div class="stage-h">${T('week_event_supercup')} · ${T('week')} ${boardWeekDisplay(g)}</div>
     <div class="stage-sub">${escapeHTML(home.name)} vs ${escapeHTML(away.name)} · ${state.lang==='de'?'(Saison 1: gewählt nach Teamstärke)':'(Season 1: chosen by team strength)'}</div>`;
   const winner = await runMatchClassic(home, away, true);
   winner.money += ev.prize; winner.totalEarned += ev.prize;
@@ -2537,6 +2551,9 @@ async function runMatchClassic(home, away, isTournament) {
     iRoll: 0, totalRolls: 4,
     ended: false,
   };
+  // Stale pendings from cone/market would make waitFor('serveOnce') resolve instantly each rally.
+  delete _pendingFires['serveOnce'];
+  delete _pendingFires['continueAfterMatch'];
   function paint() {
     const stage = $('#stage');
     if (!stage) return;
@@ -2589,9 +2606,10 @@ async function runMatchClassic(home, away, isTournament) {
         dpBtn.classList.add('pulse');
         dpBtn.textContent = '🏐 ' + T('serve');
       }
-      // Safety: continue automatically after a short delay so the match never stalls
-      // if a click is missed or focus changed.
-      await waitFor('serveOnce', speedMs(3500));
+      // No autoMs: each criterion waits for your click (15s safety in waitFor still prevents deadlocks).
+      // speedMs(3500) here used to auto-fire — felt like the game "played itself", esp. on fast speed.
+      _expectedAdvance = 'serveOnce';
+      await waitFor('serveOnce', 0);
       if (dpBtn) {
         dpBtn.disabled = true;
         dpBtn.classList.remove('pulse');
@@ -2643,7 +2661,7 @@ async function resolveCriterion(dice, M) {
     return (team === 'home'
       ? choice(COMMENTARY[lang].home_score)
       : team === 'away' ? choice(COMMENTARY[lang].away_score)
-      : 'Punktgleichstand'
+      : T('rally_even')
     ).replace('%team%', escapeHTML(team === 'home' ? home.name : away.name))
      .replace('%player%', randomPlayerName(team === 'home' ? home : away));
   }
@@ -2711,7 +2729,7 @@ async function resolveCriterion(dice, M) {
   else if (kind === 'money')  text = T('money_rain');
   else if (kind === 'block') {
     const r = M._blockRoll, t = M._blockTarget;
-    text = `${state.lang==='de'?'Auswärts wirft':'Away rolls'} ${r} vs ${state.lang==='de'?'Block':'block'} ${t} → ${winner==='away'?T('block_overshot'):winner==='home'?T('block_holds'):'tie'}`;
+    text = `${state.lang==='de'?'Auswärts wirft':'Away rolls'} ${r} vs ${state.lang==='de'?'Block':'block'} ${t} → ${winner==='away'?T('block_overshot'):winner==='home'?T('block_holds'):(state.lang==='de'?'Unentschieden':'Tie')}`;
   }
   else text = pickComment(winner);
   return { dice, kind, winner, text };
