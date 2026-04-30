@@ -1917,10 +1917,18 @@ async function runConeRoll(player) {
   const dpBtn = document.getElementById('dice-panel-btn');
   const dpLbl = document.getElementById('dice-panel-label');
   if (dpLbl) dpLbl.textContent = '🎲 D3';
-  if (player.isHuman && state.speed !== 'auto') {
-    if (dpBtn) { dpBtn.disabled = false; dpBtn.classList.add('pulse'); dpBtn.textContent = '🎲 Würfeln'; }
+  if (state.speed !== 'auto') {
+    if (dpBtn) {
+      dpBtn.disabled = false;
+      dpBtn.classList.add('pulse');
+      dpBtn.textContent = player.isHuman ? '🎲 Würfeln' : ('▶ ' + (state.lang === 'de' ? 'Weiter (Bot würfelt)' : 'Continue (bot rolls)'));
+    }
     await waitFor('coneRollNow');
-    if (dpBtn) { dpBtn.disabled = true; dpBtn.classList.remove('pulse'); }
+    if (dpBtn) {
+      dpBtn.disabled = true;
+      dpBtn.classList.remove('pulse');
+      dpBtn.textContent = '🎲 Würfeln';
+    }
   } else {
     if (dpBtn) dpBtn.disabled = true;
     await sleep(speedMs(3000)); // bot thinking pause before roll
@@ -1949,10 +1957,12 @@ async function runConeRoll(player) {
       <button class="action-btn pulse" onclick="VV.coneContinue()">${T('cone_continue')}</button>`);
     const dpBtn2 = document.getElementById('dice-panel-btn');
     if (dpBtn2) { dpBtn2.disabled = false; dpBtn2.classList.add('pulse'); dpBtn2.textContent = '▶ ' + T('cone_continue'); }
-    if (state.speed === 'auto' || !player.isHuman || lastDayWasLeague) {
+    if (state.speed === 'auto' || lastDayWasLeague) {
       setTimeout(()=>fire('coneContinue'), lastDayWasLeague ? speedMs(2000) : speedMs(3000));
     }
-    await waitFor('coneContinue', !player.isHuman ? speedMs(4000) : 0);
+    // Manual flow for normal speed (also for bots): user confirms each step.
+    const continueAutoMs = state.speed === 'auto' ? speedMs(4000) : speedMs(10000);
+    await waitFor('coneContinue', continueAutoMs);
     if (dpBtn2) { dpBtn2.disabled = true; dpBtn2.classList.remove('pulse'); dpBtn2.textContent = '🎲 Würfeln'; }
   }
 }
