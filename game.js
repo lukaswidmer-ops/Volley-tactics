@@ -816,6 +816,10 @@ function dicePanel_roll(force, preferredWaiter) {
   // No active waiter yet (e.g. short animation/event gap):
   // queue the action that is expected next in the current flow.
   fire(_expectedAdvance || 'coneRollNow');
+  // Extra recovery: a "Continue" click during a tiny desync window can end up
+  // without an active coneContinue waiter. Queue the next roll as backup so
+  // the flow cannot hard-stall in event phase.
+  if (preferredWaiter === 'coneContinue') fire('coneRollNow');
   refreshDebugHud();
 }
 
