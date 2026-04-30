@@ -2151,7 +2151,8 @@ async function applyActionCard(player) {
   player.money += 5000;
   player.totalEarned += 5000;
   animateMoneyChange(player, 5000);
-  showActionCardPopup();
+  // Non-blocking in digital version: no modal interaction, only info.
+  toast(`🎴 ${T('cone_event_action')} · +${fmtMoney(5000)}'`, '', 2200);
   appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🎴 ${T('cone_event_action')} +5'`);
   refreshTopbar();
 }
