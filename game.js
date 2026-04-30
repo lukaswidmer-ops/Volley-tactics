@@ -498,22 +498,10 @@ function cardPrice(stars) { return [0,5000,10000,20000,35000,55000][stars] || 50
 // Dice roll utilities
 function roll(n) { return 1 + Math.floor(Math.random()*n); }
 
-// Build flat card pool with stable IDs
+// Build flat card pool — delegates to cards.js (window.buildAllCards)
 function buildAllCards() {
-  if (typeof CARDS === 'undefined') return [];
-  const all = [];
-  for (const pos of Object.keys(CARDS)) {
-    const def = CARDS[pos];
-    for (const f of def.files) {
-      const id = pos + '/' + f;
-      const url = (def.folder ? def.folder + '/' : '') + f;
-      const stars = cardStars(f);
-      const num = (f.match(/(\d+)/) || ['','00'])[1];
-      const name = (def.label_en || pos).replace(/\s+/g,'') + ' #' + num;
-      all.push({ id, pos, file:f, url, stars, name, price: cardPrice(stars) });
-    }
-  }
-  return all;
+  if (typeof window === 'undefined' || typeof window.buildAllCards !== 'function') return [];
+  return window.buildAllCards().map(c => Object.assign({}, c, { price: cardPrice(c.stars) }));
 }
 let ALL_CARDS = [];
 

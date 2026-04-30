@@ -857,39 +857,45 @@ const counterEl = document.getElementById('gal-counter');
 let gal = { idx: 0, total: 0 };
 
 function openGallery(pos) {
-  // Sicherstellen dass cards.js geladen ist
-  if (typeof CARDS === 'undefined') {
-    alert('cards.js nicht gefunden – bitte auf GitHub hochladen!');
+  if (typeof window.VV_CARDS_DB === 'undefined') {
+    alert('cards.js nicht geladen!');
     return;
   }
-  const data = CARDS[pos];
-  if (!data) return;
+  const posInfo = {
+    outside:  { color: '#ef4444', label_de: 'Außenangreifer', label_en: 'Outside Hitters' },
+    middle:   { color: '#22c55e', label_de: 'Mittelblocker',  label_en: 'Middle Blockers' },
+    setter:   { color: '#67e8f9', label_de: 'Zuspieler',      label_en: 'Setters'         },
+    diagonal: { color: '#3b82f6', label_de: 'Diagonale',      label_en: 'Opposites'       },
+    libero:   { color: '#eab308', label_de: 'Libero',         label_en: 'Liberos'         },
+  };
+  const info  = posInfo[pos];
+  if (!info) return;
+  const cards = window.VV_CARDS_DB.filter(c => c.pos === pos);
+  if (!cards.length) return;
 
-  gal.idx = 0;
-  gal.total = data.files.length;
+  gal.idx   = 0;
+  gal.total = cards.length;
 
-  // Header befüllen
-  dotEl.style.background = data.color;
-  titleEl.textContent = currentLang === 'en' ? data.label_en : data.label_de;
+  dotEl.style.background = info.color;
+  titleEl.textContent = currentLang === 'en' ? info.label_en : info.label_de;
 
-  // Karten bauen
-  track.innerHTML = '';
+  track.innerHTML  = '';
   dotsEl.innerHTML = '';
 
-  data.files.forEach((file, i) => {
+  cards.forEach((card, i) => {
     const wrap = document.createElement('div');
     wrap.className = 'gal-item';
     wrap.onclick = () => goTo(i);
 
     const img = document.createElement('img');
-    img.src = data.folder ? data.folder + '/' + file : file;
-    img.alt = (data.label_de || pos) + ' ' + (i + 1);
+    img.src = card.url;
+    img.alt = card.name;
     img.draggable = false;
     img.onerror = function () {
       this.style.display = 'none';
       const ph = document.createElement('div');
       ph.className = 'gal-placeholder';
-      ph.textContent = 'Karte ' + (i + 1);
+      ph.textContent = card.name;
       wrap.appendChild(ph);
     };
     wrap.appendChild(img);
@@ -901,11 +907,8 @@ function openGallery(pos) {
     dotsEl.appendChild(dot);
   });
 
-  // Overlay öffnen
   overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
-  // requestAnimationFrame damit der Browser das Overlay gerendert hat
-  // bevor wir offsetWidth lesen
   requestAnimationFrame(() => updateGallery());
 }
 
