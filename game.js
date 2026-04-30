@@ -2480,8 +2480,21 @@ async function runMatchClassic(home, away, isTournament) {
   const humanInMatch = (home === me || away === me);
   const totalRolls = () => M.totalRolls + M.crunchExtra;
   while (M.iRoll < totalRolls() && !M.ended) {
-    if (humanInMatch && state.speed !== 'auto') await waitFor('serveOnce');
-    else await sleep(speedMs(1000)); // bot serve delay (shorter than 2s so matches don't drag)
+    if (humanInMatch && state.speed !== 'auto') {
+      // Backup trigger: if the action button is obscured, dice-panel can still start the next rally.
+      const dpBtn = document.getElementById('dice-panel-btn');
+      if (dpBtn) {
+        dpBtn.disabled = false;
+        dpBtn.classList.add('pulse');
+        dpBtn.textContent = '🏐 ' + T('serve');
+      }
+      await waitFor('serveOnce');
+      if (dpBtn) {
+        dpBtn.disabled = true;
+        dpBtn.classList.remove('pulse');
+        dpBtn.textContent = '🎲 Würfeln';
+      }
+    } else await sleep(speedMs(1000)); // bot serve delay (shorter than 2s so matches don't drag)
     const dice = await performDiceRoll(12);
     M.rolls.push(dice);
     const result = await resolveCriterion(dice, M);
