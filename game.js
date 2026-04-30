@@ -498,10 +498,12 @@ function cardPrice(stars) { return [0,5000,10000,20000,35000,55000][stars] || 50
 // Dice roll utilities
 function roll(n) { return 1 + Math.floor(Math.random()*n); }
 
-// Build flat card pool — delegates to cards.js (window.buildAllCards)
+// Build flat card pool — delegates to cards.js (window.VV_CARDS_DB)
 function buildAllCards() {
-  if (typeof window === 'undefined' || typeof window.buildAllCards !== 'function') return [];
-  return window.buildAllCards().map(c => Object.assign({}, c, { price: cardPrice(c.stars) }));
+  const db = (typeof window !== 'undefined' && Array.isArray(window.VV_CARDS_DB))
+    ? window.VV_CARDS_DB : [];
+  if (!db.length) console.error('[VV] VV_CARDS_DB ist leer – cards.js nicht geladen?');
+  return db.map(c => Object.assign({}, c, { price: cardPrice(c.stars) }));
 }
 let ALL_CARDS = [];
 
