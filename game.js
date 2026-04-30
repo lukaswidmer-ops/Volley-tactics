@@ -477,7 +477,6 @@ const fmtMoney = n => (n||0).toLocaleString('de-CH').replace(/,/g,'’');
 const choice = arr => arr[Math.floor(Math.random()*arr.length)];
 const sleep = ms => new Promise(r => setTimeout(r, (state.skipping ? 0 : ms)));
 const range = n => Array.from({length:n}, (_,i)=>i);
-function hash(str) { let h=0; for (let i=0;i<str.length;i++) h=((h<<5)-h)+str.charCodeAt(i); return Math.abs(h); }
 function speedMs(ms) {
   if (state.speed === 'fast') return Math.max(40, ms*0.3);
   if (state.speed === 'auto') return Math.max(15, ms*0.08);
@@ -485,14 +484,6 @@ function speedMs(ms) {
 }
 function uid(){ return Math.random().toString(36).slice(2,10); }
 function escapeHTML(s){ return String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
-function cardStars(file) {
-  const r = hash(file) % 100;
-  if (r < 30) return 1;
-  if (r < 58) return 2;
-  if (r < 82) return 3;
-  if (r < 95) return 4;
-  return 5;
-}
 function cardPrice(stars) { return [0,5000,10000,20000,35000,55000][stars] || 5000; }
 
 // Dice roll utilities
@@ -629,12 +620,10 @@ function skipAll() {
   setTimeout(() => { state.skipping = false; }, 3000);
 }
 
-// Sets #actions content and always recreates #stage inside it,
-// so that subsequent $(`#stage`) lookups work correctly.
 function setActionsHtml(html) {
   const el = $('#actions');
   if (!el) return;
-  el.innerHTML = html + '<div class="stage" id="stage"></div>';
+  el.innerHTML = html;
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -653,209 +642,6 @@ function teamFront(p) { return ['outside','middle','setter'].reduce((s,k) => s +
 function teamBack(p)  { return ((p.team.libero&&!p.team.libero.disabled?p.team.libero.stars:0)) + ((p.team.diagonal&&!p.team.diagonal.disabled?p.team.diagonal.stars:0)) + ((p.team.outside&&!p.team.outside.disabled?p.team.outside.stars:0)/2); }
 function teamBlock(p) { return ['outside','middle'].reduce((s,k) => s + ((p.team[k]&&!p.team[k].disabled?p.team[k].stars:0)),0); }
 
-
-// ────────────────────────────────────────────────────────────────
-//  3D DICE — improved (multi-type, animated, pretty)
-// ────────────────────────────────────────────────────────────────
-const DICE = {
-  three: null,
-  cur: null,
-};
-
-function ensureDiceArea() {
-  let area = $('.dice-area');
-  if (!area) return null;
-  let holder = $('.dice-3d', area);
-  if (!holder) {
-    holder = document.createElement('div'); holder.className='dice-3d';
-    area.insertBefore(holder, area.firstChild);
-  }
-  return holder;
-}
-
-// Build dice mesh of type d3 / d6 / d12.  Faces have a number texture.
-function buildDiceMesh(type) {
-  const THREE_ = window.THREE;
-  if (!THREE_) return null;
-  let mesh, faces;
-  const matBase = { roughness: 0.35, metalness: 0.4, emissive: 0x331400, emissiveIntensity: 0.18 };
-  if (type === 6) {
-    const mats = [];
-    for (let i = 1; i <= 6; i++) mats.push(new THREE_.MeshStandardMaterial({ ...matBase, color: 0xe84317, map: faceTexture(i, '#e84317', '#fff8e6') }));
-    const g = new THREE_.BoxGeometry(1.4, 1.4, 1.4);
-    mesh = new THREE_.Mesh(g, mats);
-    // Box face indexing: 0:+x, 1:-x, 2:+y, 3:-y, 4:+z, 5:-z. We label 1..6 in that order.
-    faces = [
-      { value: 1, dir: [ 1, 0, 0] }, // +x
-      { value: 2, dir: [-1, 0, 0] }, // -x
-      { value: 3, dir: [ 0, 1, 0] }, // +y
-      { value: 4, dir: [ 0,-1, 0] }, // -y
-      { value: 5, dir: [ 0, 0, 1] }, // +z
-      { value: 6, dir: [ 0, 0,-1] }, // -z
-    ];
-    return { mesh, faces };
-  }
-  if (type === 3) {
-    // Tetrahedron — 4 faces. We pretend it's a d3 by mapping only 3 of them; 4th re-rolls.
-    const g = new THREE_.TetrahedronGeometry(1.3, 0);
-    const mat = new THREE_.MeshStandardMaterial({ ...matBase, color: 0xfacc15, flatShading: true });
-    mesh = new THREE_.Mesh(g, mat);
-    // Tet face normals (manually derived)
-    faces = [
-      { value: 1, dir: [ 1, 1, 1] },
-      { value: 2, dir: [-1,-1, 1] },
-      { value: 3, dir: [-1, 1,-1] },
-      { value: 1, dir: [ 1,-1,-1] }, // 4th face also shows 1 (we re-roll on 4)
-    ];
-    // Add edge highlight
-    const edges = new THREE_.LineSegments(new THREE_.EdgesGeometry(g), new THREE_.LineBasicMaterial({ color: 0xfff8e6, transparent: true, opacity: 0.7 }));
-    mesh.add(edges);
-    return { mesh, faces };
-  }
-  // d12 — Dodecahedron with 12 face-colored pentagons.
-  const g = new THREE_.DodecahedronGeometry(1.3, 0);
-  const mat = new THREE_.MeshStandardMaterial({ ...matBase, color: 0xe84317, flatShading: true });
-  mesh = new THREE_.Mesh(g, mat);
-  // Add edges and small "facet number" sprite that we manually orient post-roll
-  const edges = new THREE_.LineSegments(new THREE_.EdgesGeometry(g), new THREE_.LineBasicMaterial({ color: 0xfacc15 }));
-  mesh.add(edges);
-  // Compute face centers / normals
-  const pos = g.getAttribute('position');
-  const seen = new Set(); const centers = [];
-  for (let i = 0; i < pos.count; i += 3) {
-    // each triangle's normal — but pentagons share normal, so dedupe by rounded normal
-    const v0 = [pos.getX(i),  pos.getY(i),  pos.getZ(i)];
-    const v1 = [pos.getX(i+1),pos.getY(i+1),pos.getZ(i+1)];
-    const v2 = [pos.getX(i+2),pos.getY(i+2),pos.getZ(i+2)];
-    const nx = (v0[0]+v1[0]+v2[0])/3, ny = (v0[1]+v1[1]+v2[1])/3, nz = (v0[2]+v1[2]+v2[2])/3;
-    const len = Math.sqrt(nx*nx+ny*ny+nz*nz);
-    const dir = [nx/len, ny/len, nz/len];
-    const key = dir.map(v => v.toFixed(2)).join(',');
-    if (!seen.has(key)) { seen.add(key); centers.push(dir); }
-  }
-  faces = centers.slice(0, 12).map((d, idx) => ({ value: idx+1, dir: d }));
-  return { mesh, faces };
-}
-
-// Tiny canvas-based face texture (a number on a circle)
-function faceTexture(num, fg, bg) {
-  const c = document.createElement('canvas');
-  c.width = 128; c.height = 128;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = fg; ctx.fillRect(0,0,128,128);
-  ctx.fillStyle = bg;
-  ctx.beginPath(); ctx.arc(64, 64, 50, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = fg;
-  ctx.font = 'bold 70px "Barlow Condensed", sans-serif';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(String(num), 64, 70);
-  const tex = new window.THREE.CanvasTexture(c);
-  tex.anisotropy = 4;
-  return tex;
-}
-
-function setupDiceScene(holder, type) {
-  const THREE_ = window.THREE;
-  if (!THREE_) return null;
-  while (holder.firstChild) holder.removeChild(holder.firstChild);
-  const w = holder.clientWidth || 200, h = holder.clientHeight || 200;
-  const scene = new THREE_.Scene();
-  const camera = new THREE_.PerspectiveCamera(40, w/h, 0.1, 100);
-  camera.position.set(0, 0, 5);
-  const renderer = new THREE_.WebGLRenderer({ alpha:true, antialias:true });
-  renderer.setSize(w, h); renderer.setPixelRatio(Math.min(2, devicePixelRatio));
-  holder.appendChild(renderer.domElement);
-  // Lights
-  scene.add(new THREE_.AmbientLight(0xffffff, 0.55));
-  const dl = new THREE_.DirectionalLight(0xffffff, 0.95); dl.position.set(2,3,4); scene.add(dl);
-  const rim = new THREE_.DirectionalLight(0xfacc15, 0.4); rim.position.set(-3,-2,2); scene.add(rim);
-  const built = buildDiceMesh(type);
-  if (!built) return null;
-  scene.add(built.mesh);
-  return { scene, camera, renderer, holder, mesh: built.mesh, faces: built.faces, type };
-}
-
-// Compute a quaternion rotating face direction `dir` to (0,0,1) (pointing camera)
-function rotationToFace(dir) {
-  const THREE_ = window.THREE;
-  const v = new THREE_.Vector3(...dir).normalize();
-  const target = new THREE_.Vector3(0, 0, 1);
-  const q = new THREE_.Quaternion().setFromUnitVectors(v, target);
-  return q;
-}
-
-async function rollDice(type, value) {
-  const THREE_ = window.THREE;
-  const numEl = $('#dice-num');
-  if (numEl) { numEl.textContent = '…'; numEl.style.color = ''; }
-  const holder = ensureDiceArea();
-  if (!holder || !THREE_) {
-    // Fallback — animate the number only
-    const dur = speedMs(700);
-    const start = performance.now();
-    return new Promise(r => {
-      function tick(t) {
-        const k = (t - start)/dur;
-        if (numEl) numEl.textContent = roll(type);
-        if (k < 1) requestAnimationFrame(tick);
-        else { if (numEl) numEl.textContent = value; r(); }
-      }
-      requestAnimationFrame(tick);
-    });
-  }
-  // Build/refresh scene if needed
-  if (!DICE.cur || DICE.cur.holder !== holder || DICE.cur.type !== type) {
-    DICE.cur = setupDiceScene(holder, type);
-  }
-  const D = DICE.cur;
-  if (!D) return;
-  // Find a face with the desired value
-  const targetFace = (type === 3
-    ? D.faces.filter(f => f.value === value)[Math.floor(Math.random()*D.faces.filter(f=>f.value===value).length)]
-    : D.faces.find(f => f.value === value)) || D.faces[0];
-  const targetQ = rotationToFace(targetFace.dir);
-  const startQ = D.mesh.quaternion.clone();
-  // Wild random spin axes
-  const spinAxis1 = new THREE_.Vector3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).normalize();
-  const spinAxis2 = new THREE_.Vector3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).normalize();
-  return new Promise(resolve => {
-    const dur = speedMs(1100);
-    const t0 = performance.now();
-    function frame(t) {
-      const k = Math.min(1, (t - t0)/dur);
-      // Phase A: chaotic spin
-      const eased = 1 - Math.pow(1 - k, 3);    // ease-out cubic
-      // intensity decays
-      const spinIntensity = (1 - k) * 6.5 + 0.4;
-      // Mix two axis rotations smoothly
-      const angle1 = (1 - k) * Math.PI * 4 * spinIntensity;
-      const angle2 = (1 - k) * Math.PI * 3 * spinIntensity;
-      const q1 = new THREE_.Quaternion().setFromAxisAngle(spinAxis1, angle1);
-      const q2 = new THREE_.Quaternion().setFromAxisAngle(spinAxis2, angle2);
-      const spinQ = q1.multiply(q2);
-      // Slerp to target quaternion as k → 1
-      D.mesh.quaternion.slerpQuaternions(spinQ, targetQ, eased);
-      // Bounce position (subtle vertical bob)
-      const bobY = Math.sin(k*Math.PI*4) * (1-k) * 0.18;
-      D.mesh.position.y = bobY;
-      D.renderer.render(D.scene, D.camera);
-      if (k < 1) requestAnimationFrame(frame);
-      else {
-        D.mesh.quaternion.copy(targetQ);
-        D.mesh.position.set(0, 0, 0);
-        D.renderer.render(D.scene, D.camera);
-        if (numEl) {
-          numEl.textContent = value;
-          numEl.style.transform = 'scale(1.4)'; numEl.style.color = '#facc15';
-          setTimeout(() => { numEl.style.transform = 'scale(1)'; }, 180);
-        }
-        beep(680 + value*15, 90);
-        resolve();
-      }
-    }
-    requestAnimationFrame(frame);
-  });
-}
 
 function performDiceRoll(type) {
   const value = roll(type);
@@ -1082,9 +868,7 @@ function initSoloGame() {
     log: [],
     market: [],
     auctionDeck: [],   // shuffled 2-5 star cards for in-game auctions/transfers
-    drafted: 0,        // how many players completed their draft
     coneDay: 1,        // black cone position on the timeline (day 1 → 50)
-    weekResults: [],
     over: false, winner: null,
     leagueMatchesPlayed: 0,
     season: 1,
@@ -1621,29 +1405,34 @@ function renderGame() {
     </div>
     <div class="game">
       <div class="topbar" id="topbar">
-        <div class="topbar-bots">${g.players.filter(p=>!p.isHuman).map((p,i)=>playerCardHtml(p,g.players.indexOf(p),true)).join('')}</div>
+        <div class="topbar-bots">${g.players.filter(p=>!p.isHuman).map((p)=>playerCardHtml(p,g.players.indexOf(p),true)).join('')}</div>
         <div class="topbar-sep"></div>
         ${playerYouHtml(g.players[0], g)}
       </div>
       <div class="phase-bar" id="phase-bar"></div>
       <div class="gmid">
-        <div class="gpanel-board" id="board-panel">
-          <div class="gpanel-board-header">
-            <span>🗺️ ${state.lang==='de'?'Spielbrett':'Game Board'}</span>
-            <span id="board-week-label" style="color:var(--gold)"></span>
+        <div class="gmid-left">
+          <div class="gpanel-board" id="board-panel">
+            <div class="gpanel-board-header">
+              <span>🗺️ ${state.lang==='de'?'Spielbrett':'Game Board'}</span>
+              <span id="board-week-label" style="color:var(--gold)"></span>
+            </div>
+            <div class="gpanel-board-inner" id="board">${boardHtml(g)}</div>
           </div>
-          <div class="gpanel-board-inner" id="board">${boardHtml(g)}</div>
+          <div class="gpanel-team">
+            <div class="gpanel-team-header">
+              <span>🏐 ${state.lang==='de'?'Mein Team':'My Team'}</span>
+              <span class="team-strength" id="team-strength-label">★ ${teamStrength(g.players[0])}</span>
+            </div>
+            <div class="gpanel-team-inner" id="team-panel">${teamPanelHtml(g.players[0])}</div>
+          </div>
         </div>
-        <div class="gpanel-team">
-          <div class="gpanel-team-header">
-            <span>🏐 ${state.lang==='de'?'Mein Team':'My Team'}</span>
-            <span class="team-strength" id="team-strength-label">★ ${teamStrength(g.players[0])}</span>
-          </div>
-          <div class="gpanel-team-inner" id="team-panel">${teamPanelHtml(g.players[0])}</div>
+        <div class="gmid-right" id="stage-panel">
+          <div class="stage" id="stage"></div>
         </div>
       </div>
       <div class="gbot">
-        <div class="actions" id="actions"><div class="stage" id="stage"></div></div>
+        <div class="actions" id="actions"></div>
         <div class="dice-panel" id="dice-panel">
           <div class="dice-panel-label" id="dice-panel-label">🎲 D3</div>
           <div class="dice-panel-result" id="dice-panel-result">—</div>
@@ -1651,6 +1440,7 @@ function renderGame() {
           <button class="skip-btn" onclick="VV.skipAll()" title="Alles überspringen">⏭</button>
         </div>
         <div class="log" id="log"></div>
+        <div class="week-strip" id="week-strip">${weekStripHtml(g)}</div>
       </div>
     </div>`;
   ensureFloatingLog();
@@ -1662,7 +1452,7 @@ function playerCardHtml(p, idx, withBars) {
   const g = state.game;
   const isYou = p.isHuman;
   const isActive = idx === (g && g.activeIdx);
-  return `<div class="player-card ${isActive?'active':''} ${isYou?'you':''}" style="border-left:3px solid ${p.color};">
+  return `<div class="player-card ${isActive?'active':''} ${isYou?'you':''}" data-pidx="${idx}" style="border-left:3px solid ${p.color};">
     <div class="pc-name"><span class="pc-emoji">${p.emoji}</span>${escapeHTML(p.name)}</div>
     <div class="pc-stats">
       <div>${T('money')}</div><b>${fmtMoney(p.money)}</b>
@@ -1677,7 +1467,7 @@ function playerCardHtml(p, idx, withBars) {
 function playerYouHtml(p, g) {
   const isActive = g && g.players[g.activeIdx] === p;
   const str = teamStrength(p);
-  return `<div class="you-card ${isActive?'active':''}" style="border-left:4px solid ${p.color};">
+  return `<div class="you-card ${isActive?'active':''}" data-pidx="0" style="border-left:4px solid ${p.color};">
     <div class="yc-label">${state.lang==='de'?'DU':'YOU'}</div>
     <div class="yc-name">${p.emoji} ${escapeHTML(p.name)}</div>
     <div class="yc-stats">
@@ -1688,6 +1478,41 @@ function playerYouHtml(p, g) {
     </div>
     <div class="yc-vp">${range(8).map(i=>`<span class="${i<p.vp?'fill':''}"></span>`).join('')}</div>
   </div>`;
+}
+
+function weekStripHtml(g) {
+  const w = Math.floor((g.coneDay - 1) / 8) + 1;
+  const dInW = ((g.coneDay - 1) % 8) + 1;
+  const tourney = weekEventByWeek(w);
+  const EV_ICON = { red:'🟥', transfer:'🔁', action:'🎴', vnl:'🚩', injury:'🩹',
+    supercup:'🏆', cup:'🥈', cupfinal:'🥇', cl:'🌍', clfinal:'🌟' };
+  const days = range(8).map(i => {
+    const day = i + 1;
+    let icon;
+    if (day === 4 && tourney)   icon = EV_ICON[tourney.type] || '🏆';
+    else if (day === 8)         icon = '🤝';
+    else                        icon = EV_ICON[DAY_EVENT[day]] || '·';
+    const isCur = day === dInW, isPast = day < dInW;
+    return `<div class="ws-day${isCur?' ws-cur':''}${isPast?' ws-past':''}">
+      <span class="ws-ico">${icon}</span>
+      <span class="ws-num">${day}</span>
+    </div>`;
+  }).join('');
+  const evLabel = dInW === 4 && tourney
+    ? (EV_ICON[tourney.type]||'🏆') + ' ' + tourney.type.toUpperCase()
+    : dInW === 8 ? '🤝 Liga'
+    : EV_ICON[DAY_EVENT[dInW]] + ' ' + (T('cone_event_' + (DAY_EVENT[dInW]||'action')) || '');
+  return `<div class="ws-head">
+      <span class="ws-wlabel">${T('week')} ${w}<span style="color:var(--silver)">/6</span></span>
+      <span class="ws-dlabel">${state.lang==='de'?'Tag':'Day'} ${dInW}</span>
+    </div>
+    <div class="ws-days">${days}</div>
+    <div class="ws-ev">${evLabel}</div>`;
+}
+function refreshWeekStrip() {
+  const el = $('#week-strip');
+  if (!el || !state.game) return;
+  el.innerHTML = weekStripHtml(state.game);
 }
 
 // Board grid coordinates measured on perfektes-spielbrett.png (1254×1254).
@@ -1857,9 +1682,11 @@ function refreshBoard() {
         `<span class="vbi-day">${state.lang==='de'?'Tag':'Day'} ${dInW}/8</span>` +
         (ev ? `<span class="vbi-ev">${T('week_event_'+ev.type)}</span>` : '');
     }
+    refreshWeekStrip();
     return;
   }
   b.innerHTML = boardHtml(state.game);
+  refreshWeekStrip();
 }
 function refreshTeamPanel() {
   const tp = $('#team-panel'); if (!tp || !state.game) return;
@@ -2036,6 +1863,7 @@ async function resolveDay(day, triggerPlayer) {
 // ────────────────────────────────────────────────────────────────
 async function runEventSpace(type, player) {
   const stage = $('#stage');
+  if (!stage) return;
   const map = {
     red:      { h:T('cone_event_red'),      p:T('cone_event_red_p'),      icon:'🟥' },
     transfer: { h:T('cone_event_transfer'), p:T('cone_event_transfer_p'), icon:'🔁' },
@@ -2062,7 +1890,6 @@ async function runEventSpace(type, player) {
   await sleep(speedMs(800));
 }
 
-const POS_ORDER_BY_DICE = ['outside','middle','setter','diagonal','libero']; // pos by 6-die roll: 1=back-right=libero traditionally; we map 1..5 to our 5 starters and 6=back-mid (diagonal if alone)
 function diePositionFor(roll6) {
   // Map 1..6 to a starter position (deterministic abstraction)
   return ['libero','outside','middle','setter','diagonal','outside'][roll6-1];
@@ -2070,6 +1897,7 @@ function diePositionFor(roll6) {
 
 async function applyRedCard(player) {
   const detail = $('#event-detail');
+  if (!detail) return;
   detail.innerHTML = `<div class="dice-area"><div class="dice-num" id="dice-num">—</div></div>`;
   const v = await performDiceRoll(6);
   const pos = diePositionFor(v);
@@ -2405,7 +2233,6 @@ async function runMatchClassic(home, away, isTournament) {
     iRoll: 0, totalRolls: 4,
     ended: false,
   };
-  state.game._classicMatch = M;
   function paint() {
     const stage = $('#stage');
     if (!stage) return;
@@ -2577,7 +2404,7 @@ function randomPlayerName(p) {
 
 async function showMatchSummary(M, winner) {
   const stage = $('#stage');
-  const lang = state.lang;
+  if (!stage) return;
   const summary = `${escapeHTML(M.home.name)} ${M.homePoints}:${M.awayPoints} ${escapeHTML(M.away.name)}`;
   const headLine = winner
     ? `${winner === M.home ? '🏆 ' : ''}${escapeHTML(winner.name)} ${state.lang==='de'?'gewinnt':'wins'}`
@@ -2986,10 +2813,9 @@ function render() {
 //  ANIMATED MONEY / VP / COUNTERS
 // ────────────────────────────────────────────────────────────────
 function animateMoneyChange(player, delta) {
-  // Add a small floating "+X" or "-X" near the topbar player card
   const topbar = $('#topbar'); if (!topbar) return;
   const idx = state.game.players.indexOf(player);
-  const card = topbar.children[idx];
+  const card = topbar.querySelector(`[data-pidx="${idx}"]`);
   if (!card) return;
   const fl = document.createElement('div');
   fl.className = 'money-float ' + (delta >= 0 ? 'pos' : 'neg');
@@ -3000,7 +2826,7 @@ function animateMoneyChange(player, delta) {
 function animateVpChange(player, delta) {
   const topbar = $('#topbar'); if (!topbar) return;
   const idx = state.game.players.indexOf(player);
-  const card = topbar.children[idx];
+  const card = topbar.querySelector(`[data-pidx="${idx}"]`);
   if (!card) return;
   const fl = document.createElement('div');
   fl.className = 'vp-float';
@@ -3035,48 +2861,7 @@ function ensureFloatingPanel() {
   return fp;
 }
 function refreshFloatingPanel() {
-  // Floating panel is disabled — team management is in the permanent gpanel-team
   const fp = $('#floating-panel'); if (fp) fp.style.display = 'none';
-  return;
-  const fp2 = ensureFloatingPanel();
-  fp2.style.display = '';
-  const me = state.game.players[0];
-  const expanded = fp.classList.contains('expanded');
-  const sellMode = !!state.sellMode;
-  fp.innerHTML = `
-    <div class="fp-head">
-      <div class="fp-title">${state.lang==='de'?'Mein Team':'My Team'} · <span style="color:var(--gold)">★ ${teamStrength(me)}</span></div>
-      <div class="fp-controls">
-        <button class="fp-sell-btn ${sellMode?'on':''}" data-tip="${state.lang==='de'?'Verkaufs-Modus':'Sell mode'}" onclick="event.stopPropagation(); VV.toggleSellMode()">🔴</button>
-      </div>
-    </div>
-    <div class="fp-court">
-      ${POSITIONS.map(pos => {
-        const c = me.team[pos];
-        const dis = c && c.disabled ? 'disabled' : '';
-        const sub = c && c._isSub ? 'is-sub' : '';
-        const subTip = c && c._isSub ? ` · ${T('sub_tooltip')}` : '';
-        const tip = c ? `${escapeHTML(c.name)} · ${c.stars}★${c.disabled?' · '+(c.disabledReason||'-'):''}${subTip}` : posLabel(pos);
-        return `<div class="fp-card pos-${pos} ${dis} ${sub} ${sellMode?'sellable':''}" style="border-color:${posColor(pos)};" data-pos="${pos}" data-tip="${tip}" onclick="event.stopPropagation(); VV.handleFloatingClick('${pos}')">
-          ${c ? `<img src="${c.url}" alt="" loading="lazy"><div class="fp-stars">${'★'.repeat(c.stars)}</div>` : `<div class="fp-empty">?</div>`}
-          <span class="fp-pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
-          ${c && c.disabled?'<div class="fp-dis-overlay">⛔</div>':''}
-          ${c && c._isSub?`<div class="fp-sub-badge">${T('sub_label')}</div>`:''}
-        </div>`;
-      }).join('')}
-    </div>
-    ${expanded ? `<div class="fp-bench">
-      <div class="fp-bench-h">${state.lang==='de'?'Bench / Ersatz':'Bench / Substitutes'} (${me.bench.length})</div>
-      <div class="fp-bench-grid">
-        ${me.bench.map(c => `
-          <div class="fp-card bench ${sellMode?'sellable':''}" data-id="${c.id}" onclick="event.stopPropagation(); VV.handleFloatingBenchClick('${c.id}')">
-            <img src="${c.url}" alt="" loading="lazy">
-            <div class="fp-stars">${'★'.repeat(c.stars)}</div>
-            <span class="fp-pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
-          </div>`).join('') || `<span style="font-size:0.7rem; color:var(--silver);">—</span>`}
-      </div>
-    </div>` : ''}
-    <div class="fp-foot">${state.lang==='de'?'Klick zum Erweitern':'Click to expand'}</div>`;
 }
 function toggleFloatingPanel() {
   const fp = ensureFloatingPanel();
