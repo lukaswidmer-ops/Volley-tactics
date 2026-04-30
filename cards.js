@@ -162,7 +162,16 @@
 
   ];
 
-  // Build the full card array — URL is assembled directly from the filename.
+  // Folder mapping: pos → actual directory name on disk
+  const POS_FOLDER = {
+    outside:  'Outsides',
+    middle:   'Middels',
+    diagonal: 'Diagonal',
+    libero:   'Liberos',
+    setter:   'Passeur',
+  };
+
+  // Build the full card array — URL uses the correct per-position folder.
   function buildAllCards() {
     const out = [];
     let id = 1;
@@ -173,7 +182,7 @@
         name:   name,
         pos:    pos,
         stars:  stars,
-        url:    'cards/' + file,
+        url:    (POS_FOLDER[pos] || 'cards') + '/' + file,
         nation: nation
       });
     }
