@@ -1923,7 +1923,7 @@ async function runConeRoll(player) {
     if (dpBtn) { dpBtn.disabled = true; dpBtn.classList.remove('pulse'); }
   } else {
     if (dpBtn) dpBtn.disabled = true;
-    await sleep(speedMs(2000)); // bot thinking pause before roll
+    await sleep(speedMs(3000)); // bot thinking pause before roll
   }
   const v = await performDiceRoll(3);
   const advance = v >= 3 ? 2 : 1;     // rule: 1=+1, 2=+1, 3=+2
@@ -1935,20 +1935,24 @@ async function runConeRoll(player) {
   for (let d = start + 1; d <= end; d++) {
     g.coneDay = d;
     refreshBoard();
-    await sleep(speedMs(220));
+    await sleep(speedMs(350));
     await resolveDay(g.coneDay, player);
     if (g.over) return;
     if (dayInWeekOf(d) === 8) break; // league match day = end of week, stop here
   }
   if (!g.over) {
+    // If the cone landed on/passed the league match day (8), auto-continue after a
+    // short pause — the match summary already served as the "end of turn" confirmation.
+    const lastDayWasLeague = dayInWeekOf(g.coneDay) === 8;
     setActionsHtml(`<h3>${T('phase_event')}</h3>
       ${speedToggleHtml()}
       <button class="action-btn pulse" onclick="VV.coneContinue()">${T('cone_continue')}</button>`);
-    // Also enable the dice-panel button as a second "Continue" trigger
     const dpBtn2 = document.getElementById('dice-panel-btn');
     if (dpBtn2) { dpBtn2.disabled = false; dpBtn2.classList.add('pulse'); dpBtn2.textContent = '▶ ' + T('cone_continue'); }
-    if (state.speed === 'auto' || !player.isHuman) setTimeout(()=>fire('coneContinue'), speedMs(2000));
-    await waitFor('coneContinue', !player.isHuman ? speedMs(3000) : 0);
+    if (state.speed === 'auto' || !player.isHuman || lastDayWasLeague) {
+      setTimeout(()=>fire('coneContinue'), lastDayWasLeague ? speedMs(2000) : speedMs(3000));
+    }
+    await waitFor('coneContinue', !player.isHuman ? speedMs(4000) : 0);
     if (dpBtn2) { dpBtn2.disabled = true; dpBtn2.classList.remove('pulse'); dpBtn2.textContent = '🎲 Würfeln'; }
   }
 }
@@ -2037,7 +2041,7 @@ async function runEventSpace(type, player) {
   if (type === 'action')   await applyActionCard(player);
   if (type === 'vnl')      await applyVnlEvent(player);
   if (type === 'injury')   await applyInjury(player);
-  await sleep(speedMs(800));
+  await sleep(speedMs(1500));
 }
 
 function diePositionFor(roll6) {
@@ -2465,7 +2469,9 @@ async function runMatchClassic(home, away, isTournament) {
     $('#rally-feed').scrollTop = $('#rally-feed').scrollHeight;
   }
   function setActionUI() {
-    setActionsHtml(`<h3>${T('phase_match')}</h3>
+    const total = M.totalRolls + M.crunchExtra;
+    const rollLabel = `${Math.min(M.iRoll + 1, total)}/${total}`;
+    setActionsHtml(`<h3>${T('phase_match')} · ${rollLabel}</h3>
       ${speedToggleHtml()}
       <button id="serve-btn" class="action-btn pulse" data-tip="${T('serve_t')}" onclick="VV.serveOnce()">🏐 ${T('serve')}</button>`);
   }
@@ -3062,7 +3068,7 @@ async function runSeasonEnd() {
   // Award season standings
   const ranked = g.players.slice().sort((a,b) => (b.leaguePoints||0) - (a.leaguePoints||0));
   const vpAward = [3, 2, 1, 0];
-  const moneyAward = [0, 20000, 30000, 50000];
+  const moneyAward = [50000, 30000, 20000, 0];
   for (let i = 0; i < ranked.length; i++) {
     const p = ranked[i];
     const _delta_vp = vpAward[i] || 0; p.vp += _delta_vp; if (_delta_vp) animateVpChange(p, _delta_vp);
@@ -3094,8 +3100,11 @@ function endGame() {
 function renderEnd() {
   const app = $('#app');
   const g = state.game;
+  if (!g) { app.innerHTML = `<div class="end-wrap"><h2>Spiel beendet</h2><button class="btn btn-primary" onclick="VV.toMenu()">Menü</button></div>`; return; }
   const ranked = g.players.slice().sort((a,b) => b.vp - a.vp);
+  if (!g.winner) g.winner = ranked[0];
   const winner = g.winner;
+  if (!winner) { app.innerHTML = `<div class="end-wrap"><h2>Spiel beendet</h2><button class="btn btn-primary" onclick="VV.toMenu()">Menü</button></div>`; return; }
   const remark = winner.vp >= 8 ? T('end_remarks_8vp') : T('end_remarks_season');
   app.innerHTML = `
     <div class="end-wrap">
