@@ -1965,9 +1965,7 @@ async function runSeason() {
 async function runConeRoll(player) {
   const g = state.game;
   setActiveBanner(player);
-  setActionsHtml(`<h3>${T('phase_event')}</h3>
-    ${speedToggleHtml()}
-    <button id="cone-roll-btn" class="action-btn pulse" data-tip="${T('cone_roll')}" onclick="VV.coneRollNow()">🎲 ${T('cone_roll')}</button>`);
+  setActionsHtml(`<h3>${T('phase_event')}</h3>${speedToggleHtml()}`);
   const stage = $('#stage');
   stage.innerHTML = `
     <div class="stage-h">${T('week')} ${g.week} · Tag ${dayInWeekOf(g.coneDay)}</div>
@@ -2017,9 +2015,7 @@ async function runConeRoll(player) {
     // short pause — the match summary already served as the "end of turn" confirmation.
     const lastDayWasLeague = dayInWeekOf(g.coneDay) === 8;
     _expectedAdvance = 'coneContinue';
-    setActionsHtml(`<h3>${T('phase_event')}</h3>
-      ${speedToggleHtml()}
-      <button class="action-btn pulse" onclick="VV.coneContinue()">${T('cone_continue')}</button>`);
+    setActionsHtml(`<h3>${T('phase_event')}</h3>${speedToggleHtml()}`);
     const dpBtn2 = document.getElementById('dice-panel-btn');
     if (dpBtn2) { dpBtn2.disabled = false; dpBtn2.classList.add('pulse'); dpBtn2.textContent = '▶ ' + T('cone_continue'); }
     if (state.speed === 'auto' || lastDayWasLeague) {
@@ -2558,9 +2554,7 @@ async function runMatchClassic(home, away, isTournament) {
   function setActionUI() {
     const total = M.totalRolls + M.crunchExtra;
     const rollLabel = `${Math.min(M.iRoll + 1, total)}/${total}`;
-    setActionsHtml(`<h3>${T('phase_match')} · ${rollLabel}</h3>
-      ${speedToggleHtml()}
-      <button id="serve-btn" class="action-btn pulse" data-tip="${T('serve_t')}" onclick="VV.serveOnce()">🏐 ${T('serve')}</button>`);
+    setActionsHtml(`<h3>${T('phase_match')} · ${rollLabel}</h3>${speedToggleHtml()}`);
   }
   setActionUI(); paint();
 
@@ -2763,9 +2757,7 @@ async function showMatchSummary(M, winner) {
   const autoMs = (!humanInMatch || state.speed === 'auto') ? speedMs(2000) : 0;
   _expectedAdvance = 'continueAfterMatch';
   // Button always in actions panel — never buried in the stage scroll area
-  setActionsHtml(`<h3>${T('phase_match')}</h3>
-    ${speedToggleHtml()}
-    <button class="action-btn pulse" onclick="VV.continueAfterMatch()">${T('next_match')}</button>`);
+  setActionsHtml(`<h3>${T('phase_match')}</h3>${speedToggleHtml()}`);
   // Dice-panel button acts as backup "Continue" trigger during match summary
   const matchDpBtn = document.getElementById('dice-panel-btn');
   if (humanInMatch && state.speed !== 'auto' && matchDpBtn) {
