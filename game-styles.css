@@ -346,10 +346,56 @@ button { font-family:inherit; cursor:pointer; }
   color: var(--red);
   background: rgba(232,67,23,0.12);
 }
+.vb-formation-wrap {
+  display: flex;
+  flex-direction: row;
+  gap: 0.6rem;
+  align-items: flex-start;
+}
 .vb-formation {
   display: flex;
   flex-direction: column;
   gap: 0;
+  flex: 1;
+  min-width: 0;
+}
+.vb-mb2-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.4rem 0.35rem;
+  background: rgba(22, 101, 52, 0.12);
+  border: 1px solid rgba(22, 101, 52, 0.35);
+  border-radius: 6px;
+  min-width: 68px;
+  flex-shrink: 0;
+}
+.vb-mb2-label {
+  font-size: 0.55rem;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.45);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+}
+.vb-mb2-icon {
+  font-size: 0.75rem;
+  opacity: 0.5;
+}
+.vb-mb2-hint {
+  font-size: 0.5rem;
+  color: rgba(255,255,255,0.25);
+  text-align: center;
+  line-height: 1.2;
+  margin-top: 0.15rem;
+}
+.vb-mb2-panel .vb-team-slot {
+  width: 58px;
+  max-width: 58px;
 }
 .vb-net-line {
   height: 2px;

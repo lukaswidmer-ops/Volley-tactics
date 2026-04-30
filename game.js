@@ -63,9 +63,9 @@ const i18n = {
     starting_roll: 'Würfeln',
     starting_winner: '%s beginnt!',
 
-    pos_outside: 'Aussenangreifer', pos_middle: 'Mittelblocker', pos_setter: 'Setter',
+    pos_outside: 'Aussenangreifer', pos_outside2: 'Aussenangreifer 2', pos_middle: 'Mittelblocker', pos_middle2: 'Mittelblocker 2', pos_setter: 'Setter',
     pos_diagonal: 'Diagonal', pos_libero: 'Libero',
-    pos_short_outside: 'OH', pos_short_middle: 'MB', pos_short_setter: 'S',
+    pos_short_outside: 'OH', pos_short_outside2: 'OH2', pos_short_middle: 'MB', pos_short_middle2: 'MB2', pos_short_setter: 'S',
     pos_short_diagonal: 'OPP', pos_short_libero: 'L',
 
     week: 'Woche', of: 'von',
@@ -228,9 +228,9 @@ const i18n = {
     starting_roll: 'Roll',
     starting_winner: '%s starts!',
 
-    pos_outside: 'Outside', pos_middle: 'Middle', pos_setter: 'Setter',
+    pos_outside: 'Outside', pos_outside2: 'Outside 2', pos_middle: 'Middle', pos_middle2: 'Middle 2', pos_setter: 'Setter',
     pos_diagonal: 'Diagonal', pos_libero: 'Libero',
-    pos_short_outside: 'OH', pos_short_middle: 'MB', pos_short_setter: 'S',
+    pos_short_outside: 'OH', pos_short_outside2: 'OH2', pos_short_middle: 'MB', pos_short_middle2: 'MB2', pos_short_setter: 'S',
     pos_short_diagonal: 'OPP', pos_short_libero: 'L',
 
     week: 'Week', of: 'of',
@@ -661,8 +661,8 @@ function setActionsHtml(html) {
 // ────────────────────────────────────────────────────────────────
 //  Position helpers
 // ────────────────────────────────────────────────────────────────
-const POSITIONS = ['outside','middle','setter','diagonal','libero'];
-const POS_COLORS = { outside:'#e84317', middle:'#16a34a', setter:'#0ea5e9', diagonal:'#4f46e5', libero:'#ca8a04' };
+const POSITIONS = ['outside','outside2','middle','middle2','setter','diagonal','libero'];
+const POS_COLORS = { outside:'#e84317', outside2:'#c2410c', middle:'#16a34a', middle2:'#166534', setter:'#0ea5e9', diagonal:'#4f46e5', libero:'#ca8a04' };
 function posShort(p) { return T('pos_short_'+p); }
 function posLabel(p) { return T('pos_'+p); }
 function posColor(p) { return POS_COLORS[p]; }
@@ -671,8 +671,13 @@ function teamStrength(p) {
   return POSITIONS.reduce((s,k) => s + ((p.team[k] && !p.team[k].disabled ? p.team[k].stars : 0)), 0);
 }
 function teamFront(p) { return ['outside','middle','setter'].reduce((s,k) => s + ((p.team[k]&&!p.team[k].disabled?p.team[k].stars:0)),0); }
-function teamBack(p)  { return ((p.team.libero&&!p.team.libero.disabled?p.team.libero.stars:0)) + ((p.team.diagonal&&!p.team.diagonal.disabled?p.team.diagonal.stars:0)) + ((p.team.outside&&!p.team.outside.disabled?p.team.outside.stars:0)/2); }
-function teamBlock(p) { return ['outside','middle'].reduce((s,k) => s + ((p.team[k]&&!p.team[k].disabled?p.team[k].stars:0)),0); }
+function teamBack(p)  {
+  return ((p.team.libero&&!p.team.libero.disabled?p.team.libero.stars:0))
+       + ((p.team.diagonal&&!p.team.diagonal.disabled?p.team.diagonal.stars:0))
+       + ((p.team.outside&&!p.team.outside.disabled?p.team.outside.stars:0)/2)
+       + ((p.team.outside2&&!p.team.outside2.disabled?p.team.outside2.stars:0)/2);
+}
+function teamBlock(p) { return ['outside','outside2','middle','middle2'].reduce((s,k) => s + ((p.team[k]&&!p.team[k].disabled?p.team[k].stars:0)),0); }
 
 
 function performDiceRoll(type) {
@@ -875,7 +880,7 @@ function makePlayer(name, color, emoji, isHuman, personality, biasPos) {
   return {
     id: uid(), name, color, emoji, isHuman: !!isHuman, personality: personality || 'balanced', biasPos: biasPos || 'outside',
     money: 80000, vp: 0,
-    team: { outside:null, middle:null, setter:null, diagonal:null, libero:null },
+    team: { outside:null, outside2:null, middle:null, middle2:null, setter:null, diagonal:null, libero:null },
     bench: [],
     suspended: [], // [{ card, pos, reason }] — players sidelined by Red Card / Injury / VNL until next league match
     matchesWon: 0, totalEarned: 0,
@@ -1073,13 +1078,24 @@ function deckPoolForStars(stars) {
   return card;
 }
 
+// Maps primary positions to their secondary slot (two-OH / two-MB rule)
+const POS_SECONDARY = { outside: 'outside2', middle: 'middle2' };
+
 function placeIntoTeamOrBench(p, card) {
-  if (!p.team[card.pos]) {
-    p.team[card.pos] = card;
-  } else if (p.team[card.pos].stars < card.stars) {
-    // upgrade — old goes to bench
-    p.bench.push(p.team[card.pos]);
-    p.team[card.pos] = card;
+  const primary = card.pos;
+  const secondary = POS_SECONDARY[primary];
+
+  if (!p.team[primary]) {
+    p.team[primary] = card;
+  } else if (secondary && !p.team[secondary]) {
+    // Primary slot taken → fill secondary slot (same position type)
+    p.team[secondary] = card;
+  } else if (p.team[primary].stars < card.stars) {
+    p.bench.push(p.team[primary]);
+    p.team[primary] = card;
+  } else if (secondary && p.team[secondary] && p.team[secondary].stars < card.stars) {
+    p.bench.push(p.team[secondary]);
+    p.team[secondary] = card;
   } else {
     p.bench.push(card);
   }
@@ -1102,7 +1118,7 @@ function draftRedraw() {
   const all = [...Object.values(me.team).filter(Boolean), ...me.bench];
   for (const c of all) state.game._draftDeck.push(c);
   state.game._draftDeck.sort(()=>Math.random()-0.5);
-  me.team = { outside:null, middle:null, setter:null, diagonal:null, libero:null };
+  me.team = { outside:null, outside2:null, middle:null, middle2:null, setter:null, diagonal:null, libero:null };
   me.bench = [];
   renderDraft();
 }
@@ -1111,11 +1127,17 @@ function draftPick1(pos) {
   const me = state.game.players[0];
   const counts = countByStars([...me.bench, ...Object.values(me.team).filter(Boolean)]);
   if (counts[1] >= 3) { toast('Already 3× 1★', 'bad'); return; }
-  // Pick a 1-star card of the given position from the pool
-  const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === pos);
+  // outside2/middle2 share the same card pool as outside/middle
+  const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
+  const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === poolPos);
   if (!opts.length) { toast(T('no_card_for_pos')||'No card', 'bad'); return; }
   const c = choice(opts);
-  placeIntoTeamOrBench(me, c);
+  // Force placement into the correct target slot
+  if (!me.team[pos]) {
+    me.team[pos] = c;
+  } else {
+    placeIntoTeamOrBench(me, c);
+  }
   beep(640, 60);
   renderDraft();
 }
@@ -1148,8 +1170,12 @@ function autoDraftBot(bot) {
   for (let i = 0; i < 3; i++) {
     const empties = POSITIONS.filter(p => !bot.team[p]);
     let pos = empties.length ? choice(empties) : (bot.biasPos || choice(POSITIONS));
-    const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === pos);
-    if (opts.length) placeIntoTeamOrBench(bot, choice(opts));
+    const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
+    const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === poolPos);
+    if (opts.length) {
+      const c = choice(opts);
+      if (!bot.team[pos]) bot.team[pos] = c; else placeIntoTeamOrBench(bot, c);
+    }
   }
   ensureFiveStarter(bot);
 }
@@ -1158,16 +1184,18 @@ function ensureFiveStarter(p) {
   // Move bench cards into empty starter slots for any unfilled position
   for (const pos of POSITIONS) {
     if (!p.team[pos]) {
-      const idx = p.bench.findIndex(c => c.pos === pos);
+      const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
+      const idx = p.bench.findIndex(c => c.pos === poolPos);
       if (idx >= 0) {
         p.team[pos] = p.bench.splice(idx, 1)[0];
       }
     }
   }
-  // If still empty (rare), pick any 1-star card from the pool
+  // If still empty, pick any 1-star card from the pool
   for (const pos of POSITIONS) {
     if (!p.team[pos]) {
-      const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === pos);
+      const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
+      const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === poolPos);
       if (opts.length) p.team[pos] = choice(opts);
     }
   }
@@ -1630,38 +1658,50 @@ function teamPanelHtml(p) {
     </div>`;
   }
 
+  const lang = state.lang === 'de';
   return `
     <div class="vb-sell-bar">
-      <span style="font-size:0.7rem;color:var(--silver)">${state.lang==='de'?'Klicke Karte zum Verkaufen':'Click card to sell'}</span>
+      <span style="font-size:0.7rem;color:var(--silver)">${lang?'Klicke Karte zum Verkaufen':'Click card to sell'}</span>
       <button class="vb-sell-toggle ${sellMode?'on':''}" onclick="VV.toggleSellMode()">
-        🔴 ${sellMode?(state.lang==='de'?'Verkauf AN':'Sell ON'):(state.lang==='de'?'Verkaufen':'Sell')}
+        🔴 ${sellMode?(lang?'Verkauf AN':'Sell ON'):(lang?'Verkaufen':'Sell')}
       </button>
     </div>
-    <div class="vb-formation">
-      <div class="vb-net-line"></div>
-      <div class="vb-pos-labels">
-        <span>4</span><span>3</span><span>2</span>
+    <div class="vb-formation-wrap">
+      <div class="vb-formation">
+        <div class="vb-net-line"></div>
+        <div class="vb-pos-labels">
+          <span>4</span><span>3</span><span>2</span>
+        </div>
+        <div class="vb-row-label">${lang?'Vorne (netznahe)':'Front (near net)'}</div>
+        <div class="vb-row vb-row-3">
+          ${teamSlotHtml(s.middle,   'middle')}
+          ${teamSlotHtml(s.outside,  'outside')}
+          ${teamSlotHtml(s.setter,   'setter')}
+        </div>
+        <div class="vb-pos-labels" style="margin-top:0.5rem">
+          <span>5</span><span>6</span><span>1</span>
+        </div>
+        <div class="vb-row-label">${lang?'Hinten':'Back'}</div>
+        <div class="vb-row vb-row-3">
+          ${teamSlotHtml(s.diagonal, 'diagonal')}
+          ${teamSlotHtml(s.outside2, 'outside2')}
+          ${teamSlotHtml(s.libero,   'libero')}
+        </div>
       </div>
-      <div class="vb-row-label">${state.lang==='de'?'Vorne (netznahe)':'Front (near net)'}</div>
-      <div class="vb-row vb-row-3">
-        ${teamSlotHtml(s.middle,   'middle')}
-        ${teamSlotHtml(s.outside,  'outside')}
-        ${teamSlotHtml(s.setter,   'setter')}
-      </div>
-      <div class="vb-pos-labels" style="margin-top:0.5rem">
-        <span>5</span><span>6</span><span>1</span>
-      </div>
-      <div class="vb-row-label">${state.lang==='de'?'Hinten':'Back'}</div>
-      <div class="vb-row vb-row-3">
-        ${teamSlotHtml(s.diagonal, 'diagonal')}
-        ${teamSlotHtml(s.outside,  'outside')}
-        ${teamSlotHtml(s.libero,   'libero')}
+      <div class="vb-mb2-panel">
+        <div class="vb-mb2-label">
+          <span style="background:${POS_COLORS.middle2}" class="pos-tag">MB2</span>
+          ${lang?'Ersatzmitte':'Bench Middle'}
+        </div>
+        <div class="vb-mb2-icon">🔄</div>
+        ${teamSlotHtml(s.middle2, 'middle2')}
+        <div class="vb-mb2-hint">${lang?'Im Hinten-Bereich durch Libero ersetzt':'Subbed by Libero in back row'}</div>
       </div>
     </div>
     <div class="vb-bench">
-      <div class="vb-bench-label">⬇ ${state.lang==='de'?'Ersatz':'Bench'} (${bench.length})</div>
+      <div class="vb-bench-label">⬇ ${lang?'Ersatz':'Bench'} (${bench.length})</div>
       <div class="vb-bench-row">
-        ${bench.map(c => benchSlotHtml(c)).join('') || `<span style="font-size:0.7rem;color:rgba(255,255,255,0.3)">${state.lang==='de'?'Keine Ersatzspieler':'No bench players'}</span>`}
+        ${bench.map(c => benchSlotHtml(c)).join('') || `<span style="font-size:0.7rem;color:rgba(255,255,255,0.3)">${lang?'Keine Ersatzspieler':'No bench players'}</span>`}
       </div>
     </div>`;
 }
@@ -2459,41 +2499,53 @@ async function showMatchSummary(M, winner) {
 
 // Mini court diagram (6 positions in a 3×2 grid representing front + back rows)
 function courtMiniHtml(player, rotation) {
-  // Slots in serving rotation order:
-  // [0]=back-right (server), [1]=back-middle, [2]=back-left, [3]=front-left, [4]=front-middle, [5]=front-right
-  // Map our 5 positions to 6 court slots loosely:
-  // Front: [outside (left), middle (center), setter (right)]
-  // Back:  [diagonal (left), libero (middle), outside (right)] (outside plays both rows; diagonal is server)
-  const basePositions = ['diagonal', 'libero', 'outside', 'outside', 'middle', 'setter'];
-  const baseLabels = basePositions.map(posShort);
-  const baseColors = basePositions.map(posColor);
-  const r = ((rotation || 0) % 6 + 6) % 6;
-  const order = range(6).map(i => (i + r) % 6);
+  // Court slot numbering (matches volleyball positions 1–6):
+  //   slot 0 = pos1 (back-right, server)
+  //   slot 1 = pos6 (back-middle)
+  //   slot 2 = pos5 (back-left)
+  //   slot 3 = pos4 (front-left)
+  //   slot 4 = pos3 (front-middle)
+  //   slot 5 = pos2 (front-right)
+  //
+  // Base formation (rotation 0) — 5-1 with two OHs and two MBs:
+  //   Front: [MB1=pos4] [OH1=pos3] [S=pos2]
+  //   Back:  [OPP=pos5] [OH2=pos6] [MB2=pos1 → Libero-Tausch]
+  // Both OHs rotate fully through all 6 positions.
+  // Both MBs are replaced by Libero whenever they are in the back row.
+  const basePositions = ['middle2', 'outside2', 'diagonal', 'middle', 'outside', 'setter'];
 
-  // Auto Libero-Swap: When the Middle Blocker rotates into the back row
-  // (slots 0–2), the Libero subs in for them. We display the libero
-  // label/color in that slot and add `is-libero-sub` for a brief
-  // highlight animation so the swap is visible.
-  let liberoSwapSlot = -1;
-  for (let k = 0; k < 3; k++) {
-    if (basePositions[order[k]] === 'middle') { liberoSwapSlot = k; break; }
+  const r = ((rotation || 0) % 6 + 6) % 6;
+
+  // Clockwise rotation: slot i gets the player that started at slot (i - r + 6k) % 6
+  function getPos(slotIdx) {
+    return basePositions[((slotIdx - r) % 6 + 6) % 6];
   }
 
-  // Tooltip text for the swapped cell
-  const swapTip = (state.lang === 'de'
+  // Collect all back-row slots where a middle (MB1 or MB2) ends up → Libero subs in
+  const liberoSwapSlots = new Set();
+  for (const s of [0, 1, 2]) {
+    const p = getPos(s);
+    if (p === 'middle' || p === 'middle2') liberoSwapSlots.add(s);
+  }
+
+  const swapTip = state.lang === 'de'
     ? 'Libero ersetzt MB in der Hinterreihe'
-    : 'Libero subs in for MB in the back row');
+    : 'Libero subs in for MB in back row';
 
   function cell(slotIdx, kInRow, isBackRow) {
-    const idx = order[slotIdx];
-    const isSwap = isBackRow && (slotIdx === liberoSwapSlot);
-    const label = isSwap ? posShort('libero') : baseLabels[idx];
-    const color = isSwap ? posColor('libero') : baseColors[idx];
+    let pos = getPos(slotIdx);
+    // outside2 in front row → display as OH (same role, distinguish only by color)
+    if (!isBackRow && pos === 'outside2') pos = 'outside';
+    // MB in back row → Libero swap
+    const isSwap = isBackRow && liberoSwapSlots.has(slotIdx);
+    if (isSwap) pos = 'libero';
+
+    const label = posShort(pos);
+    const color = posColor(pos);
     const cls   = isSwap ? 'is-libero-sub' : '';
-    const tipBase = isSwap ? `${label} · ${swapTip}` : label;
-    const ext = (isBackRow && kInRow === 2) ? ' 🏐' : (!isBackRow && kInRow === 2) ? ' ⛳' : '';
-    const labelOut = label + (isBackRow && kInRow === 2 ? ' 🏐' : '');
-    return `<span class="court-cell ${cls}" style="background:${color}" data-tip="${tipBase}${ext}">${labelOut}</span>`;
+    const tip   = isSwap ? `${label} · ${swapTip}` : label;
+    const srv   = isBackRow && kInRow === 2 ? ' 🏐' : '';
+    return `<span class="court-cell ${cls}" style="background:${color}" data-tip="${tip}${srv}">${label}${srv}</span>`;
   }
 
   return `<div class="court-mini">
@@ -2501,7 +2553,7 @@ function courtMiniHtml(player, rotation) {
       ${[3,4,5].map((slot, k) => cell(slot, k, false)).join('')}
     </div>
     <div class="court-row bot">
-      ${[0,1,2].map((slot, k) => cell(slot, k, true)).join('')}
+      ${[2,1,0].map((slot, k) => cell(slot, k, true)).join('')}
     </div>
   </div>`;
 }
@@ -2606,7 +2658,8 @@ function renderMarket() {
 
 function oneStarMarketHtml(me, weakPos) {
   return POSITIONS.map(pos => {
-    const c = (ALL_CARDS.filter(x => x.stars === 1 && x.pos === pos)[0]) || null;
+    const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
+    const c = (ALL_CARDS.filter(x => x.stars === 1 && x.pos === poolPos)[0]) || null;
     if (!c) return '';
     const canAfford = me.money >= 10000;
     const suggested = pos === weakPos;
@@ -2637,7 +2690,8 @@ function benchCardHtml(c, me) {
 function buyOneStar(pos) {
   const me = state.game.players[0];
   if (me.money < 10000) { toast(state.lang==='de'?'Zu teuer':'Too expensive', 'bad'); return; }
-  const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === pos);
+  const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
+  const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === poolPos);
   if (!opts.length) return;
   const c = choice(opts);
   const cur = me.team[pos];
@@ -2675,7 +2729,9 @@ function sellStarter(pos) {
   const price = Math.floor(c.stars * 10000 / 2);
   if (!confirm(state.lang==='de'?`${c.name} für ${fmtMoney(price)}’ verkaufen?`:`Sell ${c.name} for ${fmtMoney(price)}?`)) return;
   // Replace from bench if available, else clear
-  const replIdx = me.bench.findIndex(b => b.pos === pos);
+  // outside2/middle2 slots accept cards of the primary position type
+  const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
+  const replIdx = me.bench.findIndex(b => b.pos === poolPos || b.pos === pos);
   if (replIdx >= 0) me.team[pos] = me.bench.splice(replIdx, 1)[0];
   else me.team[pos] = null;
   me.money += price;
