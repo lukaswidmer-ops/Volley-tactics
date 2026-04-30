@@ -2482,6 +2482,8 @@ async function runMatchClassic(home, away, isTournament) {
     M.events.push(result);
     if (result.winner === 'home') M.homePoints++;
     else if (result.winner === 'away') M.awayPoints++;
+    // Show the criterion in the topbar log area for 3 seconds
+    showMatchCriterionInTopbar(result, M);
     // rotation: winning team rotates
     if (result.winner === 'home') M.rotationHome = (M.rotationHome + 1) % 6;
     else if (result.winner === 'away') M.rotationAway = (M.rotationAway + 1) % 6;
@@ -2597,6 +2599,42 @@ function randomPlayerName(p) {
   const cards = POSITIONS.map(k => p.team[k]).filter(Boolean);
   const top = cards.sort((a,b)=>b.stars-a.stars)[0];
   return top ? top.name.replace('#','') : escapeHTML(p.name);
+}
+
+// Show the resolved match-criterion in the topbar log area for ~3 seconds.
+// Replaces the log overlay with a big colored banner showing dice number,
+// criterion name, who scored and a short reason.
+let _matchCritTimeout = null;
+function showMatchCriterionInTopbar(result, M) {
+  const area = document.querySelector('.topbar-log-area');
+  if (!area) return;
+  const home = M.home, away = M.away;
+  const w = result.winner; // 'home' | 'away' | 'tie'
+  const winnerName = w === 'home' ? escapeHTML(home.name)
+                  : w === 'away' ? escapeHTML(away.name)
+                  : (state.lang === 'de' ? 'Unentschieden' : 'Tie');
+  const cls = w === 'home' ? 'home-win' : w === 'away' ? 'away-win' : 'tie';
+  const dot = w === 'home' ? '🟢' : w === 'away' ? '🔴' : '⚪';
+  let banner = area.querySelector('.match-crit-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.className = 'match-crit-banner';
+    area.appendChild(banner);
+  }
+  banner.className = 'match-crit-banner ' + cls;
+  banner.innerHTML = `
+    <div class="mcb-row1">
+      <span class="mcb-dice">#${result.dice}</span>
+      <span class="mcb-kind">${T('crit_'+result.kind)}</span>
+      <span class="mcb-score">${dot} ${winnerName}${w!=='tie'?' +1':''}</span>
+    </div>
+    <div class="mcb-row2">${result.text || ''}</div>
+    <div class="mcb-row3">${escapeHTML(home.name)} ${M.homePoints} : ${M.awayPoints} ${escapeHTML(away.name)}</div>`;
+  banner.classList.add('show');
+  if (_matchCritTimeout) clearTimeout(_matchCritTimeout);
+  _matchCritTimeout = setTimeout(() => {
+    if (banner) banner.classList.remove('show');
+  }, 3000);
 }
 
 async function showMatchSummary(M, winner) {
