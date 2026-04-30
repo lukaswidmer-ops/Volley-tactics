@@ -636,8 +636,9 @@ function fire(name, val) {
   if (r) { delete _waiters[name]; r(val); return; }
   // No waiter yet — remember the fire so the next waitFor with this name resolves instantly
   _pendingFires[name] = val !== undefined ? val : true;
-  // Auto-clear after 3s so a stale click doesn't fire something later
-  setTimeout(() => { delete _pendingFires[name]; }, 3000);
+  // Keep pending clicks longer so early "Continue" presses during animations/events
+  // are not lost before waitFor(...) is reached.
+  setTimeout(() => { delete _pendingFires[name]; }, 30000);
 }
 function skipAll() {
   state.skipping = true;
