@@ -163,7 +163,7 @@ button { font-family:inherit; cursor:pointer; }
 .pc-vp span { flex:1; height:5px; background:rgba(255,255,255,0.08); border-radius:1px; }
 .pc-vp span.fill { background:linear-gradient(90deg,var(--red),var(--gold)); }
 
-/* Zone 2 — Middle: left column (board + team) | right column (stage) */
+/* Zone 2 — Middle: Board (left) | Team (right) */
 .gmid {
   flex: 1;
   display: grid;
@@ -173,26 +173,9 @@ button { font-family:inherit; cursor:pointer; }
   min-height: 0;
   overflow: hidden;
 }
-.gmid-left {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  min-height: 0;
-  overflow: hidden;
-}
-.gmid-right {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-  background: linear-gradient(180deg,#0e0e0f,#080808);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-}
 
-/* Board panel — top of gmid-left */
+/* Board panel */
 .gpanel-board {
-  flex: 2;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -220,12 +203,11 @@ button { font-family:inherit; cursor:pointer; }
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.4rem;
+  padding: 0.5rem;
 }
 
-/* Team panel — bottom of gmid-left */
+/* Team panel */
 .gpanel-team {
-  flex: 3;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -250,30 +232,29 @@ button { font-family:inherit; cursor:pointer; }
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0.6rem;
+  padding: 0.75rem;
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.75rem;
 }
 
-/* Stage — fills gmid-right */
+/* Stage — inside actions (bottom) */
 .stage {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.5rem;
   overflow-y: auto;
-  padding: 1rem 1.1rem;
   min-height: 0;
 }
-.stage-h { font-family:'Barlow Condensed',sans-serif; font-weight:900; font-size:1.4rem; letter-spacing:2px; text-transform:uppercase; line-height:1; }
-.stage-sub { font-size:0.8rem; color:var(--silver); }
+.stage-h { font-family:'Barlow Condensed',sans-serif; font-weight:900; font-size:1.2rem; letter-spacing:2px; text-transform:uppercase; line-height:1; }
+.stage-sub { font-size:0.78rem; color:var(--silver); }
 
-/* Zone 3 — Bottom: actions | dice | log | week-strip */
+/* Zone 3 — Bottom: actions+log | dice | stage | week-strip */
 .gbot {
   flex-shrink: 0;
   display: grid;
-  grid-template-columns: 240px 160px 1fr 260px;
+  grid-template-columns: 220px 160px 1fr 240px;
   gap: 0.6rem;
   padding: 0 0.6rem 0.6rem;
   max-height: 22vh;
@@ -281,18 +262,29 @@ button { font-family:inherit; cursor:pointer; }
   overflow: hidden;
 }
 
-/* Actions panel */
+/* Actions panel (contains buttons + log history) */
 .actions {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  padding: 0.65rem;
+  gap: 0.3rem;
+  padding: 0.5rem 0.6rem;
   background: linear-gradient(180deg,#0e0e0f,#080808);
   border: 1px solid var(--line);
   border-radius: 6px;
-  overflow-y: auto;
+  overflow: hidden;
 }
-.actions h3 { font-size:0.68rem; letter-spacing:3px; text-transform:uppercase; color:var(--silver); margin-bottom:0.2rem; flex-shrink:0; }
+.actions h3 { font-size:0.68rem; letter-spacing:3px; text-transform:uppercase; color:var(--silver); margin-bottom:0.15rem; flex-shrink:0; }
+
+/* Stage panel — standalone between dice and week-strip */
+.stage-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: linear-gradient(180deg,#0e0e0f,#080808);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
 
 /* Week strip panel */
 .week-strip {
@@ -476,7 +468,7 @@ button { font-family:inherit; cursor:pointer; }
 @keyframes pulseBtn { 0%,100%{box-shadow:0 0 0 0 rgba(232,67,23,0.5)} 50%{box-shadow:0 0 0 8px rgba(232,67,23,0)} }
 
 /* Log */
-.log { background:linear-gradient(180deg,#0e0e0f,#080808); border:1px solid var(--line); border-radius:6px; padding:0.7rem 0.85rem; overflow-y:auto; font-size:0.78rem; line-height:1.45; height:100%; }
+.log { flex:1; min-height:0; overflow-y:auto; font-size:0.72rem; line-height:1.4; padding:0.3rem 0; border-top:1px solid var(--line); margin-top:0.25rem; }
 .log-entry { padding:0.3rem 0; border-bottom:1px solid rgba(255,255,255,0.04); animation:slideIn 0.3s ease-out; }
 .log-entry:last-child { border-bottom:none; }
 .log-entry .ts { color:var(--silver); font-size:0.7rem; margin-right:0.4rem; letter-spacing:1px; }
@@ -589,10 +581,10 @@ button { font-family:inherit; cursor:pointer; }
   .gright { order:-1; }
   .player-card { width:140px; }
   .menu-card { padding:1.6rem; }
-  .gmid { grid-template-columns:1fr; grid-template-rows:auto 1fr; }
-  .gmid-left { flex-direction:row; height:200px; }
+  .gmid { grid-template-columns:1fr; }
   .gbot { grid-template-columns:160px 130px 1fr; max-height:28vh; }
   .gbot .week-strip { display:none; }
+  .gbot .stage-panel { display:none; }
   .market { grid-template-columns:repeat(auto-fill, minmax(110px, 1fr)); }
   .match-screen { grid-template-columns:1fr; gap:0.6rem; text-align:center; }
   .match-vs { font-size:1.4rem; }
@@ -786,6 +778,47 @@ button, a, input, select { font-family:inherit; }
 /* ─── Modal popup ─── */
 .modal-popup { position:fixed; inset:0; background:rgba(8,8,8,0.85); backdrop-filter:blur(8px); z-index:1000; display:none; align-items:center; justify-content:center; padding:2rem; }
 .modal-popup.open { display:flex; animation:cs-fade 0.2s ease-out; }
+
+/* ── Game Popup (fullscreen modal for market, auction etc.) ── */
+.game-popup {
+  position: fixed; inset: 0;
+  background: rgba(8,8,8,0.88);
+  backdrop-filter: blur(10px);
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+.game-popup.open { opacity: 1; pointer-events: auto; }
+.game-popup-inner {
+  width: 100%; max-width: 920px; max-height: 88vh;
+  background: linear-gradient(180deg,#131313,#080808);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  animation: slideUp 0.25s ease-out;
+}
+@keyframes slideUp { from{transform:translateY(18px);opacity:0} to{transform:translateY(0);opacity:1} }
+.game-popup-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.85rem 1.2rem;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.game-popup-title { font-family:'Barlow Condensed',sans-serif; font-weight:900; font-size:1.2rem; letter-spacing:3px; text-transform:uppercase; }
+.game-popup-close { background:transparent; border:1px solid var(--line); color:var(--silver); width:28px; height:28px; border-radius:50%; cursor:pointer; font-size:0.85rem; display:flex; align-items:center; justify-content:center; transition:border-color 0.15s, color 0.15s; }
+.game-popup-close:hover { border-color:var(--red); color:var(--red); }
+.game-popup-body { flex:1; overflow-y:auto; padding:1rem 1.2rem; min-height:0; }
+/* Popup helpers */
+.gp-market-info { display:flex; gap:1.5rem; flex-wrap:wrap; font-size:0.82rem; color:var(--silver); padding-bottom:0.75rem; border-bottom:1px solid var(--line); margin-bottom:0.75rem; }
+.gp-market-info b { color:#fff; }
+.gp-section-h { font-family:'Barlow Condensed',sans-serif; font-weight:800; font-size:0.9rem; letter-spacing:2px; text-transform:uppercase; color:var(--silver); margin:1rem 0 0.4rem; }
+.gp-footer { display:flex; align-items:center; justify-content:flex-end; gap:0.75rem; padding-top:1rem; margin-top:0.5rem; border-top:1px solid var(--line); }
 .modal-card { max-width:480px; text-align:center; background:linear-gradient(180deg,#111 0%,#080808 100%); border:1px solid rgba(232,67,23,0.35); border-radius:6px; padding:2.4rem 2rem; }
 .modal-card .modal-icon { font-size:3rem; margin-bottom:0.6rem; }
 .modal-card .modal-h { font-family:'Barlow Condensed',sans-serif; font-weight:900; font-size:1.8rem; letter-spacing:2px; text-transform:uppercase; margin-bottom:0.8rem; background:linear-gradient(90deg,var(--red),var(--gold)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }

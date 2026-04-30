@@ -616,14 +616,46 @@ function fire(name, val) {
 function skipAll() {
   state.skipping = true;
   ['coneRollNow','coneContinue','continueAfterMatch','serveOnce','endMarket'].forEach(fire);
-  document.querySelectorAll('.modal-popup, .event-popup-banner').forEach(m => m.remove());
+  document.querySelectorAll('.modal-popup, .event-popup-banner, .game-popup').forEach(m => m.remove());
   setTimeout(() => { state.skipping = false; }, 3000);
+}
+
+// ── Generic full-screen game popup ──
+function openGamePopup(id, title, bodyHtml) {
+  let pop = document.getElementById(id);
+  if (!pop) {
+    pop = document.createElement('div');
+    pop.id = id;
+    pop.className = 'game-popup';
+    document.body.appendChild(pop);
+    pop.addEventListener('click', e => { if (e.target === pop) closeGamePopup(id); });
+  }
+  pop.innerHTML = `
+    <div class="game-popup-inner">
+      <div class="game-popup-head">
+        <span class="game-popup-title">${title}</span>
+        <button class="game-popup-close" onclick="document.getElementById('${id}').remove()">✕</button>
+      </div>
+      <div class="game-popup-body" id="${id}-body">${bodyHtml}</div>
+    </div>`;
+  requestAnimationFrame(() => pop.classList.add('open'));
+}
+function closeGamePopup(id) {
+  const pop = document.getElementById(id);
+  if (pop) { pop.classList.remove('open'); setTimeout(() => pop.remove(), 200); }
+}
+function updateGamePopupBody(id, bodyHtml) {
+  const body = document.getElementById(id + '-body');
+  if (body) body.innerHTML = bodyHtml;
 }
 
 function setActionsHtml(html) {
   const el = $('#actions');
   if (!el) return;
+  // Buttons go above the log; stage lives permanently in #stage-panel
+  const log = el.querySelector('#log');
   el.innerHTML = html;
+  if (log) el.appendChild(log);
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -1411,35 +1443,34 @@ function renderGame() {
       </div>
       <div class="phase-bar" id="phase-bar"></div>
       <div class="gmid">
-        <div class="gmid-left">
-          <div class="gpanel-board" id="board-panel">
-            <div class="gpanel-board-header">
-              <span>🗺️ ${state.lang==='de'?'Spielbrett':'Game Board'}</span>
-              <span id="board-week-label" style="color:var(--gold)"></span>
-            </div>
-            <div class="gpanel-board-inner" id="board">${boardHtml(g)}</div>
+        <div class="gpanel-board" id="board-panel">
+          <div class="gpanel-board-header">
+            <span>🗺️ ${state.lang==='de'?'Spielbrett':'Game Board'}</span>
+            <span id="board-week-label" style="color:var(--gold)"></span>
           </div>
-          <div class="gpanel-team">
-            <div class="gpanel-team-header">
-              <span>🏐 ${state.lang==='de'?'Mein Team':'My Team'}</span>
-              <span class="team-strength" id="team-strength-label">★ ${teamStrength(g.players[0])}</span>
-            </div>
-            <div class="gpanel-team-inner" id="team-panel">${teamPanelHtml(g.players[0])}</div>
-          </div>
+          <div class="gpanel-board-inner" id="board">${boardHtml(g)}</div>
         </div>
-        <div class="gmid-right" id="stage-panel">
-          <div class="stage" id="stage"></div>
+        <div class="gpanel-team">
+          <div class="gpanel-team-header">
+            <span>🏐 ${state.lang==='de'?'Mein Team':'My Team'}</span>
+            <span class="team-strength" id="team-strength-label">★ ${teamStrength(g.players[0])}</span>
+          </div>
+          <div class="gpanel-team-inner" id="team-panel">${teamPanelHtml(g.players[0])}</div>
         </div>
       </div>
       <div class="gbot">
-        <div class="actions" id="actions"></div>
+        <div class="actions" id="actions">
+          <div class="log" id="log"></div>
+        </div>
         <div class="dice-panel" id="dice-panel">
           <div class="dice-panel-label" id="dice-panel-label">🎲 D3</div>
           <div class="dice-panel-result" id="dice-panel-result">—</div>
           <button class="dice-panel-btn" id="dice-panel-btn" disabled onclick="VV.dicePanel_roll()">Würfeln</button>
           <button class="skip-btn" onclick="VV.skipAll()" title="Alles überspringen">⏭</button>
         </div>
-        <div class="log" id="log"></div>
+        <div class="stage-panel" id="stage-panel">
+          <div class="stage" id="stage"></div>
+        </div>
         <div class="week-strip" id="week-strip">${weekStripHtml(g)}</div>
       </div>
     </div>`;
@@ -2689,7 +2720,7 @@ function buyCard(id) {
   renderMarket();
 }
 function endMarket() {
-  // Return unsold market cards to the auction deck (back of deck)
+  closeGamePopup('market-popup');
   const g = state.game;
   if (g && g.market && g.market.length) {
     for (const c of g.market) g.auctionDeck.push(c);
