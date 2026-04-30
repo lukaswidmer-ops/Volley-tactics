@@ -614,6 +614,7 @@ function setSpeed(s) { state.speed = s; localStorage.setItem('vv_speed', s); } /
 // Wait/fire helpers
 const _waiters = {};
 const _pendingFires = {}; // catches fire() calls when no waiter is set up yet
+let _expectedAdvance = 'coneRollNow';
 function waitFor(name, autoMs) {
   return new Promise(resolve => {
     if (state.skipping) { setTimeout(resolve, 0); return; }
@@ -763,7 +764,10 @@ function dicePanel_roll(force) {
   if (_waiters['coneContinue']) { fire('coneContinue'); return; }
   if (_waiters['continueAfterMatch']) { fire('continueAfterMatch'); return; }
   if (_waiters['serveOnce']) { fire('serveOnce'); return; }
-  fire('coneRollNow');
+  if (_waiters['coneRollNow']) { fire('coneRollNow'); return; }
+  // No active waiter yet (e.g. short animation/event gap):
+  // queue the action that is expected next in the current flow.
+  fire(_expectedAdvance || 'coneRollNow');
 }
 
 
@@ -1919,6 +1923,7 @@ async function runConeRoll(player) {
   const dpBtn = document.getElementById('dice-panel-btn');
   const dpLbl = document.getElementById('dice-panel-label');
   if (dpLbl) dpLbl.textContent = '🎲 D3';
+  _expectedAdvance = 'coneRollNow';
   if (state.speed !== 'auto') {
     if (dpBtn) {
       dpBtn.disabled = false;
@@ -1954,6 +1959,7 @@ async function runConeRoll(player) {
     // If the cone landed on/passed the league match day (8), auto-continue after a
     // short pause — the match summary already served as the "end of turn" confirmation.
     const lastDayWasLeague = dayInWeekOf(g.coneDay) === 8;
+    _expectedAdvance = 'coneContinue';
     setActionsHtml(`<h3>${T('phase_event')}</h3>
       ${speedToggleHtml()}
       <button class="action-btn pulse" onclick="VV.coneContinue()">${T('cone_continue')}</button>`);
@@ -2696,6 +2702,7 @@ async function showMatchSummary(M, winner) {
   const me = state.game ? state.game.players[0] : null;
   const humanInMatch = me && (M.home === me || M.away === me);
   const autoMs = (!humanInMatch || state.speed === 'auto') ? speedMs(2000) : 0;
+  _expectedAdvance = 'continueAfterMatch';
   // Button always in actions panel — never buried in the stage scroll area
   setActionsHtml(`<h3>${T('phase_match')}</h3>
     ${speedToggleHtml()}
