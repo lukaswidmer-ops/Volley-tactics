@@ -2661,7 +2661,7 @@ async function runMatchClassic(home, away, isTournament) {
   else winner = isTournament ? (Math.random() < 0.5 ? home : away) : null; // draw in league
 
   // Show summary
-  await showMatchSummary(M, winner);
+  await showMatchSummary(M, winner, { forceAutoContinue: !!isTournament });
   if (winner) flash(winner === home ? 'win' : 'loss');
   return winner;
 }
@@ -2797,7 +2797,7 @@ function showMatchCriterionInTopbar(result, M) {
   }, 3000);
 }
 
-async function showMatchSummary(M, winner) {
+async function showMatchSummary(M, winner, opts = {}) {
   const stage = $('#stage');
   if (!stage) return;
   const summary = `${escapeHTML(M.home.name)} ${M.homePoints}:${M.awayPoints} ${escapeHTML(M.away.name)}`;
@@ -2812,17 +2812,18 @@ async function showMatchSummary(M, winner) {
     </div>`;
   const me = state.game ? (state.game.players.find(p => p.isHuman) || state.game.players[0]) : null;
   const humanInMatch = me && (M.home === me || M.away === me);
-  const autoMs = (!humanInMatch || state.speed === 'auto') ? speedMs(2000) : 0;
+  const forceAutoContinue = !!opts.forceAutoContinue;
+  const autoMs = (!humanInMatch || state.speed === 'auto' || forceAutoContinue) ? speedMs(2000) : 0;
   _expectedAdvance = 'continueAfterMatch';
   // Button always in actions panel — never buried in the stage scroll area
   setActionsHtml(`<h3>${T('phase_match')}</h3>${speedToggleHtml()}`);
   // Dice-panel button acts as backup "Continue" trigger during match summary
   const matchDpBtn = document.getElementById('dice-panel-btn');
-  if (humanInMatch && state.speed !== 'auto' && matchDpBtn) {
+  if (humanInMatch && state.speed !== 'auto' && !forceAutoContinue && matchDpBtn) {
     matchDpBtn.disabled = false; matchDpBtn.classList.add('pulse');
     matchDpBtn.textContent = '▶ ' + T('next_match');
   }
-  if (!humanInMatch || state.speed === 'auto') setTimeout(() => fire('continueAfterMatch'), speedMs(3000));
+  if (!humanInMatch || state.speed === 'auto' || forceAutoContinue) setTimeout(() => fire('continueAfterMatch'), speedMs(3000));
   await waitFor('continueAfterMatch', autoMs);
   if (matchDpBtn) { matchDpBtn.disabled = true; matchDpBtn.classList.remove('pulse'); matchDpBtn.textContent = '🎲 Würfeln'; }
   restoreBoardPanel();
