@@ -2253,38 +2253,11 @@ function drawAuctionCard() {
 async function applyTransfer(player) {
   const card = drawAuctionCard();
   if (!card) { appendConeLog(T('auction_no_one')); return; }
-  let high = 0, highP = null;
-  const order = state.game.players.slice();
-  while (order[0] !== player) order.push(order.shift());
-  const minBid = card.stars * 10000;
-  const autoResolveHumanBid = !player.isHuman;
-  for (const p of order) {
-    if (p.money < minBid) continue;
-    if (p.isHuman) {
-      const minNext = Math.max(minBid, high + 1000);
-      if (autoResolveHumanBid) {
-        // During bot-triggered transfer events, never block on human input.
-        const dec = window.VV_BOTS.shouldBid(p, card, high, minNext, order);
-        if (!dec.pass && dec.bid > high && dec.bid <= p.money) { high = dec.bid; highP = p; }
-      } else {
-        const r = await humanBidPopup(p, card, minNext);
-        if (r && !r.pass && r.bid > high && r.bid <= p.money) { high = r.bid; highP = p; }
-      }
-    } else {
-      const dec = window.VV_BOTS.shouldBid(p, card, high, Math.max(minBid, high + 1000), order);
-      if (!dec.pass && dec.bid > high) { high = dec.bid; highP = p; }
-    }
-  }
-  if (highP) {
-    highP.money -= high;
-    placeIntoTeamOrBench(highP, card);
-    appendConeLog(`${highP.emoji} ${escapeHTML(highP.name)} \u2192 ${escapeHTML(card.name)} (${fmtMoney(high)}')`);
-  } else {
-    // Nobody bid — card goes to market pile for direct purchase next market phase
-    state.game.marketPile.push(card);
-    appendConeLog(T('auction_no_one'));
-  }
-  refreshTopbar(); refreshTeamPanel();
+  const de = state.lang === 'de';
+  // Use the shared visible auction UI; triggering player bids first
+  await runAuctionUI(card, `🔁 ${T('cone_event_transfer')} — ${escapeHTML(player.name)}`, player);
+  // Log result (winner/market already handled inside runAuctionUI)
+  appendConeLog(`🔁 ${de ? 'Transfer-Auktion beendet' : 'Transfer auction done'}`);
 }
 
 function humanBidPopup(p, card, minNext) {
@@ -3011,17 +2984,20 @@ function regenMarket() {
   return state.game.marketPile.slice();
 }
 
-async function runWeeklyAuction() {
+// Shared multi-round popup auction used both for weekly market reveal and mid-week transfer events.
+// firstPlayer: if set, they bid first (for the transfer event — the player who triggered it).
+async function runAuctionUI(card, titleLabel, firstPlayer) {
   const g = state.game;
-  const card = drawAuctionCard();
-  if (!card) return;
   const de = state.lang === 'de';
   const minBid = (card.stars || 1) * 10000;
-  const order = g.players.slice();
+  // Order: firstPlayer goes first, rest follow in player-index order
+  let order = g.players.slice();
+  if (firstPlayer) {
+    while (order[0] !== firstPlayer) order.push(order.shift());
+  }
   let currentBid = 0, winner = null;
-  // Build a popup for the auction
-  const popId = 'weekly-auction-popup';
-  const renderAuctionPopup = (feedLines) => {
+  const popId = 'live-auction-popup';
+  const renderPopup = (feedLines) => {
     const feedHtml = feedLines.map(l => `<div style="font-size:0.78rem;color:var(--silver);margin-top:0.2rem;">${l}</div>`).join('');
     const body = `
       <div style="display:flex;gap:1rem;align-items:flex-start;margin-bottom:0.8rem;">
@@ -3032,12 +3008,12 @@ async function runWeeklyAuction() {
           <div style="font-weight:700;font-size:1rem;">${escapeHTML(card.name)}</div>
           <div style="color:var(--silver);font-size:0.78rem;">${'★'.repeat(card.stars || 1)} · ${posLabel(card.pos)}</div>
           <div style="margin-top:0.5rem;font-size:0.82rem;">${de?'Mindestgebot':'Min. bid'}: <b style="color:var(--gold)">${fmtMoney(minBid)}</b></div>
-          <div style="font-size:0.82rem;">${de?'Aktuelles Gebot':'Current bid'}: <b style="color:var(--gold)">${currentBid ? fmtMoney(currentBid) : '—'}</b>${winner ? ` <span style="color:var(--silver)">(${escapeHTML(winner.name)})</span>` : ''}</div>
+          <div class="wa-bid-line" style="font-size:0.82rem;">${de?'Aktuelles Gebot':'Current bid'}: <b style="color:var(--gold)">${currentBid ? fmtMoney(currentBid) : '—'}</b>${winner ? ` <span style="color:var(--silver)">(${escapeHTML(winner.name)})</span>` : ''}</div>
         </div>
       </div>
-      <div id="wa-feed" style="max-height:90px;overflow:auto;margin-bottom:0.6rem;">${feedHtml}</div>
+      <div id="wa-feed" style="max-height:100px;overflow:auto;margin-bottom:0.6rem;">${feedHtml}</div>
       <div id="wa-input"></div>`;
-    openGamePopup(popId, `🔖 ${de?'Wöchentliche Auktion':'Weekly Auction'}`, body);
+    openGamePopup(popId, titleLabel, body);
   };
   const feedLines = [];
   const addFeed = (line) => {
@@ -3045,9 +3021,9 @@ async function runWeeklyAuction() {
     const feed = document.getElementById('wa-feed');
     if (feed) feed.innerHTML = feedLines.map(l => `<div style="font-size:0.78rem;color:var(--silver);margin-top:0.2rem;">${l}</div>`).join('');
   };
-  renderAuctionPopup([]);
+  renderPopup([]);
 
-  // Bidding rounds
+  // Multi-round bidding: everyone bids/passes; continues until only one unbid player remains
   let passes = new Set();
   let lastBidder = null;
   while (true) {
@@ -3058,14 +3034,19 @@ async function runWeeklyAuction() {
       const minNext = currentBid > 0 ? currentBid + 1000 : minBid;
       if (p.money < minNext) { passes.add(p.id); continue; }
       if (p.isHuman) {
-        // Show bid/pass input inside the popup
-        renderAuctionPopup(feedLines);
+        renderPopup(feedLines);
+        // Wait for DOM to settle after openGamePopup's requestAnimationFrame
+        await sleep(80);
         const result = await new Promise(resolve => {
+          let settled = false;
+          const finish = (val) => { if (settled) return; settled = true; resolve(val); };
+          // Close button / backdrop = pass
+          registerPopupClose(popId, () => finish({ pass: true }));
           const inputDiv = document.getElementById('wa-input');
-          if (!inputDiv) { resolve({ pass: true }); return; }
+          if (!inputDiv) { finish({ pass: true }); return; }
           const sugg = Math.min(p.money, minNext);
           inputDiv.innerHTML = `
-            <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+            <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-top:0.3rem;">
               <span style="font-size:0.82rem;">${de?'Dein Gebot':'Your bid'} (min ${fmtMoney(minNext)}):</span>
               <input type="number" id="wa-bid-inp" min="${minNext}" max="${p.money}" step="1000" value="${sugg}"
                 style="width:110px;padding:0.3rem 0.5rem;background:#111;border:1px solid var(--line);color:#fff;border-radius:4px;font-size:0.88rem;">
@@ -3076,11 +3057,19 @@ async function runWeeklyAuction() {
             const v = parseInt(document.getElementById('wa-bid-inp')?.value || '0', 10);
             if (!Number.isFinite(v) || v < minNext) { toast(de?'Gebot zu niedrig':'Bid too low','bad'); return; }
             if (v > p.money) { toast(de?'Nicht genug Geld':'Not enough money','bad'); return; }
-            resolve({ bid: v });
+            finish({ bid: v });
           };
-          document.getElementById('wa-bid-btn').onclick = go;
-          document.getElementById('wa-bid-inp').onkeydown = e => { if (e.key === 'Enter') go(); };
-          document.getElementById('wa-pass-btn').onclick = () => resolve({ pass: true });
+          const bidBtn = document.getElementById('wa-bid-btn');
+          const passBtn = document.getElementById('wa-pass-btn');
+          const inp = document.getElementById('wa-bid-inp');
+          if (!bidBtn) {
+            console.error('[VV] runAuctionUI: wa-bid-btn not found after sleep(80)! inputDiv =', inputDiv);
+            toast('⚠️ Auktions-UI Fehler — auto-pass', 'bad', 2000);
+            finish({ pass: true }); return;
+          }
+          bidBtn.onclick = go;
+          if (inp) { inp.focus(); inp.onkeydown = e => { if (e.key === 'Enter') go(); }; }
+          if (passBtn) passBtn.onclick = () => finish({ pass: true });
         });
         if (result.pass) {
           passes.add(p.id);
@@ -3091,7 +3080,7 @@ async function runWeeklyAuction() {
           beep(820, 50);
         }
       } else {
-        await sleep(speedMs(350));
+        await sleep(speedMs(400));
         const dec = window.VV_BOTS.shouldBid(p, card, currentBid, minNext, order);
         if (!dec || dec.pass || dec.bid < minNext || dec.bid > p.money) {
           passes.add(p.id);
@@ -3100,32 +3089,39 @@ async function runWeeklyAuction() {
           currentBid = dec.bid; winner = p; lastBidder = p.id; bidThisRound = true;
           addFeed(`<b>${p.emoji} ${escapeHTML(p.name)}</b> → ${fmtMoney(currentBid)}`);
           beep(740, 50);
+          // Update the current-bid display in-place (don't rebuild the whole popup)
+          const bidLine = document.querySelector(`#${popId}-body .wa-bid-line`);
+          if (bidLine) bidLine.innerHTML = `${de?'Aktuelles Gebot':'Current bid'}: <b style="color:var(--gold)">${fmtMoney(currentBid)}</b> <span style="color:var(--silver)">(${escapeHTML(winner.name)})</span>`;
         }
-        renderAuctionPopup(feedLines);
       }
-      // Once only one player remains unbid against themselves → done
       if (order.filter(x => !passes.has(x.id)).length <= 1) break;
     }
     const remaining = order.filter(x => !passes.has(x.id));
     if (!bidThisRound || remaining.length <= 1) break;
   }
 
-  // Resolve winner
+  // Resolve
   if (winner) {
     winner.money -= currentBid;
     animateMoneyChange(winner, -currentBid);
     placeIntoTeamOrBench(winner, card);
-    addFeed(`<b style="color:var(--gold)">🏆 ${escapeHTML(winner.name)} gewinnt "${escapeHTML(card.name)}" für ${fmtMoney(currentBid)}!</b>`);
+    addFeed(`<b style="color:var(--gold)">🏆 ${escapeHTML(winner.name)} ${de?'gewinnt':'wins'} "${escapeHTML(card.name)}" ${de?'für':'for'} ${fmtMoney(currentBid)}!</b>`);
     beep(900, 120);
   } else {
     g.marketPile.push(card);
-    addFeed(`<span style="color:var(--silver)">${de?'Niemand hat geboten — Karte kommt auf den Markt.':'No bids — card goes to market.'}</span>`);
+    addFeed(`<span style="color:var(--silver)">${de?'Niemand geboten — Karte kommt auf den Markt.':'No bids — card goes to market.'}</span>`);
   }
   refreshTopbar(); refreshTeamPanel();
-  // Show result briefly then close
   await sleep(speedMs(winner ? 2000 : 1500));
   closeGamePopup(popId);
   await sleep(400);
+}
+
+async function runWeeklyAuction() {
+  const card = drawAuctionCard();
+  if (!card) return;
+  const de = state.lang === 'de';
+  await runAuctionUI(card, `🔖 ${de ? 'Wöchentliche Auktion' : 'Weekly Auction'}`);
 }
 
 async function runMarketPhase() {
