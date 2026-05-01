@@ -1012,6 +1012,7 @@ function makePlayer(name, color, emoji, isHuman, personality, biasPos) {
     leaguePoints: 0,
     flag: choice(['IT','BR','PL','FR','USA','RU','JP','SLO']),
     starterIdx: 0,  // who the starting player is (set after starting roll)
+    courtRotation: 0, // 0..5 — volleyball rotation on court (synced with match mini + team panel)
   };
 }
 
@@ -1543,6 +1544,7 @@ async function rollStartingDice() {
   // Begin season
   g.phase = 'season';
   g.week = 1; g.coneDay = 1;
+  for (const pl of g.players) pl.courtRotation = 0;
   setView('game');
   setTimeout(runSeason, speedMs(400));
 }
@@ -1750,12 +1752,27 @@ function boardHtml(g) {
   </div>`;
 }
 
+// Same 6-slot ring as match mini-court (setter starts front-right at rotation 0).
+const COURT_ROTATION_RING = ['middle2', 'outside2', 'diagonal', 'middle', 'outside', 'setter'];
+function courtRotationNorm(rotation) { return ((rotation || 0) % 6 + 6) % 6; }
+function courtSlotRawPos(rotation, slotIdx) {
+  const r = courtRotationNorm(rotation);
+  return COURT_ROTATION_RING[((slotIdx - r) % 6 + 6) % 6];
+}
+/** Roster key shown in slot 0..5 (back row 0–2, front 3–5), including Libero-for-MB swap in back row */
+function courtSlotDisplayPos(rotation, slotIdx) {
+  const raw = courtSlotRawPos(rotation, slotIdx);
+  const liberoSwapSlots = new Set();
+  for (const s of [0, 1, 2]) {
+    const pr = courtSlotRawPos(rotation, s);
+    if (pr === 'middle' || pr === 'middle2') liberoSwapSlots.add(s);
+  }
+  if (slotIdx <= 2 && liberoSwapSlots.has(slotIdx) && (raw === 'middle' || raw === 'middle2')) return 'libero';
+  return raw;
+}
+
 function teamPanelHtml(p, opts) {
-  // Volleyball rotation: 6 positions in court order
-  // Front row (left→right): pos4=OH, pos3=MB, pos2=OPP
-  // Back row  (left→right): pos5=OH2(empty slot), pos6=Libero, pos1=Setter
-  // In our 5-player setup: Front: [outside, middle, diagonal], Back: [setter, libero]
-  // Standard rotation: OH ↔ OH (opposite sides), MB ↔ Libero (sub), OPP ↔ S (opposite)
+  // Volleyball rotation: 6 slots on court (same model as match). Team panel + opponent mirror this.
   const s = p.team;
   const bench = p.bench || [];
   const readOnly = !!(opts && opts.readOnly);
