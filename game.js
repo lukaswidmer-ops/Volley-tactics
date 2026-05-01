@@ -2055,7 +2055,13 @@ async function runConeRoll(player) {
       dpBtn.classList.add('pulse');
       dpBtn.textContent = player.isHuman ? '🎲 Würfeln' : ('▶ ' + (state.lang === 'de' ? 'Weiter (Bot würfelt)' : 'Continue (bot rolls)'));
     }
-    await waitFor('coneRollNow');
+    if (player.isHuman) {
+      await waitFor('coneRollNow');
+    } else {
+      // Bots should never block on manual confirmation in normal speed.
+      setTimeout(() => fire('coneRollNow'), speedMs(1200));
+      await waitFor('coneRollNow', speedMs(3000));
+    }
     if (dpBtn) {
       dpBtn.disabled = true;
       dpBtn.classList.remove('pulse');
@@ -2091,11 +2097,11 @@ async function runConeRoll(player) {
     setActionsHtml(`<h3>${T('phase_event')}</h3>${speedToggleHtml()}`);
     const dpBtn2 = document.getElementById('dice-panel-btn');
     if (dpBtn2) { dpBtn2.disabled = false; dpBtn2.classList.add('pulse'); dpBtn2.textContent = '▶ ' + T('cone_continue'); }
-    if (state.speed === 'auto' || lastDayWasLeague) {
+    if (state.speed === 'auto' || lastDayWasLeague || !player.isHuman) {
       setTimeout(()=>fire('coneContinue'), lastDayWasLeague ? speedMs(2000) : speedMs(3000));
     }
     // Manual flow for normal speed (also for bots): user confirms each step.
-    const continueAutoMs = state.speed === 'auto' ? speedMs(4000) : speedMs(10000);
+    const continueAutoMs = (state.speed === 'auto' || !player.isHuman) ? speedMs(4000) : speedMs(10000);
     await waitFor('coneContinue', continueAutoMs);
     if (dpBtn2) { dpBtn2.disabled = true; dpBtn2.classList.remove('pulse'); dpBtn2.textContent = '🎲 Würfeln'; }
   }
@@ -2214,11 +2220,19 @@ async function applyTransfer(player) {
   const order = state.game.players.slice();
   while (order[0] !== player) order.push(order.shift());
   const minBid = card.stars * 10000;
+  const autoResolveHumanBid = !player.isHuman;
   for (const p of order) {
     if (p.money < minBid) continue;
     if (p.isHuman) {
-      const r = await humanBidPopup(p, card, Math.max(minBid, high + 1000));
-      if (r && !r.pass && r.bid > high && r.bid <= p.money) { high = r.bid; highP = p; }
+      const minNext = Math.max(minBid, high + 1000);
+      if (autoResolveHumanBid) {
+        // During bot-triggered transfer events, never block on human input.
+        const dec = window.VV_BOTS.shouldBid(p, card, high, minNext, order);
+        if (!dec.pass && dec.bid > high && dec.bid <= p.money) { high = dec.bid; highP = p; }
+      } else {
+        const r = await humanBidPopup(p, card, minNext);
+        if (r && !r.pass && r.bid > high && r.bid <= p.money) { high = r.bid; highP = p; }
+      }
     } else {
       const dec = window.VV_BOTS.shouldBid(p, card, high, Math.max(minBid, high + 1000), order);
       if (!dec.pass && dec.bid > high) { high = dec.bid; highP = p; }
