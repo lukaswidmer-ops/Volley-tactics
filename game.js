@@ -2410,26 +2410,13 @@ function disablePlayerOnTeam(player, pos, reason) {
     return sub;
   }
 
-  // 2) If no matching bench player exists, use any healthy bench player to avoid leaving
-  // the injured/suspended card on court.
-  const anyBenchIdx = player.bench.findIndex(b => !b.disabled);
-  if (anyBenchIdx >= 0) {
-    const sub = player.bench.splice(anyBenchIdx, 1)[0];
-    sub._isSub = true;
-    sub._subReason = (state.lang === 'de' ? `Ersatzfremd auf ${posShort(pos)}` : `Off-position sub on ${posShort(pos)}`);
-    player.team[pos] = sub;
-    player.suspended.push({ card, pos, reason });
-    return sub;
-  }
-
-  // 3) No bench replacement — buy an emergency 1★ card for 10'000
+  // 2) No matching bench replacement — buy an emergency 1★ card for 10'000
   const cost = 10000;
   player.money = Math.max(0, player.money - cost);
   animateMoneyChange(player, -cost);
   toast(`⚠️ ${state.lang === 'de' ? 'Kein Ersatz — Notfallkauf' : 'No sub — emergency buy'} -${fmtMoney(cost)}'`, 'bad', 2500);
 
-  let opts = (ALL_CARDS || []).filter(c => c.stars === 1 && c.pos === poolPos);
-  if (!opts.length) opts = (ALL_CARDS || []).filter(c => c.stars === 1);
+  const opts = (ALL_CARDS || []).filter(c => c.stars === 1 && c.pos === poolPos);
   if (opts.length) {
     const emergency = choice(opts);
     const em = Object.assign({}, emergency, {
@@ -2897,6 +2884,15 @@ async function showMatchSummary(M, winner, opts = {}) {
   const me = state.game ? (state.game.players.find(p => p.isHuman) || state.game.players[0]) : null;
   const humanInMatch = me && (M.home === me || M.away === me);
   const forceAutoContinue = !!opts.forceAutoContinue;
+
+  // Bot-vs-bot summaries must never depend on waiter/click flows.
+  if (!humanInMatch) {
+    await sleep(speedMs(1800));
+    restoreBoardPanel();
+    refreshTeamPanel();
+    return;
+  }
+
   const shouldAutoContinue = true;
   const autoMs = shouldAutoContinue ? speedMs(4500) : 0;
   _expectedAdvance = 'continueAfterMatch';
