@@ -1364,7 +1364,10 @@ async function runAuctionForCard(card, idx, total) {
           <div>${T('auction_minbid')}: <b>${fmtMoney(minBid)}</b></div>
         </div>
         <div class="auction-card-row">
-          <img class="ac-img" src="${card.url}" alt="">
+          <div class="card-thumb card-thumb-auction">
+            <img class="ac-img" src="${card.url}" alt="">
+            ${cardNameFileCaptionHtml(card)}
+          </div>
           <div class="ac-info">
             <div class="ac-pos" style="background:${posColor(card.pos)}">${posShort(card.pos)} · ${posLabel(card.pos)}</div>
             <div class="ac-stars">${'★'.repeat(card.stars)} <span style="color:var(--silver)">${escapeHTML(card.name)}</span></div>

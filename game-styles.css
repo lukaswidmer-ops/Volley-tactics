@@ -567,7 +567,7 @@ button { font-family:inherit; cursor:pointer; }
 .card-thumb { position:relative; width:100%; line-height:0; }
 .card-thumb .mc-img,
 .card-thumb .bc-img { display:block; }
-.card-thumb.card-thumb-auction { width:140px; flex-shrink:0; align-self:flex-start; }
+.card-thumb.card-thumb-auction { width:clamp(140px, 18vw, 220px); flex-shrink:0; align-self:flex-start; }
 .card-thumb.card-thumb-auction .ac-img { width:100%; height:auto; aspect-ratio:55/80; object-fit:cover; }
 .card-thumb.card-thumb-narrow .card-namefile { bottom:0.55rem; font-size:0.38rem; }
 .slot.flying { animation:cardFly 0.7s cubic-bezier(0.2,0.8,0.2,1.2); }
@@ -827,15 +827,7 @@ button, a, input, select { font-family:inherit; }
 .auction-card { display:flex; flex-direction:column; gap:0.6rem; }
 .auction-meta { display:flex; justify-content:space-between; font-size:0.85rem; color:var(--silver); }
 .auction-card-row { display:flex; gap:1.2rem; align-items:center; }
-.ac-img {
-  width: min(220px, 38vw);
-  max-width: 100%;
-  flex: 0 0 auto;
-  aspect-ratio: 55/80;
-  object-fit: cover;
-  border-radius: 3px;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.5);
-}
+.ac-img { width:100%; height:auto; aspect-ratio:55/80; object-fit:cover; border-radius:3px; box-shadow:0 6px 18px rgba(0,0,0,0.5); }
 .ac-info { flex:1; min-width:0; display:flex; flex-direction:column; gap:0.4rem; }
 .ac-pos { display:inline-block; font-size:0.7rem; padding:2px 8px; color:#fff; border-radius:2px; letter-spacing:1px; font-weight:700; }
 .ac-stars { font-size:1.3rem; color:var(--gold); }
@@ -990,7 +982,7 @@ button, a, input, select { font-family:inherit; }
   .week-block { min-width:140px; }
   .week-tiles { grid-template-columns:repeat(8, 1fr); }
   .auction-card-row { flex-direction:column; align-items:center; text-align:center; }
-  .ac-img { width:min(140px, 62vw); }
+  .ac-img { width:100%; }
   .card-thumb.card-thumb-auction { width:110px; }
   .court-mini { max-width:140px; }
   .draft-steps { gap:0.3rem; }
