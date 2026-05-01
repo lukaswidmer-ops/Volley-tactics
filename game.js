@@ -2037,16 +2037,24 @@ async function runSeason() {
         await sleep(1500);
       }
     }
-    // Week complete — market phase
-    setPhase('buy');
-    await runMarketPhase();
-    if (g.over) return;
-    // Weekend matches
+    // Weekend matches first, then market
     setPhase('weekend');
     await runWeekendMatches(g.week);
     if (g.over) return;
     // After weekend, restore suspended/injured players for the next week
     restoreDisabledCards(true);
+    // Market phase after the weekend matches
+    setPhase('buy');
+    // Ensure marketPile exists (safety for older saves)
+    if (!Array.isArray(g.marketPile)) g.marketPile = [];
+    try {
+      await runMarketPhase();
+    } catch (err) {
+      console.error('[VV] runMarketPhase crashed:', err);
+      toast(`⚠️ Markt-Fehler: ${err.message || err}`, 'bad', 5000);
+      delete _pendingFires['endMarket'];
+    }
+    if (g.over) return;
     g.week += 1;
   }
   // Season end
@@ -2115,9 +2123,6 @@ async function runConeRoll(player) {
     if (dayInWeekOf(d) === 8) break; // league match day = end of week, stop here
   }
   if (!g.over) {
-    // If the cone landed on/passed the league match day (8), auto-continue after a
-    // short pause — the match summary already served as the "end of turn" confirmation.
-    const lastDayWasLeague = dayInWeekOf(g.coneDay) === 8;
     _expectedAdvance = 'coneContinue';
     delete _pendingFires['coneRollNow']; // must not carry over into continue step
     const stageSub = document.querySelector('#stage .stage-sub');
@@ -2125,10 +2130,10 @@ async function runConeRoll(player) {
     setActionsHtml(`<h3>${T('phase_event')}</h3>${speedToggleHtml()}`);
     const dpBtn2 = document.getElementById('dice-panel-btn');
     if (dpBtn2) { dpBtn2.disabled = false; dpBtn2.classList.add('pulse'); dpBtn2.textContent = '▶ ' + T('cone_continue'); }
-    if (state.speed === 'auto' || lastDayWasLeague || !player.isHuman) {
-      setTimeout(()=>fire('coneContinue'), lastDayWasLeague ? speedMs(2000) : speedMs(3000));
+    // Bots and auto-speed continue automatically; human always waits for manual click
+    if (state.speed === 'auto' || !player.isHuman) {
+      setTimeout(()=>fire('coneContinue'), speedMs(3000));
     }
-    // Manual flow for normal speed (also for bots): user confirms each step.
     const continueAutoMs = (state.speed === 'auto' || !player.isHuman) ? speedMs(4000) : 0;
     await waitFor('coneContinue', continueAutoMs);
     if (dpBtn2) { dpBtn2.disabled = true; dpBtn2.classList.remove('pulse'); dpBtn2.textContent = '🎲 Würfeln'; }
@@ -3011,7 +3016,7 @@ async function runMarketPhase() {
       console.error('[VV] renderMarket crashed:', err);
       setActionsHtml(`<h3>${T('phase_buy')}</h3>${speedToggleHtml()}
         <button class="action-btn pulse" onclick="VV.endMarket()">${T('finish_buying')}</button>`);
-      toast(`⚠️ ${state.lang==='de'?'Markt-UI Fehler, Schliessen bleibt verfügbar':'Market UI error, close remains available'}`, 'bad', 2800);
+      toast(`⚠️ Markt-Fehler: ${err.message || err} — Schliessen-Button verfügbar`, 'bad', 5000);
     }
   };
   safeRenderMarket();
@@ -3145,7 +3150,7 @@ function marketBodyHtml(me, weakPos) {
       <div class="gp-section-h" style="margin-top:0.8rem;">${de?'Unverkaufte Auktionskarten':'Unsold Auction Cards'} (${unsoldCards.length})</div>
       <div class="market" id="market-grid">${unsoldCards.map(c => marketCardHtml(c, me, { suggestedPos: weakPos })).join('')}</div>
     ` : `<div style="color:var(--silver);font-size:0.72rem;margin-top:0.6rem;font-style:italic;">${de?'Noch keine unverkauften Auktionskarten':'No unsold auction cards yet'}</div>`}
-    ${me.bench.length ? `<div class="gp-section-h" style="margin-top:0.8rem;">${de?'Meine Bank':'My Bench'}</div><div class="bench-grid">${me.bench.map(c => benchCardHtml(c, me)).join('')}</div>` : ''}
+    ${me.bench.filter(Boolean).length ? `<div class="gp-section-h" style="margin-top:0.8rem;">${de?'Meine Bank':'My Bench'}</div><div class="bench-grid">${me.bench.filter(Boolean).map(c => benchCardHtml(c, me)).join('')}</div>` : ''}
     <div class="gp-footer">
       <button class="action-btn pulse" onclick="VV.endMarket()">${T('finish_buying')}</button>
     </div>`;
@@ -3193,7 +3198,8 @@ function oneStarMarketHtml(me, weakPos) {
 }
 
 function benchCardHtml(c, me) {
-  const sellPrice = Math.floor(c.stars * 10000 / 2);
+  if (!c) return '';
+  const sellPrice = Math.floor((c.stars || 0) * 10000 / 2);
   return `<div class="bc">
     <div class="card-thumb">
       <img src="${c.url}" alt="" class="bc-img" loading="lazy">
