@@ -1024,9 +1024,11 @@ function initSoloGame() {
     leagueMatchesPlayed: 0,
     season: 1,
   };
-  // Build auction deck: all 2-5 star cards (1-star are fixed-price separate)
-  const aDeck = ALL_CARDS.filter(c => c.stars >= 2).slice().sort(()=>Math.random()-0.5);
-  state.game.auctionDeck = aDeck;
+  // Build auction deck: fresh copies of all 2-5★ cards, shuffled
+  state.game.auctionDeck = ALL_CARDS
+    .filter(c => c.stars >= 2)
+    .map(c => Object.assign({}, c))   // fresh copy per card — no shared references
+    .sort(() => Math.random() - 0.5);
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -1787,6 +1789,8 @@ function teamPanelHtml(p, opts) {
   
   function teamSlotHtml(card, pos) {
     if (!card) return `<div class="slot empty vb-team-slot" data-tip="${posLabel(pos)}"><span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span></div>`;
+    // Safety: a disabled non-sub card should never be in the formation — show as empty
+    if (card.disabled && !card._isSub) return `<div class="slot empty vb-team-slot" data-tip="${posLabel(pos)} · ⛔"><span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span></div>`;
     const dis = card.disabled ? 'disabled' : '';
     const sub = card._isSub ? 'is-sub' : '';
     const click = readOnly ? '' : `onclick="VV.handleFloatingClick('${pos}')"`;
@@ -2237,17 +2241,40 @@ async function applyRedCard(player) {
   refreshFloatingPanel();
 }
 
+function ownedCardIds() {
+  // Returns a Set of card IDs currently in any player's team, bench, suspended, or marketPile.
+  const g = state.game;
+  if (!g) return new Set();
+  const ids = new Set();
+  for (const p of g.players) {
+    for (const pos of POSITIONS) {
+      const c = p.team[pos]; if (c && c.id) ids.add(c.id);
+    }
+    for (const c of (p.bench || [])) { if (c && c.id) ids.add(c.id); }
+    for (const e of (p.suspended || [])) { if (e && e.card && e.card.id) ids.add(e.card.id); }
+  }
+  for (const c of (g.marketPile || [])) { if (c && c.id) ids.add(c.id); }
+  for (const c of (g.market || []))     { if (c && c.id) ids.add(c.id); }
+  return ids;
+}
+
 function drawAuctionCard() {
   const g = state.game;
   if (!Array.isArray(g.auctionDeck)) g.auctionDeck = [];
+  // Remove cards already owned/in-market before drawing
+  const owned = ownedCardIds();
+  g.auctionDeck = g.auctionDeck.filter(c => c && !owned.has(c.id));
   if (g.auctionDeck.length === 0) {
-    // Deck is empty — reshuffle all 2-5★ cards into a fresh deck
+    // Refill with only unowned 2-5★ cards
     g.auctionDeck = (ALL_CARDS || [])
-      .filter(c => c && Number(c.stars) >= 2)
+      .filter(c => c && Number(c.stars) >= 2 && !owned.has(c.id))
       .sort(() => Math.random() - 0.5);
-    console.log('[VV] auctionDeck refilled:', g.auctionDeck.length, 'cards');
+    console.log('[VV] auctionDeck refilled:', g.auctionDeck.length, 'unowned cards');
   }
-  return g.auctionDeck.shift() || null;
+  const card = g.auctionDeck.shift();
+  if (!card) return null;
+  // Return a fresh copy so placing it doesn't mutate the ALL_CARDS template
+  return Object.assign({}, card);
 }
 
 async function applyTransfer(player) {
@@ -2349,7 +2376,7 @@ async function applyVnlEvent(player) {
 
 async function applyInjury(player) {
   const detail = $('#event-detail');
-  detail.innerHTML = `<div class="dice-area"><div class="dice-num" id="dice-num">—</div></div>`;
+  if (detail) detail.innerHTML = `<div class="dice-area"><div class="dice-num" id="dice-num">—</div></div>`;
   const v = await performDiceRoll(6);
   const pos = diePositionFor(v);
   const subbed = disablePlayerOnTeam(player, pos, T('cone_event_injury'));
@@ -2369,11 +2396,20 @@ function disablePlayerOnTeam(player, pos, reason) {
   const card = player.team[pos];
   if (!card) return null;
 
-  // Already fully processed: just update reason
-  if (card.disabled && !card._isSub) { card.disabledReason = reason; return null; }
-
   if (!Array.isArray(player.suspended)) player.suspended = [];
   if (!Array.isArray(player.bench)) player.bench = [];
+
+  // If the card was already processed (disabled + in suspended), just update reason and return.
+  // IMPORTANT: only skip if the card is NOT currently in the team slot anymore.
+  if (card.disabled && !card._isSub) {
+    const alreadySuspended = player.suspended.some(e => e.card === card);
+    if (alreadySuspended) {
+      card.disabledReason = reason;
+      return null; // already handled correctly before
+    }
+    // Card is disabled but still in the slot — force-remove it (should not normally happen)
+    console.warn('[VV] disablePlayerOnTeam: disabled card still in slot, forcing removal', pos, card.name);
+  }
 
   // Mark the card as disabled and remove it from the team slot immediately
   card.disabled = true;
@@ -3112,9 +3148,21 @@ async function runAuctionUI(card, titleLabel, firstPlayer) {
     addFeed(`<span style="color:var(--silver)">${de?'Niemand geboten — Karte kommt auf den Markt.':'No bids — card goes to market.'}</span>`);
   }
   refreshTopbar(); refreshTeamPanel();
-  await sleep(speedMs(winner ? 2000 : 1500));
-  closeGamePopup(popId);
-  await sleep(400);
+  // Wait for user to manually close the popup (click OK or ✕)
+  await new Promise(resolve => {
+    // Add an OK button to the feed area
+    const feed = document.getElementById('wa-feed');
+    if (feed) {
+      const okBtn = document.createElement('button');
+      okBtn.className = 'btn btn-primary';
+      okBtn.style.cssText = 'margin-top:0.8rem;width:100%;';
+      okBtn.textContent = de ? '✓ OK' : '✓ OK';
+      okBtn.onclick = () => { closeGamePopup(popId); resolve(); };
+      feed.appendChild(okBtn);
+    }
+    registerPopupClose(popId, () => resolve());
+  });
+  await sleep(200);
 }
 
 async function runWeeklyAuction() {
@@ -3411,7 +3459,7 @@ function marketCardHtml(c, player, opts) {
   const _poolPos = { outside2: 'outside', middle2: 'middle' };
   const _sp = opts && opts.suggestedPos;
   const suggested = _sp && (c.pos === _sp || c.pos === (_poolPos[_sp] || _sp));
-  return `<div class="mc ${canAfford?'':'poor'} ${suggested?'suggested':''}" data-tip="${escapeHTML(c.name)}${cardTipFilenameSuffix(c)}">
+  return `<div class="mc ${canAfford?'':'poor'} ${suggested?'suggested':''}" data-tip="${escapeHTML(c.name)} · ${escapeHTML(cardImageBasename(c))}">
     <div class="card-thumb">
       <img class="mc-img" src="${c.url}" alt="" loading="lazy">
       ${cardNameFileCaptionHtml(c)}
