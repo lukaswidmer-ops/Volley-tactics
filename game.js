@@ -3000,25 +3000,43 @@ function regenMarket() {
 async function runMarketPhase() {
   const g = state.game;
   g.market = regenMarket();
-  renderMarket();
+  const safeRenderMarket = () => {
+    try {
+      renderMarket();
+    } catch (err) {
+      console.error('[VV] renderMarket crashed:', err);
+      setActionsHtml(`<h3>${T('phase_buy')}</h3>${speedToggleHtml()}
+        <button class="action-btn pulse" onclick="VV.endMarket()">${T('finish_buying')}</button>`);
+      toast(`⚠️ ${state.lang==='de'?'Markt-UI Fehler, Schliessen bleibt verfügbar':'Market UI error, close remains available'}`, 'bad', 2800);
+    }
+  };
+  safeRenderMarket();
   // Bots act first, then human's turn (to give clear "your turn" feel)
   for (const bot of g.players.filter(p => !p.isHuman)) {
-    await sleep(speedMs(200)); // bot market buy thinking delay
-    const pick = window.VV_BOTS.pickMarketBuy(bot, g.market);
-    if (pick) {
-      const cur = bot.team[pick.pos];
-      bot.team[pick.pos] = pick;
-      if (cur) bot.bench.push(cur);
-      bot.money -= pick.price;
-      g.market = g.market.filter(c => c.id !== pick.id);
-      logEntry(fmt(T('bot_buys'), `${bot.emoji} ${escapeHTML(bot.name)}`, T('pos_'+pick.pos), pick.stars, fmtMoney(pick.price)), 'tournament');
-    } else {
-      logEntry(fmt(T('bot_skips'), `${bot.emoji} ${escapeHTML(bot.name)}`));
+    try {
+      await sleep(speedMs(200)); // bot market buy thinking delay
+      const pick = window.VV_BOTS.pickMarketBuy(bot, g.market);
+      if (pick) {
+        const cur = bot.team[pick.pos];
+        bot.team[pick.pos] = pick;
+        if (cur) bot.bench.push(cur);
+        bot.money -= pick.price;
+        g.market = g.market.filter(c => c.id !== pick.id);
+        logEntry(fmt(T('bot_buys'), `${bot.emoji} ${escapeHTML(bot.name)}`, T('pos_'+pick.pos), pick.stars, fmtMoney(pick.price)), 'tournament');
+      } else {
+        logEntry(fmt(T('bot_skips'), `${bot.emoji} ${escapeHTML(bot.name)}`));
+      }
+    } catch (err) {
+      console.error('[VV] bot market step crashed:', err);
+      logEntry(`⚠️ ${escapeHTML(bot.name)} ${state.lang==='de'?'Marktfehler — übersprungen':'market error — skipped'}`);
     }
     refreshTopbar();
-    renderMarket();
+    safeRenderMarket();
   }
-  await waitFor('endMarket', speedMs(state.speed === 'auto' ? 600 : 0));
+  safeRenderMarket();
+  const marketAutoCloseMs = state.speed === 'auto' ? speedMs(800) : 45000;
+  setTimeout(() => { if (_waiters['endMarket']) endMarket(); }, marketAutoCloseMs);
+  await waitFor('endMarket', marketAutoCloseMs + 5000);
 }
 
 // ────────────────────────────────────────────────────────────────
