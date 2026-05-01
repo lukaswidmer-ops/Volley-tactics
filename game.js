@@ -499,25 +499,6 @@ function speedMs(ms) {
 }
 function uid(){ return Math.random().toString(36).slice(2,10); }
 function escapeHTML(s){ return String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
-/** Basename of the loaded card image (e.g. outside_01.1Stern.jpg). */
-function cardImageBasename(card) {
-  if (!card) return '';
-  if (card.fileName != null && String(card.fileName)) return String(card.fileName);
-  const u = String(card.url || '');
-  const seg = u.split('/').pop() || '';
-  return seg.split(/[?#]/)[0];
-}
-/** Overlay: Spielername + Dateiname unten rechts auf der Karte. */
-function cardNameFileCaptionHtml(card) {
-  if (!card) return '';
-  const fn = escapeHTML(cardImageBasename(card));
-  const nm = escapeHTML(card.name);
-  return `<div class="card-namefile" aria-hidden="true"><span class="card-namefile-name">${nm}</span><span class="card-namefile-file">${fn}</span></div>`;
-}
-function cardTipFilenameSuffix(card) {
-  const b = cardImageBasename(card);
-  return b ? (' · ' + escapeHTML(b)) : '';
-}
 function cardPrice(stars) { return [0,5000,10000,20000,35000,55000][stars] || 5000; }
 
 // Dice roll utilities
@@ -1063,18 +1044,18 @@ function setupTeamPanelHtml(p) {
     </div>
     ${bench.length ? `<div style="font-size:0.6rem; letter-spacing:2px; text-transform:uppercase; color:rgba(255,255,255,0.3); margin-bottom:0.3rem">Bench (${bench.length})</div>
     <div style="display:flex; flex-wrap:wrap; gap:0.25rem;">
-      ${bench.map(c=>`<div class="slot slot-mini-thumb" style="width:40px;" data-tip="${escapeHTML(c.name)} · ${c.stars}★${cardTipFilenameSuffix(c)}">
+      ${bench.map(c=>`<div class="slot" style="width:40px;" data-tip="${escapeHTML(c.name)}·${c.stars}★">
         <span class="pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
-        <img src="${c.url}" alt="">${cardNameFileCaptionHtml(c)}<div class="stars">${'★'.repeat(c.stars)}</div>
+        <img src="${c.url}" alt=""><div class="stars">${'★'.repeat(c.stars)}</div>
       </div>`).join('')}
     </div>` : ''}`;
 }
 
 function setupSlotHtml(card, pos) {
   if (!card) return `<div class="slot empty vb-team-slot" data-tip="${posLabel(pos)}"><span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span></div>`;
-  return `<div class="slot vb-team-slot" data-tip="${escapeHTML(card.name)} · ${card.stars}★${cardTipFilenameSuffix(card)}">
+  return `<div class="slot vb-team-slot" data-tip="${escapeHTML(card.name)} · ${card.stars}★">
     <span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
-    <img src="${card.url}" alt="">${cardNameFileCaptionHtml(card)}<div class="stars">${'★'.repeat(card.stars)}</div>
+    <img src="${card.url}" alt=""><div class="stars">${'★'.repeat(card.stars)}</div>
   </div>`;
 }
 
@@ -1176,10 +1157,9 @@ function draftHandHtml(p) {
   const all = [...Object.values(p.team).filter(Boolean), ...p.bench];
   if (!all.length) return `<div style="color:var(--silver); font-style:italic;">—</div>`;
   return all.map(c => `
-    <div class="draft-card" data-tip="${escapeHTML(c.name)} · ${c.stars}★${cardTipFilenameSuffix(c)}">
+    <div class="draft-card" data-tip="${escapeHTML(c.name)}·${c.stars}★">
       <span class="pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
       <img src="${c.url}" alt="" loading="lazy">
-      ${cardNameFileCaptionHtml(c)}
       <div class="draft-stars">${'★'.repeat(c.stars)}</div>
     </div>`).join('');
 }
@@ -1384,10 +1364,7 @@ async function runAuctionForCard(card, idx, total) {
           <div>${T('auction_minbid')}: <b>${fmtMoney(minBid)}</b></div>
         </div>
         <div class="auction-card-row">
-          <div class="card-thumb card-thumb-auction">
-            <img class="ac-img" src="${card.url}" alt="">
-            ${cardNameFileCaptionHtml(card)}
-          </div>
+          <img class="ac-img" src="${card.url}" alt="">
           <div class="ac-info">
             <div class="ac-pos" style="background:${posColor(card.pos)}">${posShort(card.pos)} · ${posLabel(card.pos)}</div>
             <div class="ac-stars">${'★'.repeat(card.stars)} <span style="color:var(--silver)">${escapeHTML(card.name)}</span></div>
@@ -1780,11 +1757,10 @@ function teamPanelHtml(p, opts) {
     const sub = card._isSub ? 'is-sub' : '';
     const click = readOnly ? '' : `onclick="VV.handleFloatingClick('${pos}')"`;
     return `<div class="slot vb-team-slot ${dis} ${sub} ${sellMode?'sellable':''}" 
-      data-tip="${escapeHTML(card.name)} · ${card.stars}★${cardTipFilenameSuffix(card)}${card.disabled?' · '+(card.disabledReason||''):''}${sub?' · '+T('sub_tooltip'):''}"
+      data-tip="${escapeHTML(card.name)} · ${card.stars}★${card.disabled?' · '+(card.disabledReason||''):''}${sub?' · '+T('sub_tooltip'):''}"
       ${click}>
       <span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
       <img src="${card.url}" alt="">
-      ${cardNameFileCaptionHtml(card)}
       <div class="stars">${'★'.repeat(card.stars)}</div>
       ${card.disabled?'<div class="dis-overlay">⛔</div>':''}
       ${card._isSub?`<div class="sub-badge">${T('sub_label')}</div>`:''}
@@ -1794,11 +1770,10 @@ function teamPanelHtml(p, opts) {
   function benchSlotHtml(c) {
     const click = readOnly ? '' : `onclick="VV.handleFloatingBenchClick('${c.id}')"`;
     return `<div class="slot vb-bench-slot ${sellMode?'sellable':''}" 
-      data-tip="${escapeHTML(c.name)} · ${c.stars}★ · ${posLabel(c.pos)}${cardTipFilenameSuffix(c)}${c.disabled?' · ⛔':''}"
+      data-tip="${escapeHTML(c.name)} · ${c.stars}★ · ${posLabel(c.pos)}${c.disabled?' · ⛔':''}"
       ${click}>
       <span class="pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
       <img src="${c.url}" alt="">
-      ${cardNameFileCaptionHtml(c)}
       <div class="stars">${'★'.repeat(c.stars)}</div>
       ${c.disabled?'<div class="dis-overlay">⛔</div>':''}
     </div>`;
@@ -1860,10 +1835,9 @@ function slotHtml(card, pos) {
   const dis = card.disabled ? 'disabled' : '';
   const sub = card._isSub ? 'is-sub' : '';
   const subTip = card._isSub ? ` · ${T('sub_tooltip')}${card._subReason?' ('+card._subReason+')':''}` : '';
-  return `<div class="slot ${dis} ${sub}" data-tip="${escapeHTML(card.name)} · ${card.stars}★${cardTipFilenameSuffix(card)}${card.disabled?' · ' + (card.disabledReason||'-'):''}${subTip}">
+  return `<div class="slot ${dis} ${sub}" data-tip="${escapeHTML(card.name)} · ${card.stars}★${card.disabled?' · ' + (card.disabledReason||'-'):''}${subTip}">
     <span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
     <img src="${card.url}" alt="">
-    ${cardNameFileCaptionHtml(card)}
     <div class="stars">${'★'.repeat(card.stars)}</div>
     ${card.disabled?'<div class="dis-overlay">⛔</div>':''}
     ${card._isSub?`<div class="sub-badge" data-tip="${T('sub_tooltip')}">${T('sub_label')}</div>`:''}
@@ -2966,9 +2940,9 @@ async function runMarketPhase() {
 }
 
 // ────────────────────────────────────────────────────────────────
-//  WEEKEND MATCHES — genau 2 Partien pro Woche (4 Spieler):
-//  (1) Mensch vs. ein Bot  (2) die beiden anderen Bots gegeneinander
-//  Rotiert, welcher Bot dich fordert (Woche mod 3). Fallback-Schedule nur ohne genau 1 Human+3 Bots.
+//  WEEKEND MATCHES — genau 1 Partie pro Woche:
+//  Mensch vs. ein rotierender Bot (Woche mod 3).
+//  Fallback (ohne exakt 1 Human+3 Bots): erste valide Paarung aus dem Schedule.
 // ────────────────────────────────────────────────────────────────
 const WEEKEND_SCHEDULE_FALLBACK = [
   [[0, 1], [2, 3]],
@@ -2987,24 +2961,17 @@ function buildWeekendPairings(g, week) {
     const r = ((week - 1) % 3 + 3) % 3;
     const opp = botIdx[r];
     const other = botIdx.filter(i => i !== opp);
-    return [
-      [g.players[humanIdx], g.players[opp]],
-      [g.players[other[0]], g.players[other[1]]],
-    ];
+    return [[g.players[humanIdx], g.players[opp]]];
   }
   const sk = ((week - 1) % WEEKEND_SCHEDULE_FALLBACK.length + WEEKEND_SCHEDULE_FALLBACK.length) % WEEKEND_SCHEDULE_FALLBACK.length;
   const schedule = WEEKEND_SCHEDULE_FALLBACK[sk];
   if (!schedule) return [];
-  const played = new Set();
-  const out = [];
   for (const [hi, ai] of schedule) {
     const home = g.players[hi], away = g.players[ai];
     if (!home || !away) continue;
-    if (played.has(home.id) || played.has(away.id)) continue;
-    played.add(home.id); played.add(away.id);
-    out.push([home, away]);
+    return [[home, away]];
   }
-  return out;
+  return [];
 }
 
 async function runWeekendMatches(week) {
