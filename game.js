@@ -1780,6 +1780,7 @@ function teamPanelHtml(p, opts) {
   // Volleyball rotation: 6 slots on court (same model as match). Team panel + opponent mirror this.
   const s = p.team;
   const bench = p.bench || [];
+  const suspended = Array.isArray(p.suspended) ? p.suspended : [];
   const readOnly = !!(opts && opts.readOnly);
   const sellMode = !readOnly && !!state.sellMode;
   
@@ -1808,6 +1809,26 @@ function teamPanelHtml(p, opts) {
       <img src="${c.url}" alt="">
       <div class="stars">${'★'.repeat(c.stars)}</div>
       ${c.disabled?'<div class="dis-overlay">⛔</div>':''}
+    </div>`;
+  }
+
+  function suspendedSlotHtml(entry) {
+    const c = entry && entry.card;
+    const pos = (entry && entry.pos) || (c && c.pos) || 'outside';
+    const reason = (entry && entry.reason) || (state.lang === 'de' ? 'Ausfall' : 'Unavailable');
+    if (!c) {
+      return `<div class="slot vb-bench-slot vb-suspended-slot empty"
+        data-tip="${escapeHTML(reason)} · ${posLabel(pos)}">
+        <span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
+        <div class="dis-overlay">⛔</div>
+      </div>`;
+    }
+    return `<div class="slot vb-bench-slot vb-suspended-slot disabled"
+      data-tip="${escapeHTML(c.name)} · ${c.stars}★ · ${posLabel(pos)} · ${escapeHTML(reason)}">
+      <span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
+      <img src="${c.url}" alt="">
+      <div class="stars">${'★'.repeat(c.stars)}</div>
+      <div class="dis-overlay">⛔</div>
     </div>`;
   }
 
@@ -1859,6 +1880,10 @@ function teamPanelHtml(p, opts) {
       <div class="vb-bench-label">⬇ ${lang?'Ersatz':'Bench'} (${bench.length})</div>
       <div class="vb-bench-row">
         ${bench.map(c => benchSlotHtml(c)).join('') || `<span style="font-size:0.7rem;color:rgba(255,255,255,0.3)">${lang?'Keine Ersatzspieler':'No bench players'}</span>`}
+      </div>
+      <div class="vb-bench-label vb-out-label">⛔ ${lang?'Ausfälle (Verletzung / Rote Karte)':'Unavailable (Injury / Red Card)'} (${suspended.length})</div>
+      <div class="vb-bench-row vb-out-row">
+        ${suspended.map(e => suspendedSlotHtml(e)).join('') || `<span style="font-size:0.7rem;color:rgba(255,255,255,0.3)">${lang?'Keine Ausfälle':'No unavailable players'}</span>`}
       </div>
     </div>`;
 }
@@ -2374,7 +2399,7 @@ function disablePlayerOnTeam(player, pos, reason) {
   // Pool mapping: outside2 accepts 'outside' bench cards, middle2 accepts 'middle'
   const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
 
-  // Look for a bench card matching the position (exact or pool)
+  // 1) Look for a bench card matching the position (exact or pool)
   const benchIdx = player.bench.findIndex(b => !b.disabled && (b.pos === pos || b.pos === poolPos));
   if (benchIdx >= 0) {
     const sub = player.bench.splice(benchIdx, 1)[0];
@@ -2385,13 +2410,26 @@ function disablePlayerOnTeam(player, pos, reason) {
     return sub;
   }
 
-  // No bench replacement — buy an emergency 1★ card for 10'000
+  // 2) If no matching bench player exists, use any healthy bench player to avoid leaving
+  // the injured/suspended card on court.
+  const anyBenchIdx = player.bench.findIndex(b => !b.disabled);
+  if (anyBenchIdx >= 0) {
+    const sub = player.bench.splice(anyBenchIdx, 1)[0];
+    sub._isSub = true;
+    sub._subReason = (state.lang === 'de' ? `Ersatzfremd auf ${posShort(pos)}` : `Off-position sub on ${posShort(pos)}`);
+    player.team[pos] = sub;
+    player.suspended.push({ card, pos, reason });
+    return sub;
+  }
+
+  // 3) No bench replacement — buy an emergency 1★ card for 10'000
   const cost = 10000;
   player.money = Math.max(0, player.money - cost);
   animateMoneyChange(player, -cost);
   toast(`⚠️ ${state.lang === 'de' ? 'Kein Ersatz — Notfallkauf' : 'No sub — emergency buy'} -${fmtMoney(cost)}'`, 'bad', 2500);
 
-  const opts = (ALL_CARDS || []).filter(c => c.stars === 1 && c.pos === poolPos);
+  let opts = (ALL_CARDS || []).filter(c => c.stars === 1 && c.pos === poolPos);
+  if (!opts.length) opts = (ALL_CARDS || []).filter(c => c.stars === 1);
   if (opts.length) {
     const emergency = choice(opts);
     const em = Object.assign({}, emergency, {
@@ -2859,17 +2897,18 @@ async function showMatchSummary(M, winner, opts = {}) {
   const me = state.game ? (state.game.players.find(p => p.isHuman) || state.game.players[0]) : null;
   const humanInMatch = me && (M.home === me || M.away === me);
   const forceAutoContinue = !!opts.forceAutoContinue;
-  const autoMs = (!humanInMatch || state.speed === 'auto' || forceAutoContinue) ? speedMs(2000) : 0;
+  const shouldAutoContinue = true;
+  const autoMs = shouldAutoContinue ? speedMs(4500) : 0;
   _expectedAdvance = 'continueAfterMatch';
   // Button always in actions panel — never buried in the stage scroll area
   setActionsHtml(`<h3>${T('phase_match')}</h3>${speedToggleHtml()}`);
   // Dice-panel button acts as backup "Continue" trigger during match summary
   const matchDpBtn = document.getElementById('dice-panel-btn');
-  if (humanInMatch && state.speed !== 'auto' && !forceAutoContinue && matchDpBtn) {
+  if (humanInMatch && state.speed !== 'auto' && matchDpBtn) {
     matchDpBtn.disabled = false; matchDpBtn.classList.add('pulse');
     matchDpBtn.textContent = '▶ ' + T('next_match');
   }
-  if (!humanInMatch || state.speed === 'auto' || forceAutoContinue) setTimeout(() => fire('continueAfterMatch'), speedMs(3000));
+  if (shouldAutoContinue) setTimeout(() => fire('continueAfterMatch'), speedMs(2500));
   await waitFor('continueAfterMatch', autoMs);
   if (matchDpBtn) { matchDpBtn.disabled = true; matchDpBtn.classList.remove('pulse'); matchDpBtn.textContent = '🎲 Würfeln'; }
   restoreBoardPanel();
