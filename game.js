@@ -499,6 +499,25 @@ function speedMs(ms) {
 }
 function uid(){ return Math.random().toString(36).slice(2,10); }
 function escapeHTML(s){ return String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+/** Basename of the loaded card image (e.g. outside_01.1Stern.jpg). */
+function cardImageBasename(card) {
+  if (!card) return '';
+  if (card.fileName != null && String(card.fileName)) return String(card.fileName);
+  const u = String(card.url || '');
+  const seg = u.split('/').pop() || '';
+  return seg.split(/[?#]/)[0];
+}
+/** Overlay: Spielername + Dateiname unten rechts auf der Karte. */
+function cardNameFileCaptionHtml(card) {
+  if (!card) return '';
+  const fn = escapeHTML(cardImageBasename(card));
+  const nm = escapeHTML(card.name);
+  return `<div class="card-namefile" aria-hidden="true"><span class="card-namefile-name">${nm}</span><span class="card-namefile-file">${fn}</span></div>`;
+}
+function cardTipFilenameSuffix(card) {
+  const b = cardImageBasename(card);
+  return b ? (' · ' + escapeHTML(b)) : '';
+}
 function cardPrice(stars) { return [0,5000,10000,20000,35000,55000][stars] || 5000; }
 
 // Dice roll utilities
@@ -1044,18 +1063,18 @@ function setupTeamPanelHtml(p) {
     </div>
     ${bench.length ? `<div style="font-size:0.6rem; letter-spacing:2px; text-transform:uppercase; color:rgba(255,255,255,0.3); margin-bottom:0.3rem">Bench (${bench.length})</div>
     <div style="display:flex; flex-wrap:wrap; gap:0.25rem;">
-      ${bench.map(c=>`<div class="slot" style="width:40px;" data-tip="${escapeHTML(c.name)}·${c.stars}★">
+      ${bench.map(c=>`<div class="slot slot-mini-thumb" style="width:40px;" data-tip="${escapeHTML(c.name)} · ${c.stars}★${cardTipFilenameSuffix(c)}">
         <span class="pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
-        <img src="${c.url}" alt=""><div class="stars">${'★'.repeat(c.stars)}</div>
+        <img src="${c.url}" alt="">${cardNameFileCaptionHtml(c)}<div class="stars">${'★'.repeat(c.stars)}</div>
       </div>`).join('')}
     </div>` : ''}`;
 }
 
 function setupSlotHtml(card, pos) {
   if (!card) return `<div class="slot empty vb-team-slot" data-tip="${posLabel(pos)}"><span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span></div>`;
-  return `<div class="slot vb-team-slot" data-tip="${escapeHTML(card.name)} · ${card.stars}★">
+  return `<div class="slot vb-team-slot" data-tip="${escapeHTML(card.name)} · ${card.stars}★${cardTipFilenameSuffix(card)}">
     <span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
-    <img src="${card.url}" alt=""><div class="stars">${'★'.repeat(card.stars)}</div>
+    <img src="${card.url}" alt="">${cardNameFileCaptionHtml(card)}<div class="stars">${'★'.repeat(card.stars)}</div>
   </div>`;
 }
 
@@ -1157,9 +1176,10 @@ function draftHandHtml(p) {
   const all = [...Object.values(p.team).filter(Boolean), ...p.bench];
   if (!all.length) return `<div style="color:var(--silver); font-style:italic;">—</div>`;
   return all.map(c => `
-    <div class="draft-card" data-tip="${c.name} · ${c.stars}★">
+    <div class="draft-card" data-tip="${escapeHTML(c.name)} · ${c.stars}★${cardTipFilenameSuffix(c)}">
       <span class="pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
       <img src="${c.url}" alt="" loading="lazy">
+      ${cardNameFileCaptionHtml(c)}
       <div class="draft-stars">${'★'.repeat(c.stars)}</div>
     </div>`).join('');
 }
@@ -1364,10 +1384,13 @@ async function runAuctionForCard(card, idx, total) {
           <div>${T('auction_minbid')}: <b>${fmtMoney(minBid)}</b></div>
         </div>
         <div class="auction-card-row">
-          <img class="ac-img" src="${card.url}" alt="">
+          <div class="card-thumb card-thumb-auction">
+            <img class="ac-img" src="${card.url}" alt="">
+            ${cardNameFileCaptionHtml(card)}
+          </div>
           <div class="ac-info">
             <div class="ac-pos" style="background:${posColor(card.pos)}">${posShort(card.pos)} · ${posLabel(card.pos)}</div>
-            <div class="ac-stars">${'★'.repeat(card.stars)} <span style="color:var(--silver)">${card.name}</span></div>
+            <div class="ac-stars">${'★'.repeat(card.stars)} <span style="color:var(--silver)">${escapeHTML(card.name)}</span></div>
             <div class="ac-bid">
               <div>${T('auction_currentbid')}: <b style="color:var(--gold)">${currentBid?fmtMoney(currentBid):'—'}</b>${currentHigh?` <span style="color:var(--silver)">(${escapeHTML(currentHigh.name)})</span>`:''}</div>
             </div>
@@ -1757,10 +1780,11 @@ function teamPanelHtml(p, opts) {
     const sub = card._isSub ? 'is-sub' : '';
     const click = readOnly ? '' : `onclick="VV.handleFloatingClick('${pos}')"`;
     return `<div class="slot vb-team-slot ${dis} ${sub} ${sellMode?'sellable':''}" 
-      data-tip="${escapeHTML(card.name)} · ${card.stars}★${card.disabled?' · '+(card.disabledReason||''):''}${sub?' · '+T('sub_tooltip'):''}"
+      data-tip="${escapeHTML(card.name)} · ${card.stars}★${cardTipFilenameSuffix(card)}${card.disabled?' · '+(card.disabledReason||''):''}${sub?' · '+T('sub_tooltip'):''}"
       ${click}>
       <span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
       <img src="${card.url}" alt="">
+      ${cardNameFileCaptionHtml(card)}
       <div class="stars">${'★'.repeat(card.stars)}</div>
       ${card.disabled?'<div class="dis-overlay">⛔</div>':''}
       ${card._isSub?`<div class="sub-badge">${T('sub_label')}</div>`:''}
@@ -1770,10 +1794,11 @@ function teamPanelHtml(p, opts) {
   function benchSlotHtml(c) {
     const click = readOnly ? '' : `onclick="VV.handleFloatingBenchClick('${c.id}')"`;
     return `<div class="slot vb-bench-slot ${sellMode?'sellable':''}" 
-      data-tip="${escapeHTML(c.name)} · ${c.stars}★ · ${posLabel(c.pos)}${c.disabled?' · ⛔':''}"
+      data-tip="${escapeHTML(c.name)} · ${c.stars}★ · ${posLabel(c.pos)}${cardTipFilenameSuffix(c)}${c.disabled?' · ⛔':''}"
       ${click}>
       <span class="pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
       <img src="${c.url}" alt="">
+      ${cardNameFileCaptionHtml(c)}
       <div class="stars">${'★'.repeat(c.stars)}</div>
       ${c.disabled?'<div class="dis-overlay">⛔</div>':''}
     </div>`;
@@ -1835,9 +1860,10 @@ function slotHtml(card, pos) {
   const dis = card.disabled ? 'disabled' : '';
   const sub = card._isSub ? 'is-sub' : '';
   const subTip = card._isSub ? ` · ${T('sub_tooltip')}${card._subReason?' ('+card._subReason+')':''}` : '';
-  return `<div class="slot ${dis} ${sub}" data-tip="${escapeHTML(card.name)} · ${card.stars}★${card.disabled?' · ' + (card.disabledReason||'-'):''}${subTip}">
+  return `<div class="slot ${dis} ${sub}" data-tip="${escapeHTML(card.name)} · ${card.stars}★${cardTipFilenameSuffix(card)}${card.disabled?' · ' + (card.disabledReason||'-'):''}${subTip}">
     <span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
     <img src="${card.url}" alt="">
+    ${cardNameFileCaptionHtml(card)}
     <div class="stars">${'★'.repeat(card.stars)}</div>
     ${card.disabled?'<div class="dis-overlay">⛔</div>':''}
     ${card._isSub?`<div class="sub-badge" data-tip="${T('sub_tooltip')}">${T('sub_label')}</div>`:''}
@@ -2212,9 +2238,12 @@ function humanBidPopup(p, card, minNext) {
     const id = 'transfer-bid-popup';
     const body = `
       <div style="display:flex;gap:1rem;align-items:flex-start;margin-bottom:1rem;">
-        <img src="${card.url}" style="width:80px;border-radius:4px;" alt="">
+        <div class="card-thumb card-thumb-narrow" style="width:80px;flex-shrink:0;">
+          <img src="${card.url}" style="width:100%;border-radius:4px;display:block;" alt="">
+        </div>
         <div>
           <div style="font-weight:700;font-size:1rem;">${escapeHTML(card.name)}</div>
+          <div style="color:var(--silver);font-size:0.72rem;word-break:break-all;">${escapeHTML(cardImageBasename(card))}</div>
           <div style="color:var(--silver);font-size:0.8rem;">${'\u2605'.repeat(card.stars)} \u00b7 ${posLabel(card.pos)}</div>
           <div style="color:var(--silver);font-size:0.8rem;margin-top:0.3rem;">${T('auction_minbid')}: <b>${fmtMoney(minNext)}'</b> \u00b7 ${T('money')}: <b>${fmtMoney(p.money)}'</b></div>
         </div>
@@ -3007,9 +3036,13 @@ async function runWeekendMatches(week) {
       winner.money += 3000;
       winner.totalEarned += 3000;
       animateMoneyChange(winner, 3000);
+      winner.matchesWon = (winner.matchesWon || 0) + 1;
+      winner.leaguePoints = leaguePointsVal(winner) + 3;
       const loser = winner === home ? away : home;
-      logEntry(`🏅 ${T('weekend_match')} W${week} ${matchLabel}: <b>${escapeHTML(winner.name)}</b> +3' · ${escapeHTML(loser.name)}`, 'tournament');
+      logEntry(`🏅 ${T('weekend_match')} W${week} ${matchLabel}: <b>${escapeHTML(winner.name)}</b> +3' · +3 LP · ${escapeHTML(loser.name)}`, 'tournament');
     } else {
+      home.leaguePoints = leaguePointsVal(home) + 1;
+      away.leaguePoints = leaguePointsVal(away) + 1;
       logEntry(`🏅 ${T('weekend_match')} W${week} ${matchLabel}: 🤝 ${escapeHTML(home.name)} — ${escapeHTML(away.name)}`);
     }
 
@@ -3069,8 +3102,11 @@ function oneStarMarketHtml(me, weakPos) {
     if (!c) return '';
     const canAfford = me.money >= 10000;
     const suggested = pos === weakPos;
-    return `<div class="mc ${canAfford?'':'poor'} ${suggested?'suggested':''}" data-tip="1★ ${posLabel(pos)} · 10’000">
-      <img class="mc-img" src="${c.url}" alt="" loading="lazy">
+    return `<div class="mc ${canAfford?'':'poor'} ${suggested?'suggested':''}" data-tip="1★ ${posLabel(pos)} · 10’000 · ${escapeHTML(cardImageBasename(c))}">
+      <div class="card-thumb">
+        <img class="mc-img" src="${c.url}" alt="" loading="lazy">
+        ${cardNameFileCaptionHtml(c)}
+      </div>
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <span class="mc-pos" style="background:${posColor(pos)}">${posShort(pos)}</span>
         <span class="mc-stars">★</span>
@@ -3084,7 +3120,10 @@ function oneStarMarketHtml(me, weakPos) {
 function benchCardHtml(c, me) {
   const sellPrice = Math.floor(c.stars * 10000 / 2);
   return `<div class="bc">
-    <img src="${c.url}" alt="" class="bc-img" loading="lazy">
+    <div class="card-thumb">
+      <img src="${c.url}" alt="" class="bc-img" loading="lazy">
+      ${cardNameFileCaptionHtml(c)}
+    </div>
     <div class="bc-meta">
       <span class="mc-pos" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
       <span class="mc-stars">${'★'.repeat(c.stars)}</span>
@@ -3153,8 +3192,11 @@ function marketCardHtml(c, player, opts) {
   const _poolPos = { outside2: 'outside', middle2: 'middle' };
   const _sp = opts && opts.suggestedPos;
   const suggested = _sp && (c.pos === _sp || c.pos === (_poolPos[_sp] || _sp));
-  return `<div class="mc ${canAfford?'':'poor'} ${suggested?'suggested':''}" data-tip="${escapeHTML(c.name)}">
-    <img class="mc-img" src="${c.url}" alt="" loading="lazy">
+  return `<div class="mc ${canAfford?'':'poor'} ${suggested?'suggested':''}" data-tip="${escapeHTML(c.name)}${cardTipFilenameSuffix(c)}">
+    <div class="card-thumb">
+      <img class="mc-img" src="${c.url}" alt="" loading="lazy">
+      ${cardNameFileCaptionHtml(c)}
+    </div>
     <div style="display:flex; justify-content:space-between; align-items:center;">
       <span class="mc-pos" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
       <span class="mc-stars">${'★'.repeat(c.stars)}</span>

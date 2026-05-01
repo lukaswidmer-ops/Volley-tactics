@@ -1,7 +1,7 @@
 /* ===========================================================
    VOLLEY VENDETTA — Card Database
    -----------------------------------------------------------
-   Each card: { id, name, pos, stars, url, nation }
+   Each card: { id, name, pos, stars, url, fileName, nation }
    Positions: 'outside' | 'middle' | 'setter' | 'diagonal' | 'libero'
 
    URLs point directly to the real card image files.
@@ -177,13 +177,15 @@
     let id = 1;
     for (const row of ROSTER) {
       const [name, pos, stars, nation, file] = row;
+      const fileName = file.replace(/\.png$/, '.jpg');
       out.push({
-        id:     'c' + (id++),
-        name:   name,
-        pos:    pos,
-        stars:  stars,
-        url:    (POS_FOLDER[pos] || 'cards') + '/' + file.replace(/\.png$/, '.jpg'),
-        nation: nation
+        id:       'c' + (id++),
+        name:     name,
+        pos:      pos,
+        stars:    stars,
+        url:      (POS_FOLDER[pos] || 'cards') + '/' + fileName,
+        fileName: fileName,
+        nation:   nation
       });
     }
     return out;
