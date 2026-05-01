@@ -2045,6 +2045,8 @@ async function runSeason() {
     setPhase('weekend');
     await runWeekendMatches(g.week);
     if (g.over) return;
+    // After weekend, restore suspended/injured players for the next week
+    restoreDisabledCards(true);
     g.week += 1;
   }
   // Season end
@@ -2172,11 +2174,8 @@ async function resolveDay(day, triggerPlayer) {
     return;
   }
   if (dInW === 8) {
-    // League match line — auto trigger as cone passes
-    appendConeLog(`<b>${T('phase_match')}</b> · ${T('week')} ${w}`);
-    await runLeagueMatch();
-    // After league match, restore disabled cards (suspensions/injuries/VNL)
-    restoreDisabledCards(true);
+    // End of week — just log it; the weekly match is the weekend fixture
+    appendConeLog(`<b>${T('week')} ${w} — ${state.lang === 'de' ? 'Wochenende' : 'Weekend'}</b>`);
     return;
   }
   // Fixed event per day-in-week (spec §2.7)
@@ -3002,6 +3001,8 @@ function regenMarket() {
 
 async function runMarketPhase() {
   const g = state.game;
+  // Clear any stale fire from error-recovery blocks so the market doesn't close immediately
+  delete _pendingFires['endMarket'];
   g.market = regenMarket();
   const safeRenderMarket = () => {
     try {
@@ -3080,6 +3081,9 @@ function buildWeekendPairings(g, week) {
 
 async function runWeekendMatches(week) {
   const g = state.game;
+  // Clear stale fires so weekend matches start cleanly
+  delete _pendingFires['continueAfterMatch'];
+  delete _pendingFires['serveOnce'];
   const pairings = buildWeekendPairings(g, week);
   if (!pairings.length) return;
 
