@@ -2949,44 +2949,59 @@ async function runMarketPhase() {
 }
 
 // ────────────────────────────────────────────────────────────────
-//  WEEKEND MATCHES — Round-Robin schedule, 2 matches per week
-//  Players: index 0 = human (Lukas), 1 = BotA, 2 = BotB, 3 = BotC
-//  Each week: human always plays in Match 1; bot-vs-bot in Match 2
+//  WEEKEND MATCHES — genau 2 Partien pro Woche (4 Spieler):
+//  (1) Mensch vs. ein Bot  (2) die beiden anderen Bots gegeneinander
+//  Rotiert, welcher Bot dich fordert (Woche mod 3). Fallback-Schedule nur ohne genau 1 Human+3 Bots.
 // ────────────────────────────────────────────────────────────────
-const WEEKEND_SCHEDULE = [
-  // [match1: [homeIdx, awayIdx], match2: [homeIdx, awayIdx]]
-  [[0, 1], [2, 3]],  // Week 1
-  [[0, 2], [3, 1]],  // Week 2
-  [[0, 3], [1, 2]],  // Week 3
-  [[0, 1], [2, 3]],  // Week 4
-  [[0, 2], [3, 1]],  // Week 5
-  [[0, 3], [1, 2]],  // Week 6
+const WEEKEND_SCHEDULE_FALLBACK = [
+  [[0, 1], [2, 3]],
+  [[0, 2], [3, 1]],
+  [[0, 3], [1, 2]],
+  [[0, 1], [2, 3]],
+  [[0, 2], [3, 1]],
+  [[0, 3], [1, 2]],
 ];
+
+function buildWeekendPairings(g, week) {
+  const humanIdx = g.players.findIndex(p => p.isHuman);
+  const botIdx = g.players.map((p, i) => (p.isHuman ? -1 : i)).filter(i => i >= 0);
+  if (humanIdx >= 0 && botIdx.length === 3) {
+    const r = (week - 1) % 3;
+    const opp = botIdx[r];
+    const other = botIdx.filter(i => i !== opp);
+    return [
+      [g.players[humanIdx], g.players[opp]],
+      [g.players[other[0]], g.players[other[1]]],
+    ];
+  }
+  const schedule = WEEKEND_SCHEDULE_FALLBACK[(week - 1) % WEEKEND_SCHEDULE_FALLBACK.length];
+  if (!schedule) return [];
+  const played = new Set();
+  const out = [];
+  for (const [hi, ai] of schedule) {
+    const home = g.players[hi], away = g.players[ai];
+    if (!home || !away) continue;
+    if (played.has(home.id) || played.has(away.id)) continue;
+    played.add(home.id); played.add(away.id);
+    out.push([home, away]);
+  }
+  return out;
+}
 
 async function runWeekendMatches(week) {
   const g = state.game;
-  const schedule = WEEKEND_SCHEDULE[week - 1];
-  if (!schedule) return;
-  const me = g.players[0];
-  // Each team plays exactly once per weekend (2 matches total for 4 teams).
-  // Guard against bad schedules that accidentally include a team twice.
-  const played = new Set();
-  for (let mi = 0; mi < schedule.length; mi++) {
-    const [hi, ai] = schedule[mi];
-    const home = g.players[hi];
-    const away = g.players[ai];
-    if (!home || !away) continue;
-    if (played.has(home.id) || played.has(away.id)) {
-      console.warn('[VV] Weekend duplicate prevented:', week, home.name, away.name);
-      continue;
-    }
-    played.add(home.id); played.add(away.id);
+  const pairings = buildWeekendPairings(g, week);
+  if (!pairings.length) return;
 
-    const isHumanMatch = (home === me || away === me);
+  for (let mi = 0; mi < pairings.length; mi++) {
+    const [home, away] = pairings[mi];
+    if (!home || !away) continue;
+
+    const isHumanMatch = !!(home.isHuman || away.isHuman);
     const matchLabel = mi === 0 ? T('weekend_match1') : T('weekend_match2');
 
     if (isHumanMatch) {
-      const opp = home === me ? away : home;
+      const opp = home.isHuman ? away : home;
       showOpponentBoard(opp);
     }
 
