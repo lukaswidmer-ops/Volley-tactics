@@ -11,6 +11,16 @@
   --shadow:0 10px 30px rgba(0,0,0,0.5);
 }
 html, body { height:100%; overflow-x:hidden; }
+/* Scrollbars ausblenden — Scrollen per Mausrad, Touch, Tastatur unverändert */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  background: transparent;
+}
 body {
   background:var(--dark); color:#fff; font-family:'Barlow',sans-serif;
   min-height:100vh; -webkit-font-smoothing:antialiased;
