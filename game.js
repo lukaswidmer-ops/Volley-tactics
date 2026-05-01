@@ -1347,7 +1347,24 @@ async function renderAuction() {
 
 async function runOpeningAuction() {
   const g = state.game;
-  const cards = g.auctionDeck.splice(0, 6);
+  let cards = g.auctionDeck.splice(0, 6)
+    .filter(c => c && Number.isFinite(Number(c.stars)));
+  // Safety net: if the deck got short/corrupt, rebuild enough auction cards so setup never soft-locks.
+  if (cards.length < 6) {
+    const missing = 6 - cards.length;
+    const refill = ALL_CARDS
+      .filter(c => c && Number(c.stars) >= 2)
+      .sort(() => Math.random() - 0.5)
+      .slice(0, missing);
+    cards = cards.concat(refill);
+  }
+  const stage = $('#auction-stage');
+  if (!cards.length) {
+    if (stage) {
+      stage.innerHTML = `<div class="event-card"><div class="event-h">${state.lang==='de'?'Auktion konnte nicht gestartet werden':'Auction could not start'}</div><div class="event-p">${state.lang==='de'?'Es wurden keine gültigen Auktionskarten gefunden. Starte bitte ein neues Spiel.':'No valid auction cards found. Please start a new game.'}</div></div>`;
+    }
+    return;
+  }
   for (let i = 0; i < cards.length; i++) {
     await runAuctionForCard(cards[i], i+1, cards.length);
     refreshTopbar();
@@ -1356,8 +1373,10 @@ async function runOpeningAuction() {
 }
 
 async function runAuctionForCard(card, idx, total) {
+  if (!card || !Number.isFinite(Number(card.stars))) return;
   const stage = $('#auction-stage');
-  const minBid = card.stars * 10000;
+  const cardStars = Math.max(1, Math.floor(Number(card.stars) || 1));
+  const minBid = cardStars * 10000;
   let high = 0; let highBidder = null;
   // Auction rounds: youngest first (we treat human as youngest), then clockwise
   let currentBid = 0;
@@ -1380,7 +1399,7 @@ async function runAuctionForCard(card, idx, total) {
           <img class="ac-img" src="${card.url}" alt="">
           <div class="ac-info">
             <div class="ac-pos" style="background:${posColor(card.pos)}">${posShort(card.pos)} · ${posLabel(card.pos)}</div>
-            <div class="ac-stars">${'★'.repeat(card.stars)} <span style="color:var(--silver)">${escapeHTML(card.name)}</span></div>
+            <div class="ac-stars">${'★'.repeat(cardStars)} <span style="color:var(--silver)">${escapeHTML(card.name)}</span></div>
             <div class="ac-bid">
               <div>${T('auction_currentbid')}: <b style="color:var(--gold)">${currentBid?fmtMoney(currentBid):'—'}</b>${currentHigh?` <span style="color:var(--silver)">(${escapeHTML(currentHigh.name)})</span>`:''}</div>
             </div>
