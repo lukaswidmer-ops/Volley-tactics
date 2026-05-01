@@ -1848,15 +1848,21 @@ function teamPanelHtml(p, opts) {
     shownKeys.add(rk);
     return teamSlotHtml(s[rk], rk);
   }).join('');
-  const offCourtExtras = POSITIONS.filter(k => s[k] && !shownKeys.has(k))
-    .map(k => teamSlotHtml(s[k], k)).join('');
-  const offCourtRow = offCourtExtras
-    ? `<div class="vb-row-label" style="margin-top:0.45rem">${lang?'Aktuell nicht auf den 6 Feldpositionen':'Not on the six court slots'}</div>
-       <div class="vb-row vb-row-3" style="flex-wrap:wrap;justify-content:center;">${offCourtExtras}</div>`
+  // Off-court positions (the 7th slot not in the 3×2 rotation) → shown right of court
+  const offCourtKeys = POSITIONS.filter(k => !shownKeys.has(k));
+  const offCourtPanel = offCourtKeys.length
+    ? `<div class="vb-mb2-panel">
+        <div class="vb-mb2-label">
+          <span class="vb-mb2-icon">↔</span>
+          ${offCourtKeys.map(k => `<span>${posShort(k)}</span>`).join('')}
+          <span style="font-size:0.48rem;opacity:0.45">${lang?'raus-rot.':'rotated'}</span>
+        </div>
+        ${offCourtKeys.map(k => teamSlotHtml(s[k] || null, k)).join('')}
+      </div>`
     : '';
+
   return `
     ${readOnly ? '' : `<div class="vb-sell-bar">
-      <span style="font-size:0.7rem;color:var(--silver)">${lang?'Klicke Karte zum Verkaufen':'Click card to sell'}</span>
       <button class="vb-sell-toggle ${sellMode?'on':''}" onclick="VV.toggleSellMode()">
         🔴 ${sellMode?(lang?'Verkauf AN':'Sell ON'):(lang?'Verkaufen':'Sell')}
       </button>
@@ -1864,28 +1870,21 @@ function teamPanelHtml(p, opts) {
     <div class="vb-formation-wrap">
       <div class="vb-formation">
         <div class="vb-net-line"></div>
-        <div class="vb-pos-labels">
-          <span>4</span><span>3</span><span>2</span>
-        </div>
-        <div class="vb-row-label">${lang?'Vorne (netznahe)':'Front (near net)'}</div>
         <div class="vb-row vb-row-3">${frontCells}</div>
-        <div class="vb-pos-labels" style="margin-top:0.5rem">
-          <span>5</span><span>6</span><span>1</span>
-        </div>
-        <div class="vb-row-label">${lang?'Hinten':'Back'}</div>
-        <div class="vb-row vb-row-3">${backCells}</div>
-        ${offCourtRow}
+        <div class="vb-row vb-row-3" style="margin-top:0.35rem">${backCells}</div>
       </div>
+      ${offCourtPanel}
     </div>
     <div class="vb-bench">
-      <div class="vb-bench-label">⬇ ${lang?'Ersatz':'Bench'} (${bench.length})</div>
+      <div class="vb-bench-label">⬇ ${lang?'Bank':'Bench'} (${bench.length})</div>
       <div class="vb-bench-row">
-        ${bench.map(c => benchSlotHtml(c)).join('') || `<span style="font-size:0.7rem;color:rgba(255,255,255,0.3)">${lang?'Keine Ersatzspieler':'No bench players'}</span>`}
+        ${bench.map(c => benchSlotHtml(c)).join('') || `<span style="font-size:0.7rem;color:rgba(255,255,255,0.3)">${lang?'Leer':'Empty'}</span>`}
       </div>
-      <div class="vb-bench-label vb-out-label">⛔ ${lang?'Ausfälle (Verletzung / Rote Karte)':'Unavailable (Injury / Red Card)'} (${suspended.length})</div>
+      ${suspended.length ? `
+      <div class="vb-bench-label vb-out-label">⛔ ${lang?'Ausfälle':'Out'} (${suspended.length})</div>
       <div class="vb-bench-row vb-out-row">
-        ${suspended.map(e => suspendedSlotHtml(e)).join('') || `<span style="font-size:0.7rem;color:rgba(255,255,255,0.3)">${lang?'Keine Ausfälle':'No unavailable players'}</span>`}
-      </div>
+        ${suspended.map(e => suspendedSlotHtml(e)).join('')}
+      </div>` : ''}
     </div>`;
 }
 function slotHtml(card, pos) {
@@ -2091,13 +2090,8 @@ async function runConeRoll(player) {
       dpBtn.classList.add('pulse');
       dpBtn.textContent = player.isHuman ? '🎲 Würfeln' : ('▶ ' + (state.lang === 'de' ? 'Weiter (Bot würfelt)' : 'Continue (bot rolls)'));
     }
-    if (player.isHuman) {
-      await waitFor('coneRollNow');
-    } else {
-      // Bots should never block on manual confirmation in normal speed.
-      setTimeout(() => fire('coneRollNow'), speedMs(1200));
-      await waitFor('coneRollNow', speedMs(3000));
-    }
+    // Human AND bot turns both wait for the user to click "▶ Weiter (Bot würfelt)" / "🎲 Würfeln"
+    await waitFor('coneRollNow');
     if (dpBtn) {
       dpBtn.disabled = true;
       dpBtn.classList.remove('pulse');
@@ -3008,7 +3002,9 @@ async function runMarketPhase() {
   const g = state.game;
   // Clear any stale fire from error-recovery blocks so the market doesn't close immediately
   delete _pendingFires['endMarket'];
+  delete _waiters['endMarket'];
   g.market = regenMarket();
+  console.log('[VV] runMarketPhase: market cards =', g.market.length, '| marketPile =', g.marketPile.length);
   const safeRenderMarket = () => {
     try {
       renderMarket();
@@ -3020,6 +3016,7 @@ async function runMarketPhase() {
     }
   };
   safeRenderMarket();
+  console.log('[VV] runMarketPhase: popup gerendert, starte Bot-Käufe');
   // Bots act first, then human's turn (to give clear "your turn" feel)
   for (const bot of g.players.filter(p => !p.isHuman)) {
     try {
@@ -3043,9 +3040,11 @@ async function runMarketPhase() {
     safeRenderMarket();
   }
   safeRenderMarket();
-  const marketAutoCloseMs = state.speed === 'auto' ? speedMs(800) : 45000;
-  setTimeout(() => { if (_waiters['endMarket']) endMarket(); }, marketAutoCloseMs);
-  await waitFor('endMarket', marketAutoCloseMs + 5000);
+  console.log('[VV] runMarketPhase: Bot-Käufe fertig, warte auf endMarket. pendingFires =', JSON.stringify(_pendingFires));
+  const marketAutoCloseMs = state.speed === 'auto' ? speedMs(800) : 0; // 0 = no auto-close; human must click
+  if (marketAutoCloseMs > 0) setTimeout(() => { if (_waiters['endMarket']) endMarket(); }, marketAutoCloseMs);
+  await waitFor('endMarket', marketAutoCloseMs || undefined);
+  console.log('[VV] runMarketPhase: endMarket resolved, Markt geschlossen');
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -3137,7 +3136,7 @@ async function runWeekendMatches(week) {
 
 function marketBodyHtml(me, weakPos) {
   const de = state.lang === 'de';
-  const unsoldCards = state.game.market; // already filtered unsold auction cards
+  const unsoldCards = (state.game.market || []).filter(Boolean); // already filtered unsold auction cards
   return `
     <div class="gp-market-info">
       <span>${T('market_budget')}: <b id="budget-num">${fmtMoney(me.money)}'</b></span>
@@ -3159,6 +3158,11 @@ function marketBodyHtml(me, weakPos) {
 function renderMarket() {
   if (!state.game) return;
   const me = state.game.players[0];
+  if (!me) return;
+  // Ensure bench has no nulls (safety after injury/emergency-buy flows)
+  if (Array.isArray(me.bench)) me.bench = me.bench.filter(Boolean);
+  if (!Array.isArray(me.bench)) me.bench = [];
+  if (!Array.isArray(state.game.market)) state.game.market = [];
   const weakPos = weakestPosition(me);
   const title = state.lang === 'de' ? 'MARKT' : 'MARKET';
   const body = marketBodyHtml(me, weakPos);
@@ -3166,11 +3170,9 @@ function renderMarket() {
   if (existing && existing.classList.contains('open')) {
     updateGamePopupBody('market-popup', body);
   } else {
-    // ✕ / backdrop close = same as "Fertig kaufen" (run full endMarket logic)
     registerPopupClose('market-popup', () => { if (_waiters['endMarket']) endMarket(); });
     openGamePopup('market-popup', title, body);
   }
-  // Also expose "Fertig" in the actions panel so the user can always find it
   setActionsHtml(`<h3>${T('phase_buy')}</h3>${speedToggleHtml()}
     <button class="action-btn pulse" onclick="VV.endMarket()">${T('finish_buying')}</button>`);
 }
