@@ -2126,7 +2126,7 @@ async function runConeRoll(player) {
       setTimeout(()=>fire('coneContinue'), lastDayWasLeague ? speedMs(2000) : speedMs(3000));
     }
     // Manual flow for normal speed (also for bots): user confirms each step.
-    const continueAutoMs = (state.speed === 'auto' || !player.isHuman) ? speedMs(4000) : speedMs(10000);
+    const continueAutoMs = (state.speed === 'auto' || !player.isHuman) ? speedMs(4000) : 0;
     await waitFor('coneContinue', continueAutoMs);
     if (dpBtn2) { dpBtn2.disabled = true; dpBtn2.classList.remove('pulse'); dpBtn2.textContent = '🎲 Würfeln'; }
   }
@@ -2893,7 +2893,7 @@ async function showMatchSummary(M, winner, opts = {}) {
     return;
   }
 
-  const shouldAutoContinue = true;
+  const shouldAutoContinue = (state.speed === 'auto') || forceAutoContinue;
   const autoMs = shouldAutoContinue ? speedMs(4500) : 0;
   _expectedAdvance = 'continueAfterMatch';
   // Button always in actions panel — never buried in the stage scroll area
@@ -3056,21 +3056,16 @@ const WEEKEND_SCHEDULE_FALLBACK = [
 function buildWeekendPairings(g, week) {
   const humanIdx = g.players.findIndex(p => p.isHuman);
   const botIdx = g.players.map((p, i) => (p.isHuman ? -1 : i)).filter(i => i >= 0);
-  if (humanIdx >= 0 && botIdx.length === 3) {
-    // Euclidian mod — (0-1)%3 in JS is -1, which would pick botIdx[-1] on a stray week 0.
-    const r = ((week - 1) % 3 + 3) % 3;
+  if (humanIdx >= 0 && botIdx.length >= 1) {
+    // Exactly one weekend fixture: human vs rotating bot.
+    const r = ((week - 1) % botIdx.length + botIdx.length) % botIdx.length;
     const opp = botIdx[r];
-    const other = botIdx.filter(i => i !== opp);
-    return [[g.players[humanIdx], g.players[opp]]];
+    if (g.players[humanIdx] && g.players[opp]) {
+      return [[g.players[humanIdx], g.players[opp]]];
+    }
+    return [];
   }
-  const sk = ((week - 1) % WEEKEND_SCHEDULE_FALLBACK.length + WEEKEND_SCHEDULE_FALLBACK.length) % WEEKEND_SCHEDULE_FALLBACK.length;
-  const schedule = WEEKEND_SCHEDULE_FALLBACK[sk];
-  if (!schedule) return [];
-  for (const [hi, ai] of schedule) {
-    const home = g.players[hi], away = g.players[ai];
-    if (!home || !away) continue;
-    return [[home, away]];
-  }
+  // No human player found -> no weekend fixture in this mode.
   return [];
 }
 
@@ -3084,6 +3079,7 @@ async function runWeekendMatches(week) {
     if (!home || !away) continue;
 
     const isHumanMatch = !!(home.isHuman || away.isHuman);
+    if (!isHumanMatch) continue; // safety: weekend must always be human vs bot
     const matchLabel = mi === 0 ? T('weekend_match1') : T('weekend_match2');
 
     if (isHumanMatch) {
