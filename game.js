@@ -2237,8 +2237,21 @@ async function applyRedCard(player) {
   refreshFloatingPanel();
 }
 
+function drawAuctionCard() {
+  const g = state.game;
+  if (!Array.isArray(g.auctionDeck)) g.auctionDeck = [];
+  if (g.auctionDeck.length === 0) {
+    // Deck is empty — reshuffle all 2-5★ cards into a fresh deck
+    g.auctionDeck = (ALL_CARDS || [])
+      .filter(c => c && Number(c.stars) >= 2)
+      .sort(() => Math.random() - 0.5);
+    console.log('[VV] auctionDeck refilled:', g.auctionDeck.length, 'cards');
+  }
+  return g.auctionDeck.shift() || null;
+}
+
 async function applyTransfer(player) {
-  const card = state.game.auctionDeck.shift();
+  const card = drawAuctionCard();
   if (!card) { appendConeLog(T('auction_no_one')); return; }
   let high = 0, highP = null;
   const order = state.game.players.slice();
@@ -2998,11 +3011,134 @@ function regenMarket() {
   return state.game.marketPile.slice();
 }
 
+async function runWeeklyAuction() {
+  const g = state.game;
+  const card = drawAuctionCard();
+  if (!card) return;
+  const de = state.lang === 'de';
+  const minBid = (card.stars || 1) * 10000;
+  const order = g.players.slice();
+  let currentBid = 0, winner = null;
+  // Build a popup for the auction
+  const popId = 'weekly-auction-popup';
+  const renderAuctionPopup = (feedLines) => {
+    const feedHtml = feedLines.map(l => `<div style="font-size:0.78rem;color:var(--silver);margin-top:0.2rem;">${l}</div>`).join('');
+    const body = `
+      <div style="display:flex;gap:1rem;align-items:flex-start;margin-bottom:0.8rem;">
+        <div style="width:90px;flex-shrink:0;border-radius:6px;overflow:hidden;border:2px solid var(--gold);">
+          <img src="${card.url}" style="width:100%;display:block;" alt="">
+        </div>
+        <div>
+          <div style="font-weight:700;font-size:1rem;">${escapeHTML(card.name)}</div>
+          <div style="color:var(--silver);font-size:0.78rem;">${'★'.repeat(card.stars || 1)} · ${posLabel(card.pos)}</div>
+          <div style="margin-top:0.5rem;font-size:0.82rem;">${de?'Mindestgebot':'Min. bid'}: <b style="color:var(--gold)">${fmtMoney(minBid)}</b></div>
+          <div style="font-size:0.82rem;">${de?'Aktuelles Gebot':'Current bid'}: <b style="color:var(--gold)">${currentBid ? fmtMoney(currentBid) : '—'}</b>${winner ? ` <span style="color:var(--silver)">(${escapeHTML(winner.name)})</span>` : ''}</div>
+        </div>
+      </div>
+      <div id="wa-feed" style="max-height:90px;overflow:auto;margin-bottom:0.6rem;">${feedHtml}</div>
+      <div id="wa-input"></div>`;
+    openGamePopup(popId, `🔖 ${de?'Wöchentliche Auktion':'Weekly Auction'}`, body);
+  };
+  const feedLines = [];
+  const addFeed = (line) => {
+    feedLines.push(line);
+    const feed = document.getElementById('wa-feed');
+    if (feed) feed.innerHTML = feedLines.map(l => `<div style="font-size:0.78rem;color:var(--silver);margin-top:0.2rem;">${l}</div>`).join('');
+  };
+  renderAuctionPopup([]);
+
+  // Bidding rounds
+  let passes = new Set();
+  let lastBidder = null;
+  while (true) {
+    let bidThisRound = false;
+    for (const p of order) {
+      if (passes.has(p.id)) continue;
+      if (lastBidder === p.id && order.filter(x => !passes.has(x.id)).length <= 1) break;
+      const minNext = currentBid > 0 ? currentBid + 1000 : minBid;
+      if (p.money < minNext) { passes.add(p.id); continue; }
+      if (p.isHuman) {
+        // Show bid/pass input inside the popup
+        renderAuctionPopup(feedLines);
+        const result = await new Promise(resolve => {
+          const inputDiv = document.getElementById('wa-input');
+          if (!inputDiv) { resolve({ pass: true }); return; }
+          const sugg = Math.min(p.money, minNext);
+          inputDiv.innerHTML = `
+            <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+              <span style="font-size:0.82rem;">${de?'Dein Gebot':'Your bid'} (min ${fmtMoney(minNext)}):</span>
+              <input type="number" id="wa-bid-inp" min="${minNext}" max="${p.money}" step="1000" value="${sugg}"
+                style="width:110px;padding:0.3rem 0.5rem;background:#111;border:1px solid var(--line);color:#fff;border-radius:4px;font-size:0.88rem;">
+              <button class="btn btn-primary" id="wa-bid-btn">${de?'Bieten':'Bid'}</button>
+              <button class="btn btn-secondary" id="wa-pass-btn">${de?'Passen':'Pass'}</button>
+            </div>`;
+          const go = () => {
+            const v = parseInt(document.getElementById('wa-bid-inp')?.value || '0', 10);
+            if (!Number.isFinite(v) || v < minNext) { toast(de?'Gebot zu niedrig':'Bid too low','bad'); return; }
+            if (v > p.money) { toast(de?'Nicht genug Geld':'Not enough money','bad'); return; }
+            resolve({ bid: v });
+          };
+          document.getElementById('wa-bid-btn').onclick = go;
+          document.getElementById('wa-bid-inp').onkeydown = e => { if (e.key === 'Enter') go(); };
+          document.getElementById('wa-pass-btn').onclick = () => resolve({ pass: true });
+        });
+        if (result.pass) {
+          passes.add(p.id);
+          addFeed(`${p.emoji} ${escapeHTML(p.name)} → ${de?'Passt':'Pass'}`);
+        } else {
+          currentBid = result.bid; winner = p; lastBidder = p.id; bidThisRound = true;
+          addFeed(`<b>${p.emoji} ${escapeHTML(p.name)}</b> → ${fmtMoney(currentBid)}`);
+          beep(820, 50);
+        }
+      } else {
+        await sleep(speedMs(350));
+        const dec = window.VV_BOTS.shouldBid(p, card, currentBid, minNext, order);
+        if (!dec || dec.pass || dec.bid < minNext || dec.bid > p.money) {
+          passes.add(p.id);
+          addFeed(`${p.emoji} ${escapeHTML(p.name)} → ${de?'Passt':'Pass'}`);
+        } else {
+          currentBid = dec.bid; winner = p; lastBidder = p.id; bidThisRound = true;
+          addFeed(`<b>${p.emoji} ${escapeHTML(p.name)}</b> → ${fmtMoney(currentBid)}`);
+          beep(740, 50);
+        }
+        renderAuctionPopup(feedLines);
+      }
+      // Once only one player remains unbid against themselves → done
+      if (order.filter(x => !passes.has(x.id)).length <= 1) break;
+    }
+    const remaining = order.filter(x => !passes.has(x.id));
+    if (!bidThisRound || remaining.length <= 1) break;
+  }
+
+  // Resolve winner
+  if (winner) {
+    winner.money -= currentBid;
+    animateMoneyChange(winner, -currentBid);
+    placeIntoTeamOrBench(winner, card);
+    addFeed(`<b style="color:var(--gold)">🏆 ${escapeHTML(winner.name)} gewinnt "${escapeHTML(card.name)}" für ${fmtMoney(currentBid)}!</b>`);
+    beep(900, 120);
+  } else {
+    g.marketPile.push(card);
+    addFeed(`<span style="color:var(--silver)">${de?'Niemand hat geboten — Karte kommt auf den Markt.':'No bids — card goes to market.'}</span>`);
+  }
+  refreshTopbar(); refreshTeamPanel();
+  // Show result briefly then close
+  await sleep(speedMs(winner ? 2000 : 1500));
+  closeGamePopup(popId);
+  await sleep(400);
+}
+
 async function runMarketPhase() {
   const g = state.game;
-  // Clear any stale fire from error-recovery blocks so the market doesn't close immediately
-  delete _pendingFires['endMarket'];
-  delete _waiters['endMarket'];
+  // Clear ALL stale fires and waiters — a tournament/match in the same week can leave
+  // pendingFires that would instantly resolve the market's waitFor
+  ['coneRollNow','coneContinue','continueAfterMatch','serveOnce','endMarket'].forEach(k => {
+    delete _pendingFires[k];
+    delete _waiters[k];
+  });
+  _expectedAdvance = 'endMarket';
+  // Weekly auction: reveal one card from the deck before opening the market
+  await runWeeklyAuction();
   g.market = regenMarket();
   console.log('[VV] runMarketPhase: market cards =', g.market.length, '| marketPile =', g.marketPile.length);
   const safeRenderMarket = () => {
@@ -3085,9 +3221,13 @@ function buildWeekendPairings(g, week) {
 
 async function runWeekendMatches(week) {
   const g = state.game;
-  // Clear stale fires so weekend matches start cleanly
-  delete _pendingFires['continueAfterMatch'];
-  delete _pendingFires['serveOnce'];
+  // Clear ALL stale fires before weekend — tournament matches earlier in the week
+  // (Cup, CL, etc.) can leave pendingFires that would skip the first waitFor instantly
+  ['coneRollNow','coneContinue','continueAfterMatch','serveOnce','endMarket'].forEach(k => {
+    delete _pendingFires[k];
+    delete _waiters[k];
+  });
+  _expectedAdvance = 'continueAfterMatch';
   const pairings = buildWeekendPairings(g, week);
   if (!pairings.length) return;
 
