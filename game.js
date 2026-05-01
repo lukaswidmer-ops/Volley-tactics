@@ -106,7 +106,7 @@ const i18n = {
     market_suggest: 'Schwächste Position', market_sell: 'Verkaufen',
     market_sell_t: 'Hälfte des Sternenwerts',
 
-    money: 'Geld', vp: 'Siegpunkte', str: 'Stärke', pos: 'Pos', you: 'Du',
+    money: 'Geld', vp: 'Siegpunkte', str: 'Stärke', pos: 'Pos', you: 'Du', stats_lp: 'Liga-P',
     homeaway_home: 'Heim', homeaway_away: 'Auswärts',
     set: 'Satz', sets: 'Sätze',
     serve_keeps: 'Aufschlag bleibt', sideout: 'Sideout!', rotation: 'Rotation!',
@@ -276,7 +276,7 @@ const i18n = {
     market_suggest: 'Weakest position', market_sell: 'Sell',
     market_sell_t: 'Half of star value',
 
-    money: 'Money', vp: 'Victory pts', str: 'Strength', pos: 'Pos', you: 'You',
+    money: 'Money', vp: 'Victory pts', str: 'Strength', pos: 'Pos', you: 'You', stats_lp: 'LP',
     homeaway_home: 'Home', homeaway_away: 'Away',
     set: 'Set', sets: 'Sets',
     serve_keeps: 'Serve stays', sideout: 'Sideout!', rotation: 'Rotation!',
@@ -484,6 +484,11 @@ const $$ = (s, r) => Array.from((r||document).querySelectorAll(s));
 const T = (k) => (i18n[state.lang] && i18n[state.lang][k]) || k;
 const fmt = (str, ...args) => { let i=0; return str.replace(/%[ds]|%(\d+)/g, () => args[i++]); };
 const fmtMoney = n => (n||0).toLocaleString('de-CH').replace(/,/g,'’');
+/** Safe table points for UI + math (avoids NaN from += on undefined). */
+function leaguePointsVal(p) {
+  const n = Number(p && p.leaguePoints);
+  return Number.isFinite(n) ? n : 0;
+}
 const choice = arr => arr[Math.floor(Math.random()*arr.length)];
 const sleep = ms => new Promise(r => setTimeout(r, (state.skipping ? 0 : ms)));
 const range = n => Array.from({length:n}, (_,i)=>i);
@@ -522,7 +527,6 @@ const state = {
   speed: 'normal',
   game: null,
   skipping: false,
-  debugHud: localStorage.getItem('vv_debug_hud') !== '0',
 };
 
 // ────────────────────────────────────────────────────────────────
@@ -619,11 +623,6 @@ function setLang(l) {
   render();
 }
 function setSpeed(s) { state.speed = s; localStorage.setItem('vv_speed', s); } // no render() — would destroy waitFor listeners mid-game
-function toggleDebugHud() {
-  state.debugHud = !state.debugHud;
-  localStorage.setItem('vv_debug_hud', state.debugHud ? '1' : '0');
-  refreshDebugHud();
-}
 
 // Wait/fire helpers
 const _waiters = {};
@@ -632,35 +631,9 @@ let _expectedAdvance = 'coneRollNow';
 let _lastAdvanceSource = '-';
 let _lastFired = '-';
 let _lastAdvanceClickAt = 0;
-function debugHudData() {
-  const waiters = Object.keys(_waiters).filter(k => !!_waiters[k]).join(', ') || '-';
-  const pending = Object.keys(_pendingFires).filter(k => !!_pendingFires[k]).join(', ') || '-';
-  const overlays = document.querySelectorAll('.game-popup.open, .modal-popup.open').length;
-  return { waiters, pending, overlays };
-}
 function refreshDebugHud() {
   const el = document.getElementById('vv-debug-hud');
-  if (!el) return;
-  if (!state.debugHud || state.view !== 'game') { el.style.display = 'none'; return; }
-  const d = debugHudData();
-  el.style.display = 'block';
-  el.innerHTML = [
-    `<div><b>expected:</b> ${_expectedAdvance}</div>`,
-    `<div><b>waiters:</b> ${d.waiters}</div>`,
-    `<div><b>pending:</b> ${d.pending}</div>`,
-    `<div><b>lastSource:</b> ${_lastAdvanceSource}</div>`,
-    `<div><b>lastFire:</b> ${_lastFired}</div>`,
-    `<div><b>overlays:</b> ${d.overlays}</div>`
-  ].join('');
-}
-function ensureDebugHud() {
-  let el = document.getElementById('vv-debug-hud');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'vv-debug-hud';
-    document.body.appendChild(el);
-  }
-  refreshDebugHud();
+  if (el) el.remove();
 }
 function waitFor(name, autoMs) {
   return new Promise(resolve => {
@@ -1635,7 +1608,7 @@ function renderGame() {
   ensureFloatingLog();
   for (const e of state.game.log.slice(-30)) logEntry(e.text, e.kind);
   refreshFloatingPanel();
-  ensureDebugHud();
+  refreshDebugHud();
 }
 
 function playerCardHtml(p, idx, withBars) {
@@ -1648,7 +1621,7 @@ function playerCardHtml(p, idx, withBars) {
       <div>${T('money')}</div><b>${fmtMoney(p.money)}</b>
       <div>${T('vp')}</div><b>${p.vp}/8</b>
       <div>${T('str')}</div><b>★ ${teamStrength(p)}</b>
-      <div>L-Pts</div><b>${p.leaguePoints||0}</b>
+      <div>${T('stats_lp')}</div><b>${leaguePointsVal(p)}</b>
     </div>
     ${withBars ? `<div class="pc-vp">${range(8).map(i=>`<span class="${i<p.vp?'fill':''}"></span>`).join('')}</div>` : ''}
   </div>`;
@@ -1664,7 +1637,7 @@ function playerYouHtml(p, g) {
       <div class="yc-stat"><span class="yc-key">${T('money')}</span><span class="yc-val">${fmtMoney(p.money)}'</span></div>
       <div class="yc-stat"><span class="yc-key">${T('vp')}</span><span class="yc-val">${p.vp}/8</span></div>
       <div class="yc-stat"><span class="yc-key">${T('str')}</span><span class="yc-val">★ ${str}</span></div>
-      <div class="yc-stat"><span class="yc-key">L-Pts</span><span class="yc-val">${p.leaguePoints||0}</span></div>
+      <div class="yc-stat"><span class="yc-key">${T('stats_lp')}</span><span class="yc-val">${leaguePointsVal(p)}</span></div>
     </div>
   </div>`;
 }
@@ -1807,6 +1780,26 @@ function teamPanelHtml(p, opts) {
   }
 
   const lang = state.lang === 'de';
+  const rot = (opts && opts.rotation != null) ? courtRotationNorm(opts.rotation) : courtRotationNorm(p.courtRotation);
+  const frontSlots = [3, 4, 5];
+  const backSlots = [2, 1, 0];
+  const shownKeys = new Set();
+  const frontCells = frontSlots.map((sl) => {
+    const rk = courtSlotDisplayPos(rot, sl);
+    shownKeys.add(rk);
+    return teamSlotHtml(s[rk], rk);
+  }).join('');
+  const backCells = backSlots.map((sl) => {
+    const rk = courtSlotDisplayPos(rot, sl);
+    shownKeys.add(rk);
+    return teamSlotHtml(s[rk], rk);
+  }).join('');
+  const offCourtExtras = POSITIONS.filter(k => s[k] && !shownKeys.has(k))
+    .map(k => teamSlotHtml(s[k], k)).join('');
+  const offCourtRow = offCourtExtras
+    ? `<div class="vb-row-label" style="margin-top:0.45rem">${lang?'Aktuell nicht auf den 6 Feldpositionen':'Not on the six court slots'}</div>
+       <div class="vb-row vb-row-3" style="flex-wrap:wrap;justify-content:center;">${offCourtExtras}</div>`
+    : '';
   return `
     ${readOnly ? '' : `<div class="vb-sell-bar">
       <span style="font-size:0.7rem;color:var(--silver)">${lang?'Klicke Karte zum Verkaufen':'Click card to sell'}</span>
@@ -1821,29 +1814,13 @@ function teamPanelHtml(p, opts) {
           <span>4</span><span>3</span><span>2</span>
         </div>
         <div class="vb-row-label">${lang?'Vorne (netznahe)':'Front (near net)'}</div>
-        <div class="vb-row vb-row-3">
-          ${teamSlotHtml(s.middle,   'middle')}
-          ${teamSlotHtml(s.outside,  'outside')}
-          ${teamSlotHtml(s.setter,   'setter')}
-        </div>
+        <div class="vb-row vb-row-3">${frontCells}</div>
         <div class="vb-pos-labels" style="margin-top:0.5rem">
           <span>5</span><span>6</span><span>1</span>
         </div>
         <div class="vb-row-label">${lang?'Hinten':'Back'}</div>
-        <div class="vb-row vb-row-3">
-          ${teamSlotHtml(s.diagonal, 'diagonal')}
-          ${teamSlotHtml(s.outside2, 'outside2')}
-          ${teamSlotHtml(s.libero,   'libero')}
-        </div>
-      </div>
-      <div class="vb-mb2-panel">
-        <div class="vb-mb2-label">
-          <span style="background:${POS_COLORS.middle2}" class="pos-tag">MB2</span>
-          ${lang?'Ersatzmitte':'Bench Middle'}
-        </div>
-        <div class="vb-mb2-icon">🔄</div>
-        ${teamSlotHtml(s.middle2, 'middle2')}
-        <div class="vb-mb2-hint">${lang?'Im Hinten-Bereich durch Libero ersetzt':'Subbed by Libero in back row'}</div>
+        <div class="vb-row vb-row-3">${backCells}</div>
+        ${offCourtRow}
       </div>
     </div>
     <div class="vb-bench">
@@ -1918,6 +1895,19 @@ function refreshTeamPanel() {
   tp.innerHTML = teamPanelHtml(state.game.players[0]);
   const sl = $('#team-strength-label');
   if (sl) sl.textContent = '★ ' + teamStrength(state.game.players[0]);
+}
+/** During a match, keep human team panel + opponent board in sync with courtRotation */
+function refreshMatchSidePanels(M) {
+  const g = state.game;
+  if (!g || !M) return;
+  const me = g.players.find(p => p.isHuman) || g.players[0];
+  if (M.home !== me && M.away !== me) return;
+  refreshTeamPanel();
+  const wrap = document.querySelector('.opp-team-wrap');
+  if (wrap) {
+    const opp = M.home === me ? M.away : M.home;
+    wrap.innerHTML = teamPanelHtml(opp, { readOnly: true });
+  }
 }
 function showOpponentBoard(opponent) {
   const boardInner = $('#board');
@@ -2552,10 +2542,12 @@ function showLockedFeaturePopup(title) {
 //  Returns the winning player.
 // ────────────────────────────────────────────────────────────────
 async function runMatchClassic(home, away, isTournament) {
-  // Show the opponent (non-human) in the board panel
-  const me = state.game.players[0];
-  const opp = home === me ? away : home;
-  if (opp !== me) showOpponentBoard(opp);
+  // Only swap the board for the human's match — bot vs bot would wrongly call showOpponentBoard(home).
+  const me = state.game.players.find(p => p.isHuman) || state.game.players[0];
+  if (home === me || away === me) {
+    const opp = home === me ? away : home;
+    showOpponentBoard(opp);
+  }
   const stage = $('#stage');
   const actions = $('#actions');
   // Match state
@@ -2564,7 +2556,8 @@ async function runMatchClassic(home, away, isTournament) {
     homePoints: 0, awayPoints: 0,
     crunchExtra: 0,
     rolls: [], events: [],
-    rotationHome: 0, rotationAway: 0,
+    rotationHome: courtRotationNorm(home.courtRotation),
+    rotationAway: courtRotationNorm(away.courtRotation),
     iRoll: 0, totalRolls: 4,
     ended: false,
   };
@@ -2611,6 +2604,7 @@ async function runMatchClassic(home, away, isTournament) {
     setActionsHtml(`<h3>${T('phase_match')} · ${rollLabel}</h3>${speedToggleHtml()}`);
   }
   setActionUI(); paint();
+  refreshMatchSidePanels(M);
 
   const humanInMatch = (home === me || away === me);
   const totalRolls = () => M.totalRolls + M.crunchExtra;
@@ -2641,12 +2635,18 @@ async function runMatchClassic(home, away, isTournament) {
     else if (result.winner === 'away') M.awayPoints++;
     // Show the criterion in the topbar log area for 3 seconds
     showMatchCriterionInTopbar(result, M);
-    // rotation: winning team rotates
-    if (result.winner === 'home') M.rotationHome = (M.rotationHome + 1) % 6;
-    else if (result.winner === 'away') M.rotationAway = (M.rotationAway + 1) % 6;
+    // rotation: winning team rotates — persist on players so team panel / next match match the mini court
+    if (result.winner === 'home') {
+      M.rotationHome = (M.rotationHome + 1) % 6;
+      home.courtRotation = M.rotationHome;
+    } else if (result.winner === 'away') {
+      M.rotationAway = (M.rotationAway + 1) % 6;
+      away.courtRotation = M.rotationAway;
+    }
     M.iRoll++;
     paint(); setActionUI();
     refreshTopbar();
+    refreshMatchSidePanels(M);
     beep(result.winner === 'home' ? 740 : result.winner === 'away' ? 480 : 540, 60);
   }
 
@@ -2807,7 +2807,7 @@ async function showMatchSummary(M, winner) {
     <div style="margin-top:0.5rem; display:flex; gap:0.3rem; flex-wrap:wrap;">
       ${M.events.map(e => `<span class="crit-pill ${e.winner}">#${e.dice} ${T('crit_'+e.kind)}</span>`).join('')}
     </div>`;
-  const me = state.game ? state.game.players[0] : null;
+  const me = state.game ? (state.game.players.find(p => p.isHuman) || state.game.players[0]) : null;
   const humanInMatch = me && (M.home === me || M.away === me);
   const autoMs = (!humanInMatch || state.speed === 'auto') ? speedMs(2000) : 0;
   _expectedAdvance = 'continueAfterMatch';
@@ -2823,50 +2823,20 @@ async function showMatchSummary(M, winner) {
   await waitFor('continueAfterMatch', autoMs);
   if (matchDpBtn) { matchDpBtn.disabled = true; matchDpBtn.classList.remove('pulse'); matchDpBtn.textContent = '🎲 Würfeln'; }
   restoreBoardPanel();
+  refreshTeamPanel();
 }
 
 // Mini court diagram (6 positions in a 3×2 grid representing front + back rows)
 function courtMiniHtml(player, rotation) {
-  // Court slot numbering (matches volleyball positions 1–6):
-  //   slot 0 = pos1 (back-right, server)
-  //   slot 1 = pos6 (back-middle)
-  //   slot 2 = pos5 (back-left)
-  //   slot 3 = pos4 (front-left)
-  //   slot 4 = pos3 (front-middle)
-  //   slot 5 = pos2 (front-right)
-  //
-  // ROT 1 (r=0, S at pos 2 front-right):  Front: MB | OH | S   Back: D | OH | L  (server = back-right)
-  // ROT 2 (r=1, S at pos 1 back-right):   Front: D  | MB | OH  Back: OH| L  | S
-  // ROT 3 (r=2, S at pos 6 back-mid):     Front: OH | D  | MB  Back: L | S  | OH
-  // ROT 4 (r=3, S at pos 5 back-left):    Front: MB | OH | D   Back: S | OH | L
-  // ROT 5 (r=4, S at pos 4 front-left):   Front: S  | MB | OH  Back: OH| L  | D
-  // ROT 6 (r=5, S at pos 3 front-mid):    Front: OH | S  | MB  Back: L | D  | OH
-  // OH2/MB2 share the same label as OH/MB on the court but keep distinct colors.
-  const basePositions = ['middle2', 'outside2', 'diagonal', 'middle', 'outside', 'setter'];
-
-  const r = ((rotation || 0) % 6 + 6) % 6;
-
-  // Clockwise rotation: slot i gets the player that started at slot (i - r + 6k) % 6
-  function getPos(slotIdx) {
-    return basePositions[((slotIdx - r) % 6 + 6) % 6];
-  }
-
-  // Collect all back-row slots where a middle (MB1 or MB2) ends up → Libero subs in
-  const liberoSwapSlots = new Set();
-  for (const s of [0, 1, 2]) {
-    const p = getPos(s);
-    if (p === 'middle' || p === 'middle2') liberoSwapSlots.add(s);
-  }
-
+  const rot = courtRotationNorm(rotation);
   const swapTip = state.lang === 'de'
     ? 'Libero ersetzt MB in der Hinterreihe'
     : 'Libero subs in for MB in back row';
 
   function cell(slotIdx, kInRow, isBackRow) {
-    let pos = getPos(slotIdx);
-    // MB in back row → Libero swap
-    const isSwap = isBackRow && liberoSwapSlots.has(slotIdx);
-    if (isSwap) pos = 'libero';
+    const raw = courtSlotRawPos(rot, slotIdx);
+    let pos = courtSlotDisplayPos(rot, slotIdx);
+    const isSwap = isBackRow && pos === 'libero' && (raw === 'middle' || raw === 'middle2');
 
     // Keep distinct colors (outside vs outside2, middle vs middle2) but unify labels
     // so the court display matches the spec: both OHs = "OH", both MBs in front = "MB"
@@ -2895,29 +2865,30 @@ async function runLeagueMatch() {
   const g = state.game;
   setPhase('match');
   // Pair human (home this week) vs strongest bot
-  const me = g.players[0];
+  const me = g.players.find(p => p.isHuman) || g.players[0];
   const opp = g.players.filter(p => p !== me).sort((a,b)=>teamStrength(b)-teamStrength(a))[0];
   const home = me; const away = opp;
   showOpponentBoard(away);
   const winner = await runMatchClassic(home, away, false);
   restoreBoardPanel();
+  refreshTeamPanel();
   // Award league points and money per rulebook (spec §2.9)
   if (winner === null) {
     // Draw: both +5k bank, both +1 LP
     home.money += 5000; home.totalEarned += 5000; animateMoneyChange(home, 5000);
     away.money += 5000; away.totalEarned += 5000; animateMoneyChange(away, 5000);
-    home.leaguePoints = (home.leaguePoints||0) + 1;
-    away.leaguePoints = (away.leaguePoints||0) + 1;
+    home.leaguePoints = leaguePointsVal(home) + 1;
+    away.leaguePoints = leaguePointsVal(away) + 1;
     logEntry(`🏐 ${T('phase_match')}: 🤝 ${state.lang==='de'?'Unentschieden':'Draw'} — ${escapeHTML(home.name)} & ${escapeHTML(away.name)} je +5'`);
   } else if (winner === home) {
     home.money += 10000; home.totalEarned += 10000; animateMoneyChange(home, 10000);
     if (away.money >= 5000) { away.money -= 5000; animateMoneyChange(away, -5000); home.money += 5000; home.totalEarned += 5000; animateMoneyChange(home, 5000); } else { home.money += away.money; away.money = 0; }
-    home.matchesWon++; home.leaguePoints += 3;
+    home.matchesWon++; home.leaguePoints = leaguePointsVal(home) + 3;
     logEntry(`🏐 ${T('phase_match')}: <b>${escapeHTML(home.name)}</b> +10’ (Bank), +5’ (${escapeHTML(away.name)})`, 'win');
   } else {
     away.money += 10000; away.totalEarned += 10000; animateMoneyChange(away, 10000);
     if (home.money >= 5000) { home.money -= 5000; animateMoneyChange(home, -5000); away.money += 5000; away.totalEarned += 5000; animateMoneyChange(away, 5000); } else { away.money += home.money; home.money = 0; }
-    away.matchesWon++; away.leaguePoints += 3;
+    away.matchesWon++; away.leaguePoints = leaguePointsVal(away) + 3;
     logEntry(`🏐 ${T('phase_match')}: <b>${escapeHTML(away.name)}</b> +10’ (Bank), +5’ (${escapeHTML(home.name)})`, 'loss');
   }
   // Other players: bye → +5'000
@@ -2983,7 +2954,8 @@ function buildWeekendPairings(g, week) {
   const humanIdx = g.players.findIndex(p => p.isHuman);
   const botIdx = g.players.map((p, i) => (p.isHuman ? -1 : i)).filter(i => i >= 0);
   if (humanIdx >= 0 && botIdx.length === 3) {
-    const r = (week - 1) % 3;
+    // Euclidian mod — (0-1)%3 in JS is -1, which would pick botIdx[-1] on a stray week 0.
+    const r = ((week - 1) % 3 + 3) % 3;
     const opp = botIdx[r];
     const other = botIdx.filter(i => i !== opp);
     return [
@@ -2991,7 +2963,8 @@ function buildWeekendPairings(g, week) {
       [g.players[other[0]], g.players[other[1]]],
     ];
   }
-  const schedule = WEEKEND_SCHEDULE_FALLBACK[(week - 1) % WEEKEND_SCHEDULE_FALLBACK.length];
+  const sk = ((week - 1) % WEEKEND_SCHEDULE_FALLBACK.length + WEEKEND_SCHEDULE_FALLBACK.length) % WEEKEND_SCHEDULE_FALLBACK.length;
+  const schedule = WEEKEND_SCHEDULE_FALLBACK[sk];
   if (!schedule) return [];
   const played = new Set();
   const out = [];
@@ -3040,7 +3013,10 @@ async function runWeekendMatches(week) {
       logEntry(`🏅 ${T('weekend_match')} W${week} ${matchLabel}: 🤝 ${escapeHTML(home.name)} — ${escapeHTML(away.name)}`);
     }
 
-    if (isHumanMatch) restoreBoardPanel();
+    // Always restore the map after each fixture — bot–bot used to leave the opp-team board stuck
+    // (first weekend felt broken because match 2 follows your match with no other full refresh).
+    restoreBoardPanel();
+    refreshTeamPanel();
     refreshTopbar();
     if (checkWin()) return;
   }
@@ -3440,7 +3416,6 @@ function showFullHistory() {
 // ────────────────────────────────────────────────────────────────
 window.VV = {
   setView, setLang, setSpeed,
-  toggleDebugHud,
   advanceIntro, skipIntro,
   startSolo, openMultiplayer, createRoom, showJoinForm,
   draftDraw, draftRedraw, draftPick1, draftFinish,

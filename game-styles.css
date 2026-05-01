@@ -126,7 +126,7 @@ button { font-family:inherit; cursor:pointer; }
 }
 
 /* Zone 1 — Topbar */
-.topbar { display:flex; align-items:stretch; gap:0; padding:0; background:rgba(0,0,0,0.55); border-bottom:1px solid var(--line); flex-shrink:0; overflow:hidden; max-height:150px; }
+.topbar { display:flex; align-items:stretch; gap:0; padding:0; background:rgba(0,0,0,0.55); border-bottom:1px solid var(--line); flex-shrink:0; overflow:hidden; max-height:220px; }
 .topbar-bots { display:flex; gap:0.5rem; padding:0.6rem 0.8rem; flex:0 0 auto; overflow-x:auto; -webkit-overflow-scrolling:touch; align-items:center; }
 .topbar-sep { width:1px; background:var(--line); flex-shrink:0; }
 .topbar-log-area { flex:1; min-width:0; min-height:0; display:flex; flex-direction:column; padding:0.3rem 0.6rem; overflow:hidden; position:relative; }
@@ -945,27 +945,6 @@ button, a, input, select { font-family:inherit; }
   0%, 100% { opacity:1;   transform:scale(1); }
   50%      { opacity:0.7; transform:scale(0.92); }
 }
-
-/* Debug HUD for async-flow diagnosis */
-#vv-debug-hud {
-  position: fixed;
-  right: 8px;
-  bottom: 8px;
-  z-index: 10001;
-  min-width: 260px;
-  max-width: 360px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11px;
-  line-height: 1.35;
-  color: #fff;
-  background: rgba(8, 8, 8, 0.92);
-  border: 1px solid rgba(249, 115, 22, 0.7);
-  border-radius: 6px;
-  padding: 8px 10px;
-  box-shadow: 0 4px 18px rgba(0,0,0,0.45);
-  pointer-events: none;
-}
-#vv-debug-hud b { color: #f59e0b; font-weight: 700; }
 
 /* ─── Sound toggle bottom-right ─── */
 @media (max-width: 800px) {
