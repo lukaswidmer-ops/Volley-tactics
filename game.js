@@ -500,6 +500,19 @@ function speedMs(ms) {
 function uid(){ return Math.random().toString(36).slice(2,10); }
 function escapeHTML(s){ return String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 function cardPrice(stars) { return [0,5000,10000,20000,35000,55000][stars] || 5000; }
+function cardImageBasename(card) {
+  const raw = String((card && card.url) || '');
+  if (!raw) return '';
+  const clean = raw.split('?')[0].split('#')[0];
+  const parts = clean.split('/');
+  return parts[parts.length - 1] || clean;
+}
+function cardNameFileCaptionHtml(card) {
+  if (!card) return '';
+  const name = escapeHTML(card.name || '');
+  const file = escapeHTML(cardImageBasename(card));
+  return `<div class="card-namefile"><div class="card-namefile-name">${name}</div><div class="card-namefile-file">${file}</div></div>`;
+}
 
 // Dice roll utilities
 function roll(n) { return 1 + Math.floor(Math.random()*n); }
