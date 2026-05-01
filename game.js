@@ -661,9 +661,6 @@ function waitFor(name, autoMs) {
     }
     _waiters[name] = resolve;
     refreshDebugHud();
-    // Timers must only clear *this* registration. A 15s safety from a *previous*
-    // waitFor(sameName) could otherwise fire later, delete a new waiter, and leave
-    // the new Promise hanging forever (HUD: pending set, waiters empty).
     let tAuto = 0, tSafe = 0;
     const done = () => {
       if (_waiters[name] !== resolve) return;
@@ -674,8 +671,12 @@ function waitFor(name, autoMs) {
       resolve();
       refreshDebugHud();
     };
-    if (autoMs) tAuto = setTimeout(done, autoMs);
-    tSafe = setTimeout(done, 15000); // 15s safety timeout – verhindert permanentes Hängen
+    if (autoMs) {
+      // autoMs > 0: an automatic trigger is expected — also set a safety net
+      tAuto = setTimeout(done, autoMs);
+      tSafe = setTimeout(done, Math.max(autoMs * 3, 15000));
+    }
+    // autoMs === 0 (or not passed): waiting for manual user click — NO safety timeout
   });
 }
 function fire(name, val) {
@@ -2383,52 +2384,53 @@ async function applyInjury(player) {
 function disablePlayerOnTeam(player, pos, reason) {
   const card = player.team[pos];
   if (!card) return null;
-  if (card._isSub) {
-    // Already a sub filling this slot — disable it, try to find a new replacement below
-    card.disabled = true;
-    card.disabledReason = reason;
-    // Fall through: treat this slot as now empty and find another sub/emergency card
-  } else {
-    if (card.disabled) { card.disabledReason = reason; return null; }
-    card.disabled = true;
-    card.disabledReason = reason;
-  }
+
+  // Already fully processed: just update reason
+  if (card.disabled && !card._isSub) { card.disabledReason = reason; return null; }
+
   if (!Array.isArray(player.suspended)) player.suspended = [];
   if (!Array.isArray(player.bench)) player.bench = [];
+
+  // Mark the card as disabled and remove it from the team slot immediately
+  card.disabled = true;
+  card.disabledReason = reason;
+  player.team[pos] = null;                    // slot is now empty
+  player.suspended.push({ card, pos, reason });
 
   // Pool mapping: outside2 accepts 'outside' bench cards, middle2 accepts 'middle'
   const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
 
-  // 1) Look for a bench card matching the position (exact or pool)
+  // 1) Look for a bench card matching the position (exact or pool match)
   const benchIdx = player.bench.findIndex(b => !b.disabled && (b.pos === pos || b.pos === poolPos));
   if (benchIdx >= 0) {
     const sub = player.bench.splice(benchIdx, 1)[0];
     sub._isSub = true;
     sub._subReason = reason;
     player.team[pos] = sub;
-    player.suspended.push({ card, pos, reason });
     return sub;
   }
 
-  // 2) No matching bench replacement — buy an emergency 1★ card for 10'000
+  // 2) No bench match — emergency buy: 1★ card of the same position for 10 000
   const cost = 10000;
   player.money = Math.max(0, player.money - cost);
   animateMoneyChange(player, -cost);
-  toast(`⚠️ ${state.lang === 'de' ? 'Kein Ersatz — Notfallkauf' : 'No sub — emergency buy'} -${fmtMoney(cost)}'`, 'bad', 2500);
+  toast(
+    `⚠️ ${state.lang === 'de' ? 'Kein Ersatz auf Bank — Notfallkauf' : 'No bench sub — emergency buy'} (${fmtMoney(cost)})`,
+    'bad', 3000
+  );
 
-  const opts = (ALL_CARDS || []).filter(c => c.stars === 1 && c.pos === poolPos);
+  const opts = (ALL_CARDS || []).filter(c => c.stars === 1 && (c.pos === pos || c.pos === poolPos));
   if (opts.length) {
-    const emergency = choice(opts);
-    const em = Object.assign({}, emergency, {
+    const em = Object.assign({}, choice(opts), {
       _isSub: true,
-      _subReason: (state.lang === 'de' ? 'Notfall-Einwechslung' : 'Emergency sub'),
+      _subReason: state.lang === 'de' ? 'Notfall-Einwechslung' : 'Emergency sub',
     });
     player.team[pos] = em;
-    player.suspended.push({ card, pos, reason });
     return em;
   }
 
-  // Absolute fallback: disabled card stays in the slot (should rarely happen)
+  // Edge case: no 1★ card exists in the pool for this position — slot stays empty
+  toast(`⚠️ ${state.lang === 'de' ? 'Kein 1★-Karte für Position gefunden!' : 'No 1★ card found for position!'}`, 'bad', 4000);
   return null;
 }
 
@@ -2442,23 +2444,23 @@ function restoreDisabledCards(afterLeague) {
     while (p.suspended.length) {
       const entry = p.suspended.shift();
       const cur = p.team[entry.pos];
+      entry.card.disabled = false;
+      entry.card.disabledReason = null;
       if (cur && cur._isSub) {
+        // The sub goes back to bench, the original returns to the team slot
         delete cur._isSub;
         delete cur._subReason;
         p.bench.push(cur);
-        entry.card.disabled = false;
-        entry.card.disabledReason = null;
+        p.team[entry.pos] = entry.card;
+      } else if (!cur) {
+        // Slot is empty (no sub was available) — original returns to team
         p.team[entry.pos] = entry.card;
       } else {
-        // Slot was changed in the meantime (e.g. market buy or re-sub);
-        // keep the suspended player on the bench as a safe fallback.
-        entry.card.disabled = false;
-        entry.card.disabledReason = null;
+        // Slot was filled by something else (e.g. market buy) — original goes to bench
         p.bench.push(entry.card);
       }
     }
-    // 2) Any remaining disabled cards on team had no sub at the time —
-    //    just clear their flags now.
+    // Clean up any remaining disabled flags (safety net)
     for (const pos of POSITIONS) {
       const c = p.team[pos];
       if (c && c.disabled) { c.disabled = false; c.disabledReason = null; }
@@ -2893,7 +2895,8 @@ async function showMatchSummary(M, winner, opts = {}) {
     return;
   }
 
-  const shouldAutoContinue = (state.speed === 'auto') || forceAutoContinue;
+  // Auto-continue only when: explicit auto-speed, OR forced (e.g. tournament) but human is NOT playing
+  const shouldAutoContinue = (state.speed === 'auto') || (forceAutoContinue && !humanInMatch);
   const autoMs = shouldAutoContinue ? speedMs(4500) : 0;
   _expectedAdvance = 'continueAfterMatch';
   // Button always in actions panel — never buried in the stage scroll area
@@ -3057,13 +3060,19 @@ function buildWeekendPairings(g, week) {
   const humanIdx = g.players.findIndex(p => p.isHuman);
   const botIdx = g.players.map((p, i) => (p.isHuman ? -1 : i)).filter(i => i >= 0);
   if (humanIdx >= 0 && botIdx.length >= 1) {
-    // Exactly one weekend fixture: human vs rotating bot.
+    // Match 1: human vs rotating bot
     const r = ((week - 1) % botIdx.length + botIdx.length) % botIdx.length;
-    const opp = botIdx[r];
-    if (g.players[humanIdx] && g.players[opp]) {
-      return [[g.players[humanIdx], g.players[opp]]];
+    const oppIdx = botIdx[r];
+    const restBots = botIdx.filter(i => i !== oppIdx);
+    const pairings = [];
+    if (g.players[humanIdx] && g.players[oppIdx]) {
+      pairings.push([g.players[humanIdx], g.players[oppIdx]]);
     }
-    return [];
+    // Match 2: remaining bots play each other (bot vs bot, human watches)
+    if (restBots.length >= 2 && g.players[restBots[0]] && g.players[restBots[1]]) {
+      pairings.push([g.players[restBots[0]], g.players[restBots[1]]]);
+    }
+    return pairings;
   }
   // No human player found -> no weekend fixture in this mode.
   return [];
@@ -3079,7 +3088,6 @@ async function runWeekendMatches(week) {
     if (!home || !away) continue;
 
     const isHumanMatch = !!(home.isHuman || away.isHuman);
-    if (!isHumanMatch) continue; // safety: weekend must always be human vs bot
     const matchLabel = mi === 0 ? T('weekend_match1') : T('weekend_match2');
 
     if (isHumanMatch) {
