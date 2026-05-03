@@ -1627,7 +1627,10 @@ function renderGame() {
         </div>
       </div>
       <div class="gbot">
-        <div class="actions" id="actions"></div>
+        <div class="actions-wrap">
+          <div class="actions" id="actions"></div>
+          <button class="market-toggle-btn" id="market-toggle-btn" onclick="VV.toggleMarketPopup()">🛒 Markt</button>
+        </div>
         <div class="dice-panel" id="dice-panel">
           <div class="dice-panel-label" id="dice-panel-label">🎲 D3</div>
           <div class="dice-panel-result" id="dice-panel-result">—</div>
@@ -2779,31 +2782,48 @@ async function resolveCriterion(dice, M) {
      .replace('%player%', randomPlayerName(team === 'home' ? home : away));
   }
 
+  const de = lang === 'de';
+  // detail: filled per-case with the numeric comparison shown in the banner
+  let detail = '';
+
   switch (dice) {
-    case 1:  kind='total';  winner = homeStr > awayStr ? 'home' : homeStr < awayStr ? 'away' : 'tie'; break;
-    case 2:  kind='front';  winner = homeFront > awayFront ? 'home' : homeFront < awayFront ? 'away' : 'tie'; break;
-    case 3:  kind='back';   winner = homeBack > awayBack ? 'home' : homeBack < awayBack ? 'away' : 'tie'; break;
-    case 4: { kind='dice'; const r1 = roll(12), r2 = roll(12); winner = r1 > r2 ? 'home' : r1 < r2 ? 'away' : 'tie'; break; }
-    case 5:  kind='middle'; { const a = home.team.middle?.stars||0, b = away.team.middle?.stars||0; winner = a > b ? 'home' : a < b ? 'away' : 'tie'; break; }
+    case 1:  kind='total';  winner = homeStr > awayStr ? 'home' : homeStr < awayStr ? 'away' : 'tie';
+      detail = `${escapeHTML(home.name)} ${homeStr}★ vs ${escapeHTML(away.name)} ${awayStr}★`;
+      break;
+    case 2:  kind='front';  winner = homeFront > awayFront ? 'home' : homeFront < awayFront ? 'away' : 'tie';
+      detail = `${escapeHTML(home.name)} ${homeFront}★ vs ${escapeHTML(away.name)} ${awayFront}★`;
+      break;
+    case 3:  kind='back';   winner = homeBack > awayBack ? 'home' : homeBack < awayBack ? 'away' : 'tie';
+      detail = `${escapeHTML(home.name)} ${Math.round(homeBack*10)/10}★ vs ${escapeHTML(away.name)} ${Math.round(awayBack*10)/10}★`;
+      break;
+    case 4: { kind='dice'; const r1 = roll(12), r2 = roll(12); winner = r1 > r2 ? 'home' : r1 < r2 ? 'away' : 'tie';
+      detail = `${escapeHTML(home.name)} ${de?'würfelt':'rolls'} ${r1} — ${escapeHTML(away.name)} ${de?'würfelt':'rolls'} ${r2}`;
+      break; }
+    case 5:  kind='middle'; { const a = home.team.middle?.stars||0, b = away.team.middle?.stars||0; winner = a > b ? 'home' : a < b ? 'away' : 'tie';
+      detail = `${de?'Mittelblocker':'Middle blocker'}: ${escapeHTML(home.name)} ${a}★ vs ${escapeHTML(away.name)} ${b}★`;
+      break; }
     case 6:  kind='service'; {
-      // Heim hinten-rechts (= diagonal historisch) vs Auswärts-Libero. Falls Libero serviert: Mitte muss ran.
       const homeServer = home.team.diagonal?.stars||0;
       const awayLibero = away.team.libero?.stars||0;
       winner = homeServer > awayLibero ? 'home' : homeServer < awayLibero ? 'away' : 'tie';
+      detail = `${de?'Diagonal':'Diagonal'} ${escapeHTML(home.name)} ${homeServer}★ vs ${de?'Libero':'Libero'} ${escapeHTML(away.name)} ${awayLibero}★`;
       break;
     }
     case 7:  kind='dia_set'; {
       const a = (home.team.diagonal?.stars||0) + (home.team.setter?.stars||0);
       const b = (away.team.diagonal?.stars||0) + (away.team.setter?.stars||0);
-      winner = a > b ? 'home' : a < b ? 'away' : 'tie'; break;
+      winner = a > b ? 'home' : a < b ? 'away' : 'tie';
+      detail = `${escapeHTML(home.name)} ${a}★ vs ${escapeHTML(away.name)} ${b}★ (Dia+${de?'Set':'Set'})`;
+      break;
     }
     case 8:  kind='out_dia'; {
       const a = home.team.outside?.stars||0;
       const b = away.team.diagonal?.stars||0;
-      winner = a > b ? 'home' : a < b ? 'away' : 'tie'; break;
+      winner = a > b ? 'home' : a < b ? 'away' : 'tie';
+      detail = `${de?'Außen':'Outside'} ${escapeHTML(home.name)} ${a}★ vs ${de?'Diagonal':'Diagonal'} ${escapeHTML(away.name)} ${b}★`;
+      break;
     }
     case 9:  kind='block';  {
-      // Block-Überwurf: Auswärts wirft 12er gegen Heim-Block
       const r = roll(12);
       if (r > homeBlock) winner = 'away';
       else if (r < homeBlock) winner = 'home';
@@ -2812,13 +2832,11 @@ async function resolveCriterion(dice, M) {
       break;
     }
     case 10: kind='crunch'; {
-      // Heim erhält +2 zusätzliche Würfe in diesem Spiel
       M.crunchExtra += 2;
-      winner = 'tie'; // no point on this roll itself
+      winner = 'tie';
       break;
     }
     case 11: kind='injury'; {
-      // 12er: 1-6 = Heimspieler, 7-12 = Auswärtsspieler. Position via roll.
       const r = roll(12);
       const team = r <= 6 ? home : away;
       const pos = diePositionFor(((r - 1) % 6) + 1);
@@ -2828,7 +2846,6 @@ async function resolveCriterion(dice, M) {
       break;
     }
     case 12: kind='money'; {
-      // Geld-Regen
       home.money += 5000; away.money += 5000;
       home.totalEarned += 5000; away.totalEarned += 5000;
       winner = 'tie';
@@ -2842,9 +2859,9 @@ async function resolveCriterion(dice, M) {
   else if (kind === 'money')  text = T('money_rain');
   else if (kind === 'block') {
     const r = M._blockRoll, t = M._blockTarget;
-    text = `${state.lang==='de'?'Auswärts wirft':'Away rolls'} ${r} vs ${state.lang==='de'?'Block':'block'} ${t} → ${winner==='away'?T('block_overshot'):winner==='home'?T('block_holds'):(state.lang==='de'?'Unentschieden':'Tie')}`;
+    text = `${de?'Auswärts wirft':'Away rolls'} ${r} vs ${de?'Block':'block'} ${t} → ${winner==='away'?T('block_overshot'):winner==='home'?T('block_holds'):(de?'Unentschieden':'Tie')}`;
   }
-  else text = pickComment(winner);
+  else text = detail;
   return { dice, kind, winner, text };
 }
 
@@ -3359,6 +3376,7 @@ function renderMarket() {
   }
   setActionsHtml(`<h3>${T('phase_buy')}</h3>${speedToggleHtml()}
     <button class="action-btn pulse" onclick="VV.endMarket()">${T('finish_buying')}</button>`);
+  _setMarketBtnActive(true);
 }
 
 function oneStarMarketHtml(me, weakPos) {
@@ -3495,12 +3513,30 @@ function buyCard(id) {
 }
 function endMarket() {
   closeGamePopup('market-popup');
+  _setMarketBtnActive(false);
   const g = state.game;
   if (g) {
     // Unsold market cards stay in marketPile for next week
     g.market = [];
   }
   fire('endMarket');
+}
+function toggleMarketPopup() {
+  const pop = document.getElementById('market-popup');
+  if (pop && pop.classList.contains('open')) {
+    // Close popup silently — don't fire endMarket, phase stays active
+    closeGamePopup('market-popup');
+    _setMarketBtnActive(false);
+  } else {
+    if (state.game) {
+      renderMarket();
+      _setMarketBtnActive(true);
+    }
+  }
+}
+function _setMarketBtnActive(active) {
+  const btn = document.getElementById('market-toggle-btn');
+  if (btn) btn.classList.toggle('active', active);
 }
 function weakestPosition(p) {
   let min = POSITIONS[0], minS = Infinity;
@@ -3733,7 +3769,7 @@ window.VV = {
   buyCard, endMarket, buyOneStar, sellBenchCard, sellStarter,
   serveOnce, continueAfterMatch,
   playAgain, toMenu,
-  toggleFloatingPanel, toggleSellMode, toggleLog,
+  toggleFloatingPanel, toggleSellMode, toggleLog, toggleMarketPopup,
   handleFloatingClick, handleFloatingBenchClick,
   exportLog, showFullHistory,
 };

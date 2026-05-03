@@ -288,29 +288,59 @@ button { font-family:inherit; cursor:pointer; }
 
 /* Zone 3 — Bottom: actions+log | dice | stage | week-strip */
 .gbot {
-  flex-shrink: 0;
+  flex: 0 0 28vh;
+  min-height: 148px;
+  max-height: 28vh;
   display: grid;
   grid-template-columns: 220px 160px 1fr 240px;
   gap: 0.5rem;
   padding: 0 0.5rem 0.5rem;
-  max-height: 28vh;
-  min-height: 148px;
   overflow: hidden;
 }
 
-/* Actions panel (buttons only, log is now in topbar) */
+/* Actions panel wrapper — holds dynamic content + persistent market btn */
+.actions-wrap {
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg,#0e0e0f,#080808);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+  min-height: 0;
+}
+/* Dynamic content area inside actions-wrap */
 .actions {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
   padding: 0.28rem 0.38rem;
-  background: linear-gradient(180deg,#0e0e0f,#080808);
-  border: 1px solid var(--line);
-  border-radius: 6px;
   overflow: hidden;
   justify-content: center;
+  flex: 1;
+  min-height: 0;
 }
 .actions h3 { font-size:0.56rem; letter-spacing:2.5px; text-transform:uppercase; color:var(--silver); margin-bottom:0.05rem; flex-shrink:0; }
+
+/* Market toggle button — always visible at bottom of actions panel */
+.market-toggle-btn {
+  flex-shrink: 0;
+  margin: 0 0.38rem 0.32rem;
+  padding: 0.22rem 0.5rem;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 3px;
+  color: rgba(255,255,255,0.5);
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700;
+  font-size: 0.62rem;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  text-align: center;
+}
+.market-toggle-btn:hover { border-color: var(--orange); color: var(--orange); background: rgba(232,67,23,0.08); }
+.market-toggle-btn.active { border-color: var(--gold); color: var(--gold); background: rgba(245,158,11,0.1); }
 
 /* Stage panel — standalone between dice and week-strip */
 .stage-panel {
