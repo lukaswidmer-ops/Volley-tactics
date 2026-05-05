@@ -288,9 +288,9 @@ button { font-family:inherit; cursor:pointer; }
 
 /* Zone 3 — Bottom: actions+log | dice | stage | week-strip */
 .gbot {
-  flex: 0 0 28vh;
-  min-height: 148px;
-  max-height: 28vh;
+  flex: 0 0 22vh;
+  min-height: 120px;
+  max-height: 22vh;
   display: grid;
   grid-template-columns: 220px 160px 1fr 240px;
   gap: 0.5rem;
@@ -726,7 +726,7 @@ button { font-family:inherit; cursor:pointer; }
   .player-card { width:140px; }
   .menu-card { padding:1.6rem; }
   .gmid { grid-template-columns:1fr; }
-  .gbot { grid-template-columns:160px 130px 1fr; max-height:28vh; }
+  .gbot { grid-template-columns:160px 130px 1fr; max-height:22vh; }
   .gbot .week-strip { display:none; }
   .gbot .stage-panel { display:none; }
   .market { grid-template-columns:repeat(auto-fill, minmax(110px, 1fr)); }

@@ -495,7 +495,9 @@ const range = n => Array.from({length:n}, (_,i)=>i);
 function speedMs(ms) {
   if (state.speed === 'fast') return Math.max(40, ms*0.3);
   if (state.speed === 'auto') return Math.max(15, ms*0.08);
-  return ms;
+  // Slightly slower when a human is playing, so events feel less rushed
+  const humanPlaying = state.game && state.game.players.some(p => p.isHuman);
+  return humanPlaying ? ms * 1.5 : ms;
 }
 function uid(){ return Math.random().toString(36).slice(2,10); }
 function escapeHTML(s){ return String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
@@ -2902,9 +2904,10 @@ function showMatchCriterionInTopbar(result, M) {
     <div class="mcb-row3">${escapeHTML(home.name)} ${M.homePoints} : ${M.awayPoints} ${escapeHTML(away.name)}</div>`;
   banner.classList.add('show');
   if (_matchCritTimeout) clearTimeout(_matchCritTimeout);
+  const humanPlaying = state.game && state.game.players.some(p => p.isHuman);
   _matchCritTimeout = setTimeout(() => {
     if (banner) banner.classList.remove('show');
-  }, 3000);
+  }, humanPlaying ? 5000 : 3000);
 }
 
 async function showMatchSummary(M, winner, opts = {}) {
