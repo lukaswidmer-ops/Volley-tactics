@@ -2392,6 +2392,23 @@ async function runSeason() {
   endGame();
 }
 
+// Returns the logical field type for a given absolute day.
+// 'liga' = league match (day-in-week 8), 'cup' = any tournament day (day-in-week 4),
+// otherwise the fixed event type ('red', 'transfer', 'action', 'vnl', 'injury').
+function getFieldType(day) {
+  const dInW = dayInWeekOf(day);
+  if (dInW === 8) return 'liga';
+  const weekEv = weekEventByWeek(weekOfDay(day));
+  if (weekEv != null && weekEv.day === dInW) return 'cup';
+  return eventTypeForDay(dInW);
+}
+
+// Only liga and cup fields trigger resolution when the cone passes through them.
+// All other field types (red, transfer, action, vnl, injury) are silent on passthrough.
+function shouldTriggerOnPassthrough(fieldType) {
+  return fieldType === 'liga' || fieldType === 'cup';
+}
+
 // One cone-roll turn for a player
 async function runConeRoll(player) {
   const g = state.game;
@@ -2434,33 +2451,42 @@ async function runConeRoll(player) {
   const v = await performDiceRoll(3);
   const advance = v >= 3 ? 2 : 1;     // rule: 1=+1, 2=+1, 3=+2
   const start = g.coneDay;
-  const end = start + advance;
   appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🎲 ${v} (${state.lang==='de'?'+':'+'}${advance})`);
-  // Animate step-by-step.
-  // • Cup / tournament day (day 4) → fires immediately when passed through.
-  // • Liga / league day (day 8) → always the terminal step (break); resolveDay fires after loop.
-  // • All other fields (red, transfer, action, VNL, injury) → silent passthrough, only final landing fires.
-  for (let d = start + 1; d <= end; d++) {
-    g.coneDay = d;
+  // Movement resolver: animate every step; resolve only on terminal or passthrough-eligible fields.
+  // • Final landing (isLastStep) — always resolves, no exceptions.
+  // • Liga (day 8) — always terminal; cone rests here (break). Resolves via isTerminal path.
+  // • Cup/tournament (day 4) — resolves when passed through as an intermediate step.
+  // • All other field types — animate only on intermediate steps, never resolve on passthrough.
+  for (let i = 0; i < advance; i++) {
+    const isLastStep  = (i === advance - 1);
+    const d           = start + 1 + i;
+    g.coneDay         = d;
     refreshBoard();
     await sleep(speedMs(350));
 
-    const dInW        = dayInWeekOf(d);
-    const isLeagueDay = dInW === 8;
-    const weekEv      = weekEventByWeek(weekOfDay(d));
-    const isCupDay    = weekEv != null && weekEv.day === dInW;
-    const isFinalStep = (d === end) || isLeagueDay;
+    const isLeagueDay = dayInWeekOf(d) === 8;
+    const fieldType   = getFieldType(d);
+    const isTerminal  = isLastStep || isLeagueDay;
 
-    // Intermediate cup/tournament field: fire it now, then keep moving
-    if (!isFinalStep && isCupDay) {
-      await resolveDay(d, player);
-      if (g.over) return;
+    try {
+      if (isTerminal) {
+        // Final landing field OR league barrier — always resolve, no exceptions.
+        await resolveDay(d, player);
+        if (g.over) return;
+      } else if (shouldTriggerOnPassthrough(fieldType)) {
+        // Intermediate liga/cup field: fire and keep moving.
+        await resolveDay(d, player);
+        if (g.over) return;
+      }
+      // All other intermediate fields: animate only, no resolve.
+    } catch (err) {
+      console.error('[VV] executeMove crashed (day=' + d + '):', err);
+      ['coneRollNow','coneContinue','continueAfterMatch','serveOnce','endMarket'].forEach(fire);
+      toast(`⚠️ Bewegungsfehler (Tag ${d}): ${err.message || err}`, 'bad', 4000);
     }
 
     if (isLeagueDay) break; // end-of-week boundary; cone rests here
   }
-  // Resolve the final landing field exactly once.
-  await resolveDay(g.coneDay, player);
   if (g.over) return;
   if (!g.over) {
     _expectedAdvance = 'coneContinue';
