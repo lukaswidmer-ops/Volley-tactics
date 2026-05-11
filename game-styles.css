@@ -719,10 +719,18 @@ button { font-family:inherit; cursor:pointer; }
   border: 1px solid #444;
   border-radius: 10px;
   padding: 12px;
-  z-index: 1001;
+  /* Well above .game-popup (2000) + isolation so MY SQUAD stays visible on market / auctions */
+  z-index: 12000;
   font-size: 0.78rem;
   color: #eee;
   box-shadow: 0 4px 24px #000a;
+}
+.team-sidebar.team-sidebar--pop {
+  animation: teamSidebarPop 0.3s cubic-bezier(0.2, 0.85, 0.2, 1) both;
+}
+@keyframes teamSidebarPop {
+  from { opacity: 0; filter: blur(2px); }
+  to   { opacity: 1; filter: blur(0); }
 }
 .team-sidebar h4 {
   margin: 0 0 8px 0;

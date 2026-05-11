@@ -969,6 +969,11 @@ function showTeamSidebar(auctionCard) {
       document.body.appendChild(sidebar);
     }
     sidebar.innerHTML = html;
+    // Keep sidebar after other fixed layers (e.g. .game-popup) so z-index + paint order stay correct.
+    document.body.appendChild(sidebar);
+    sidebar.classList.remove('team-sidebar--pop');
+    void sidebar.offsetWidth;
+    sidebar.classList.add('team-sidebar--pop');
   } catch (err) {
     console.error('[VV] showTeamSidebar crashed:', err);
   }
@@ -4977,7 +4982,6 @@ function renderMarket() {
   if (!state.game) return;
   const me = state.game.players[0];
   if (!me) return;
-  showTeamSidebar(null); // refresh sidebar alongside market panel
   // Ensure bench has no nulls (safety after injury/emergency-buy flows)
   if (Array.isArray(me.bench)) me.bench = me.bench.filter(Boolean);
   if (!Array.isArray(me.bench)) me.bench = [];
@@ -4986,7 +4990,8 @@ function renderMarket() {
   const title = state.lang === 'de' ? 'MARKT' : 'MARKET';
   const body = marketBodyHtml(me, weakPos);
   const existing = document.getElementById('market-popup');
-  if (existing && existing.classList.contains('open')) {
+  const marketWasAlreadyOpen = !!(existing && existing.classList.contains('open'));
+  if (marketWasAlreadyOpen) {
     updateGamePopupBody('market-popup', body);
   } else {
     registerPopupClose('market-popup', () => { if (_waiters['endMarket']) endMarket(); });
@@ -4995,7 +5000,16 @@ function renderMarket() {
   setActionsHtml(`<h3>${T('phase_buy')}</h3>${speedToggleHtml()}
     <button class="action-btn pulse" onclick="VV.endMarket()">${T('finish_buying')}</button>`);
   _setMarketBtnActive(true);
-  wireMarketSidebarHover();
+  const syncMarketSidebar = () => {
+    showTeamSidebar(null);
+    wireMarketSidebarHover();
+  };
+  if (marketWasAlreadyOpen) {
+    syncMarketSidebar();
+  } else {
+    // After openGamePopup’s rAF adds .open, lift MY SQUAD above the dimmer so it pops in with the market.
+    requestAnimationFrame(() => requestAnimationFrame(syncMarketSidebar));
+  }
 }
 
 function oneStarMarketHtml(me, weakPos) {
