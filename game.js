@@ -18,10 +18,14 @@ const BOT_POPUP_MS       = 5000;   // auto-close delay when a bot triggers the p
 const SPONSOR_BONUS      = 15000;  // Trikotsponsor cash grant
 const AUDIENCE_LOSS      = 8000;   // Zuschauerrückgang deduction per player
 const VETERAN_BONUS      = 5000;   // Ehemaligentreffen bonus per 1-star card
-const MATCH_DRAW_BONUS   = 5000;   // money awarded on draw / bye week
-const MATCH_WIN_BONUS    = 10000;  // base bank bonus for league win
-const MATCH_DRAW_LP      = 1;      // league points for a draw
-const MATCH_WIN_LP       = 3;      // league points for a win
+const MATCH_DRAW_BONUS      = 5000;   // money awarded on draw / bye week
+const MATCH_WIN_BONUS       = 10000;  // kept for backward compat — use LIGA_WIN_BANK in payout logic
+const MATCH_DRAW_LP         = 1;      // league points for a draw
+const MATCH_WIN_LP          = 3;      // league points for a win
+const LIGA_WIN_BANK         = 10000;  // bank payout for league win
+const LIGA_WIN_FROM_LOSER   = 5000;   // amount transferred from loser to winner in league match
+const PRICE_PER_STAR        = 10000;  // base price per star for all cards (buy price = card.stars * PRICE_PER_STAR)
+const CUP_WIN_BANK          = 20000;  // bank payout for any cup / tournament win (semi, final, supercup)
 const WAITFOR_TIMEOUT_MS = 30000;  // safety timeout for waitFor()
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -517,7 +521,9 @@ function speedMs(ms) {
 }
 function uid(){ return Math.random().toString(36).slice(2,10); }
 function escapeHTML(s){ return String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
-function cardPrice(stars) { return [0,5000,10000,20000,35000,55000][stars] || 5000; }
+/** @deprecated — use cardBasePrice(card) instead */
+function cardPrice(stars) { return stars * PRICE_PER_STAR; }
+function cardBasePrice(card) { return ((card && card.stars) || 1) * PRICE_PER_STAR; }
 function cardImageBasename(card) {
   const raw = String((card && card.url) || '');
   if (!raw) return '';
@@ -540,7 +546,7 @@ function buildAllCards() {
   const db = (typeof window !== 'undefined' && Array.isArray(window.VV_CARDS_DB))
     ? window.VV_CARDS_DB : [];
   if (!db.length) console.error('[VV] VV_CARDS_DB ist leer – cards.js nicht geladen?');
-  return db.map(c => Object.assign({}, c, { price: cardPrice(c.stars) }));
+  return db.map(c => Object.assign({}, c, { price: cardBasePrice(c) }));
 }
 let ALL_CARDS = [];
 
@@ -776,6 +782,103 @@ function skipAll() {
 // Registry for custom close-actions per popup (e.g. endMarket, pass-bid)
 const _popupCloseCallbacks = {};
 function registerPopupClose(id, fn) { _popupCloseCallbacks[id] = fn; }
+
+// ─── Team Sidebar (shown beside auction / market popups) ──────────────────────
+
+/**
+ * Show (or refresh) the team sidebar.
+ * @param {object|null} auctionCard  The card currently being auctioned; null for market.
+ */
+function showTeamSidebar(auctionCard) {
+  try {
+    const g = state.game;
+    if (!g) return;
+    const me = g.players[0];
+    if (!me) return;
+    const de = state.lang === 'de';
+
+    // --- Build position groups ---
+    const POS_ORDER = ['outside', 'middle', 'setter', 'diagonal', 'libero'];
+    const POS_DOT   = { outside:'🔴', middle:'🟢', setter:'🔵', diagonal:'🔷', libero:'🟡' };
+    const POS_SECONDARY = { outside:'outside2', middle:'middle2' };
+
+    // Gather all non-null cards per canonical position
+    const cardsByPos = {};
+    for (const pos of POS_ORDER) {
+      const sec = POS_SECONDARY[pos];
+      const cards = [];
+      for (const slot of [pos, sec].filter(Boolean)) {
+        const c = me.team[slot];
+        if (c) cards.push({ card: c, slot, onBench: false });
+      }
+      for (const c of (me.bench || [])) {
+        if (c && c.pos === pos) cards.push({ card: c, slot: null, onBench: true });
+      }
+      cardsByPos[pos] = cards;
+    }
+
+    // --- Auction-card highlight class ---
+    const acPos = auctionCard ? auctionCard.pos : null;
+
+    const posGroupHtml = (pos) => {
+      const items = cardsByPos[pos] || [];
+      const count = items.length;
+
+      // Determine highlight class + label for this auction card's position
+      let hlCls = '', hlLabel = '';
+      if (acPos === pos) {
+        if (count === 0)       { hlCls = 'need';   hlLabel = de ? '✅ Brauche ich!'         : '✅ Need this!'; }
+        else if (count === 1)  { hlCls = 'backup'; hlLabel = de ? '⚡ Backup möglich'        : '⚡ Backup possible'; }
+        else                   { hlCls = 'full';   hlLabel = de ? '✓ Bereits gut besetzt'   : '✓ Already covered'; }
+      }
+
+      const labelClass = { need:'team-sidebar-need-label', backup:'team-sidebar-backup-label', full:'team-sidebar-full-label' }[hlCls] || '';
+
+      const cardRows = items.length
+        ? items.map(({ card: c, onBench }) => {
+            const isSusp  = c.disabled;
+            const nameClass = isSusp ? 'suspended' : (onBench ? 'bench' : '');
+            const suffix    = isSusp ? ' ⛔' : (onBench ? ` <span style="color:#666">(${de?'Bank':'Bench'})</span>` : '');
+            return `<div class="team-sidebar-card-row">
+              <img src="${c.url}" alt="" loading="lazy">
+              <span class="team-sidebar-card-name ${nameClass}">${escapeHTML(c.name)}${suffix}</span>
+              <span style="color:var(--gold);font-size:.65rem;flex-shrink:0">${'★'.repeat(c.stars)}</span>
+            </div>`;
+          }).join('')
+        : `<div class="team-sidebar-empty">— ${de ? 'leer' : 'empty'} —</div>`;
+
+      return `<div class="team-sidebar-pos-group ${hlCls}">
+        <div class="team-sidebar-pos-label" style="color:${posColor(pos)}">${POS_DOT[pos]} ${posLabel(pos)}</div>
+        ${hlLabel ? `<div class="${labelClass}">${hlLabel}</div>` : ''}
+        ${cardRows}
+      </div>`;
+    };
+
+    const html = `
+      <h4>📋 ${de ? 'MEIN KADER' : 'MY SQUAD'}</h4>
+      <div class="team-sidebar-gold">💰 ${fmtMoney(me.money)}'</div>
+      ${POS_ORDER.map(posGroupHtml).join('')}`;
+
+    // Reuse existing panel or create new one
+    let sidebar = document.getElementById('team-sidebar');
+    if (!sidebar) {
+      sidebar = document.createElement('div');
+      sidebar.id        = 'team-sidebar';
+      sidebar.className = 'team-sidebar';
+      document.body.appendChild(sidebar);
+    }
+    sidebar.innerHTML = html;
+  } catch (err) {
+    console.error('[VV] showTeamSidebar crashed:', err);
+  }
+}
+
+function hideTeamSidebar() {
+  try {
+    const el = document.getElementById('team-sidebar');
+    if (el) el.remove();
+  } catch (_) {}
+}
 
 function openGamePopup(id, title, bodyHtml) {
   state.selectedBenchCard = null; // cancel any pending swap when a popup opens
@@ -1295,15 +1398,126 @@ function placeIntoTeamOrBench(p, card) {
   }
 }
 
-function draftDraw(stars) {
+// ─── Draft position-overload helpers ─────────────────────────────────────────
+
+/** Returns array of overloaded position keys (those with >2 cards). Empty = no overload. */
+function draftOverloadedPositions(cards) {
+  const counts = {};
+  for (const card of cards) counts[card.pos] = (counts[card.pos] || 0) + 1;
+  return Object.entries(counts).filter(([, n]) => n > 2).map(([pos]) => pos);
+}
+
+/** Shows the restart-offer popup. Resolves 'restart' or 'continue'. */
+function showDraftRestartOffer(overloadedPos) {
+  return new Promise(resolve => {
+    try {
+      const de = state.lang === 'de';
+      const firstPosLabel = posLabel(overloadedPos[0]).toUpperCase();
+      const allPosLabels  = overloadedPos.map(p => posLabel(p)).join(', ');
+      const title = de
+        ? `⚠️ ZU VIELE ${firstPosLabel} IM KADER`
+        : `⚠️ TOO MANY ${firstPosLabel} IN SQUAD`;
+      const desc = de
+        ? `Du hast zu viele <b>${allPosLabels}</b>-Spieler gezogen (mehr als 2 pro Position).\nMaximal 2 pro Position empfohlen.\n\nMöchtest du den Draft neu starten?\n(Alle bisherigen Picks werden zurückgesetzt — auch die der Gegner)`
+        : `You drafted too many <b>${allPosLabels}</b> players (more than 2 per position).\nMax. 2 per position recommended.\n\nDo you want to restart the draft?\n(All picks will be reset — including opponents')`;
+
+      const pid = 'dr-' + Date.now();
+      const div = document.createElement('div');
+      div.className = 'modal-popup';
+      div.innerHTML = `
+        <div class="modal-card action-upop" style="max-width:480px">
+          <div class="action-upop-title" style="color:#FFD700">${title}</div>
+          <hr class="action-upop-divider">
+          <div class="action-upop-desc">${desc.replace(/\n/g, '<br>')}</div>
+          <div class="action-upop-footer" style="justify-content:space-between;gap:1rem;margin-top:1rem">
+            <button class="btn" id="${pid}-restart"
+              style="background:#c0392b;color:#fff;border:none;padding:.5em 1.2em;border-radius:6px;cursor:pointer;font-weight:700">
+              ${de ? '🔄 Neu starten' : '🔄 Restart'}
+            </button>
+            <button class="btn btn-secondary" id="${pid}-continue">
+              ${de ? 'Weiter spielen' : 'Continue'}
+            </button>
+          </div>
+        </div>`;
+      document.body.appendChild(div);
+      setTimeout(() => div.classList.add('open'), 10);
+
+      let done = false;
+      const finish = choice => {
+        if (done) return; done = true;
+        if (document.body.contains(div)) div.remove();
+        resolve(choice);
+      };
+      document.getElementById(pid + '-restart').addEventListener('click', () => finish('restart'));
+      document.getElementById(pid + '-continue').addEventListener('click', () => finish('continue'));
+    } catch (err) {
+      console.error('[VV] showDraftRestartOffer crashed:', err);
+      resolve('continue');
+    }
+  });
+}
+
+/** Resets ALL players' draft picks and reshuffles the deck. */
+function draftResetAll() {
+  try {
+    const g = state.game;
+    if (!g._draftDeck) g._draftDeck = [];
+    for (const p of g.players) {
+      // Return 2-4 star cards to the draft deck (1-star cards come from ALL_CARDS, just discard)
+      for (const c of [...Object.values(p.team).filter(Boolean), ...(p.bench || [])]) {
+        if (c.stars >= 2 && c.stars <= 4) g._draftDeck.push(c);
+      }
+      p.team  = { outside: null, outside2: null, middle: null, middle2: null, setter: null, diagonal: null, libero: null };
+      p.bench = [];
+    }
+    g._draftDeck.sort(() => Math.random() - 0.5);
+  } catch (err) {
+    console.error('[VV] draftResetAll crashed:', err);
+  }
+}
+
+/** Called after every human pick. Shows restart offer if any position has >2 cards. */
+async function checkDraftOverload() {
+  try {
+    const me = state.game.players[0];
+    const allCards = [...Object.values(me.team).filter(Boolean), ...(me.bench || [])];
+    const overloaded = draftOverloadedPositions(allCards);
+    if (!overloaded.length) return;
+
+    const choice = await showDraftRestartOffer(overloaded);
+    if (choice !== 'restart') return;
+
+    draftResetAll();
+
+    // Brief confirmation popup
+    const de = state.lang === 'de';
+    const pid = 'dr-confirm-' + Date.now();
+    const div = document.createElement('div');
+    div.className = 'modal-popup';
+    div.innerHTML = `
+      <div class="modal-card" style="max-width:320px;text-align:center;padding:2rem 1.5rem">
+        <div style="font-size:2rem;margin-bottom:.6rem">🔄</div>
+        <div style="font-weight:700;font-size:1.1rem">${de ? 'Draft wird neu gestartet…' : 'Restarting draft…'}</div>
+      </div>`;
+    document.body.appendChild(div);
+    setTimeout(() => div.classList.add('open'), 10);
+    await sleep(2000);
+    if (document.body.contains(div)) div.remove();
+    renderDraft();
+  } catch (err) {
+    console.error('[VV] checkDraftOverload crashed:', err);
+  }
+}
+
+async function draftDraw(stars) {
   const me = state.game.players[0];
   const c = deckPoolForStars(stars);
   if (!c) { toast(T('draft_deck_empty'), 'bad'); return; }
   placeIntoTeamOrBench(me, c);
   beep(740, 60);
   renderDraft();
-  // Animate: brief flash
   toast(`+ ${c.name} (${c.stars}★)`, 'good', 1200);
+  await checkDraftOverload();
 }
 
 function draftRedraw() {
@@ -1317,7 +1531,7 @@ function draftRedraw() {
   renderDraft();
 }
 
-function draftPick1(pos) {
+async function draftPick1(pos) {
   const me = state.game.players[0];
   const counts = countByStars([...me.bench, ...Object.values(me.team).filter(Boolean)]);
   if (counts[1] >= 3) { toast(T('draft_pick_limit'), 'bad'); return; }
@@ -1334,6 +1548,7 @@ function draftPick1(pos) {
   }
   beep(640, 60);
   renderDraft();
+  await checkDraftOverload();
 }
 
 function draftFinish() {
@@ -1457,9 +1672,10 @@ async function runOpeningAuction() {
 
 async function runAuctionForCard(card, idx, total) {
   if (!card || !Number.isFinite(Number(card.stars))) return;
+  showTeamSidebar(card);
   const stage = $('#auction-stage');
   const cardStars = Math.max(1, Math.floor(Number(card.stars) || 1));
-  const minBid = cardStars * 10000;
+  const minBid = cardStars * PRICE_PER_STAR;
   let high = 0; let highBidder = null;
   // Auction rounds: youngest first (we treat human as youngest), then clockwise
   let currentBid = 0;
@@ -1551,6 +1767,7 @@ async function runAuctionForCard(card, idx, total) {
   }
   refreshTopbar();
   await sleep(speedMs(800));
+  hideTeamSidebar();
 }
 
 function appendAuctionFeed(html) {
@@ -3324,8 +3541,8 @@ function disablePlayerOnTeam(player, pos, reason) {
     return sub;
   }
 
-  // 2) No bench match — emergency buy: 1★ card of the same position for 10 000
-  const cost = 10000;
+  // 2) No bench match — emergency buy: 1★ card of the same position for PRICE_PER_STAR
+  const cost = PRICE_PER_STAR;
   player.money = Math.max(0, player.money - cost);
   animateMoneyChange(player, -cost);
   toast(
@@ -3457,14 +3674,13 @@ async function runCupSemis(ev) {
   for (const m of semis) {
     appendConeLog(`${T('cup_h')}: ${escapeHTML(m.home.p.name)} vs ${escapeHTML(m.away.p.name)} · ${T('homeaway_home')} = ${escapeHTML(m.home.p.name)}`);
     const winner = await runMatchClassic(m.home.p, m.away.p, true);
-    if (winner === m.home.p) {
-      m.home.p.money += ev.prize;
-      m.home.p.totalEarned += ev.prize;
-      logEntry(`${T('week_event_cup')} → ${escapeHTML(m.home.p.name)} +${fmtMoney(ev.prize)}’`, 'tournament');
-    } else {
-      m.away.p.money += ev.prize;
-      m.away.p.totalEarned += ev.prize;
-      logEntry(`${T('week_event_cup')} → ${escapeHTML(m.away.p.name)} +${fmtMoney(ev.prize)}’`, 'tournament');
+    try {
+      const cupSemiWinner = (winner === m.home.p) ? m.home.p : m.away.p;
+      cupSemiWinner.money += CUP_WIN_BANK;
+      cupSemiWinner.totalEarned += CUP_WIN_BANK;
+      logEntry(`${T('week_event_cup')} → ${escapeHTML(cupSemiWinner.name)} +${fmtMoney(CUP_WIN_BANK)}' (Bank)`, 'tournament');
+    } catch (err) {
+      console.error('[VV] Cup semi payout crashed:', err);
     }
     g._cupWinners.push(winner);
   }
@@ -3491,11 +3707,15 @@ async function runCupFinal(ev) {
     <div class="stage-sub">${escapeHTML(home.name)} vs ${escapeHTML(away.name)}</div>`;
   const winner = await runMatchClassic(home, away, true);
   const loser = winner === home ? away : home;
-  winner.money += ev.prize;
-  winner.totalEarned += ev.prize;
-  winner.vp += 2; animateVpChange(winner, 2);
-  loser.vp += 1; animateVpChange(loser, 1);
-  logEntry(`<b>${T('week_event_cupfinal')}</b> → ${escapeHTML(winner.name)} +2 VP +${fmtMoney(ev.prize)}' · ${escapeHTML(loser.name)} +1 VP`, 'tournament');
+  try {
+    winner.money += CUP_WIN_BANK;
+    winner.totalEarned += CUP_WIN_BANK;
+    winner.vp += 2; animateVpChange(winner, 2);
+    loser.vp += 1; animateVpChange(loser, 1);
+    logEntry(`<b>${T('week_event_cupfinal')}</b> → ${escapeHTML(winner.name)} +2 VP +${fmtMoney(CUP_WIN_BANK)}' (Bank) · ${escapeHTML(loser.name)} +1 VP`, 'tournament');
+  } catch (err) {
+    console.error('[VV] Cup final payout crashed:', err);
+  }
   flash('win');
   beep(900, 200);
   refreshTopbar();
@@ -3517,8 +3737,12 @@ async function runSuperCup(ev) {
     <div class="stage-h">${T('week_event_supercup')} · ${T('week')} ${boardWeekDisplay(g)}</div>
     <div class="stage-sub">${escapeHTML(home.name)} vs ${escapeHTML(away.name)} · ${state.lang==='de'?'(Saison 1: gewählt nach Teamstärke)':'(Season 1: chosen by team strength)'}</div>`;
   const winner = await runMatchClassic(home, away, true);
-  winner.money += ev.prize; winner.totalEarned += ev.prize;
-  logEntry(`${T('week_event_supercup')} → ${escapeHTML(winner.name)} +${fmtMoney(ev.prize)}’`, 'tournament');
+  try {
+    winner.money += CUP_WIN_BANK; winner.totalEarned += CUP_WIN_BANK;
+    logEntry(`${T('week_event_supercup')} → ${escapeHTML(winner.name)} +${fmtMoney(CUP_WIN_BANK)}' (Bank)`, 'tournament');
+  } catch (err) {
+    console.error('[VV] SuperCup payout crashed:', err);
+  }
   refreshTopbar();
 }
 
@@ -3920,26 +4144,30 @@ async function runLeagueMatch() {
   const winner = await runMatchClassic(home, away, false);
   restoreBoardPanel();
   refreshTeamPanel();
-  // Award league points and money per rulebook (spec §2.9)
+  // Award league points and money per rulebook
   if (winner === null) {
-    // Draw: both +5k bank, both +1 LP
+    // Draw: both sides +MATCH_DRAW_BONUS from bank, both +1 LP; no transfer between players
     home.money += MATCH_DRAW_BONUS; home.totalEarned += MATCH_DRAW_BONUS; animateMoneyChange(home, MATCH_DRAW_BONUS);
     away.money += MATCH_DRAW_BONUS; away.totalEarned += MATCH_DRAW_BONUS; animateMoneyChange(away, MATCH_DRAW_BONUS);
     home.leaguePoints = leaguePointsVal(home) + MATCH_DRAW_LP;
     away.leaguePoints = leaguePointsVal(away) + MATCH_DRAW_LP;
-    logEntry(`🏐 ${T('phase_match')}: 🤝 ${state.lang==='de'?'Unentschieden':'Draw'} — ${escapeHTML(home.name)} & ${escapeHTML(away.name)} je +5'`);
-  } else if (winner === home) {
-    home.money += MATCH_WIN_BONUS; home.totalEarned += MATCH_WIN_BONUS; animateMoneyChange(home, MATCH_WIN_BONUS);
-    if (away.money >= MATCH_DRAW_BONUS) { away.money -= MATCH_DRAW_BONUS; animateMoneyChange(away, -MATCH_DRAW_BONUS); home.money += MATCH_DRAW_BONUS; home.totalEarned += MATCH_DRAW_BONUS; animateMoneyChange(home, MATCH_DRAW_BONUS); } else { home.money += away.money; away.money = 0; }
-    home.matchesWon++; home.leaguePoints = leaguePointsVal(home) + MATCH_WIN_LP;
-    logEntry(`🏐 ${T('phase_match')}: <b>${escapeHTML(home.name)}</b> +10’ (Bank), +5’ (${escapeHTML(away.name)})`, 'win');
+    logEntry(`🏐 ${T('phase_match')}: 🤝 ${state.lang==='de'?'Unentschieden':'Draw'} — ${escapeHTML(home.name)} & ${escapeHTML(away.name)} je +${fmtMoney(MATCH_DRAW_BONUS)}'`);
   } else {
-    away.money += MATCH_WIN_BONUS; away.totalEarned += MATCH_WIN_BONUS; animateMoneyChange(away, MATCH_WIN_BONUS);
-    if (home.money >= MATCH_DRAW_BONUS) { home.money -= MATCH_DRAW_BONUS; animateMoneyChange(home, -MATCH_DRAW_BONUS); away.money += MATCH_DRAW_BONUS; away.totalEarned += MATCH_DRAW_BONUS; animateMoneyChange(away, MATCH_DRAW_BONUS); } else { away.money += home.money; home.money = 0; }
-    away.matchesWon++; away.leaguePoints = leaguePointsVal(away) + MATCH_WIN_LP;
-    logEntry(`🏐 ${T('phase_match')}: <b>${escapeHTML(away.name)}</b> +10’ (Bank), +5’ (${escapeHTML(home.name)})`, 'loss');
+    try {
+      const w = winner; const l = (winner === home) ? away : home;
+      // Winner: +LIGA_WIN_BANK from the bank
+      w.money += LIGA_WIN_BANK; w.totalEarned += LIGA_WIN_BANK; animateMoneyChange(w, LIGA_WIN_BANK);
+      // Winner: +LIGA_WIN_FROM_LOSER transferred from loser (loser floor = 0)
+      const fromLoser = Math.min(LIGA_WIN_FROM_LOSER, l.money);
+      l.money = Math.max(0, l.money - LIGA_WIN_FROM_LOSER); animateMoneyChange(l, -fromLoser);
+      w.money += fromLoser; w.totalEarned += fromLoser; animateMoneyChange(w, fromLoser);
+      w.matchesWon++; w.leaguePoints = leaguePointsVal(w) + MATCH_WIN_LP;
+      logEntry(`🏐 ${T('phase_match')}: <b>${escapeHTML(w.name)}</b> +${fmtMoney(LIGA_WIN_BANK)}' (Bank), +${fmtMoney(fromLoser)}' (${escapeHTML(l.name)})`, winner === home ? 'win' : 'loss');
+    } catch (err) {
+      console.error('[VV] Liga win payout crashed:', err);
+    }
   }
-  // Other players: bye → +5'000
+    // Other players: bye → +5'000
   for (const p of g.players) {
     if (p !== home && p !== away) {
       p.money += MATCH_DRAW_BONUS; p.totalEarned += MATCH_DRAW_BONUS; animateMoneyChange(p, MATCH_DRAW_BONUS);
@@ -3963,9 +4191,10 @@ function regenMarket() {
 // Shared multi-round popup auction used both for weekly market reveal and mid-week transfer events.
 // firstPlayer: if set, they bid first (for the transfer event — the player who triggered it).
 async function runAuctionUI(card, titleLabel, firstPlayer) {
+  showTeamSidebar(card);
   const g = state.game;
   const de = state.lang === 'de';
-  const minBid = (card.stars || 1) * 10000;
+  const minBid = cardBasePrice(card);
   // Order: firstPlayer goes first, rest follow in player-index order
   let order = g.players.slice();
   if (firstPlayer) {
@@ -4111,6 +4340,7 @@ async function runAuctionUI(card, titleLabel, firstPlayer) {
     registerPopupClose(popId, () => resolve());
   });
   await sleep(200);
+  hideTeamSidebar();
 }
 
 async function runWeeklyAuction() {
@@ -4317,6 +4547,7 @@ function renderMarket() {
   if (!state.game) return;
   const me = state.game.players[0];
   if (!me) return;
+  showTeamSidebar(null); // refresh sidebar alongside market panel
   // Ensure bench has no nulls (safety after injury/emergency-buy flows)
   if (Array.isArray(me.bench)) me.bench = me.bench.filter(Boolean);
   if (!Array.isArray(me.bench)) me.bench = [];
@@ -4341,7 +4572,7 @@ function oneStarMarketHtml(me, weakPos) {
     const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
     const c = (ALL_CARDS.filter(x => x.stars === 1 && x.pos === poolPos)[0]) || null;
     if (!c) return '';
-    const canAfford = me.money >= 10000;
+    const canAfford = me.money >= PRICE_PER_STAR;
     const suggested = pos === weakPos;
     return `<div class="mc ${canAfford?'':'poor'} ${suggested?'suggested':''}" data-tip="1★ ${posLabel(pos)} · 10’000 · ${escapeHTML(cardImageBasename(c))}">
       <div class="card-thumb">
@@ -4352,7 +4583,7 @@ function oneStarMarketHtml(me, weakPos) {
         <span class="mc-pos" style="background:${posColor(pos)}">${posShort(pos)}</span>
         <span class="mc-stars">★</span>
       </div>
-      <div class="mc-price">${fmtMoney(10000)}</div>
+      <div class="mc-price">${fmtMoney(PRICE_PER_STAR)}</div>
       <button class="mc-buy" onclick="VV.buyOneStar('${pos}')" ${canAfford?'':'disabled'}>${canAfford?T('market_buy'):T('market_sold')}</button>
     </div>`;
   }).join('');
@@ -4360,7 +4591,7 @@ function oneStarMarketHtml(me, weakPos) {
 
 function benchCardHtml(c, me) {
   if (!c) return '';
-  const sellPrice = Math.floor((c.stars || 0) * 10000 / 2);
+  const sellPrice = Math.floor(cardBasePrice(c) / 2);
   return `<div class="bc">
     <div class="card-thumb">
       <img src="${c.url}" alt="" class="bc-img" loading="lazy">
@@ -4376,7 +4607,7 @@ function benchCardHtml(c, me) {
 
 function buyOneStar(pos) {
   const me = state.game.players[0];
-  if (me.money < 10000) { toast(state.lang==='de'?'Zu teuer':'Too expensive', 'bad'); return; }
+  if (me.money < PRICE_PER_STAR) { toast(state.lang==='de'?'Zu teuer':'Too expensive', 'bad'); return; }
   const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
   const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === poolPos);
   if (!opts.length) return;
@@ -4385,12 +4616,12 @@ function buyOneStar(pos) {
   if (cur) me.bench.push(cur); // always move existing card to bench
   me.team[pos] = c;
   autoSelectLineup(me);
-  me.money -= 10000;
-  animateMoneyChange(me, -10000);
+  me.money -= PRICE_PER_STAR;
+  animateMoneyChange(me, -PRICE_PER_STAR);
   toast(state.lang==='de'?`Gekauft: ${c.name}`:`Bought: ${c.name}`, 'good');
   beep(880, 60);
   refreshTopbar(); refreshTeamPanel(); renderMarket(); refreshFloatingPanel();
-  logEntry(`💰 ${state.lang==='de'?'Gekauft':'Bought'}: ${c.name} (1★) -10’000’`, 'win');
+  logEntry(`💰 ${state.lang==='de'?'Gekauft':'Bought'}: ${c.name} (1★) -${fmtMoney(PRICE_PER_STAR)}'`, 'win');
 }
 
 function sellBenchCard(id) {
@@ -4402,7 +4633,7 @@ function sellBenchCard(id) {
     toast(state.lang === 'de' ? '⛔ Gesperrt — Verkauf nicht möglich.' : '⛔ Suspended — cannot sell.', 'bad', 2500);
     return;
   }
-  const price = Math.floor(c.stars * 10000 / 2);
+  const price = Math.floor(cardBasePrice(c) / 2);
   if (!confirm(state.lang==='de'?`${c.name} für ${fmtMoney(price)}’ verkaufen?`:`Sell ${c.name} for ${fmtMoney(price)}?`)) return;
   me.bench.splice(idx, 1);
   me.money += price;
@@ -4416,7 +4647,7 @@ function sellBenchCard(id) {
 function sellStarter(pos) {
   const me = state.game.players[0];
   const c = me.team[pos]; if (!c) return;
-  const price = Math.floor(c.stars * 10000 / 2);
+  const price = Math.floor(cardBasePrice(c) / 2);
   if (!confirm(state.lang==='de'?`${c.name} für ${fmtMoney(price)}’ verkaufen?`:`Sell ${c.name} for ${fmtMoney(price)}?`)) return;
   // Clear the slot first, then let autoSelectLineup pick the best available bench card
   me.team[pos] = null;
@@ -4474,6 +4705,7 @@ function buyCard(id) {
 function endMarket() {
   closeGamePopup('market-popup');
   _setMarketBtnActive(false);
+  hideTeamSidebar();
   const g = state.game;
   if (g) {
     // Unsold market cards stay in marketPile for next week
@@ -4487,6 +4719,7 @@ function toggleMarketPopup() {
     // Close popup silently — don't fire endMarket, phase stays active
     closeGamePopup('market-popup');
     _setMarketBtnActive(false);
+    hideTeamSidebar();
   } else {
     if (state.game) {
       renderMarket();
