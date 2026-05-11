@@ -110,6 +110,7 @@ const session = {
   pauseTimer: null,
   lastRoomSnapshot: null,
   gameLaunched: false,   // reset in leaveRoom so a new room can run onRoomUpdate → startMultiplayer again
+  lobbyGameState: null,  // host snapshot { phase:'lobby', … } for non-host lobby UI
 };
 
 function ensurePlayerId() {
@@ -507,9 +508,18 @@ function onRoomUpdate(room) {
     paintLobby(room);
   }
 
-  // Spectators: mirror the host's game state whenever it changes.
+  // Non-host: lobby gameState nur für Lobby-UI; laufendes Spiel über vollen Snapshot.
   if (!session.isHost && room.gameState) {
-    applyRemoteGameState(room.gameState);
+    const gs = room.gameState;
+    const st = meta.status;
+    if (st === 'lobby' && gs.phase === 'lobby') {
+      session.lobbyGameState = gs;
+      if (view === 'mp_lobby') paintLobby(room);
+    } else if (st === 'running' || st === 'finished') {
+      if (gs.phase !== 'lobby') {
+        applyRemoteGameState(gs);
+      }
+    }
   }
 
   handleSeatPromptForClient(room);
@@ -570,7 +580,8 @@ function dismissSeatPromptOverlay() {
 
 function updatePauseBarFromRoom(room) {
   const view = ($('#app') || {}).dataset && $('#app').dataset.view;
-  if (view !== 'game' && view !== 'mp_viewer') {
+  const pauseViews = new Set(['game', 'mp_viewer', 'draft', 'auction', 'starting', 'end']);
+  if (!pauseViews.has(view)) {
     document.getElementById('vvmp-pause-root')?.remove();
     return;
   }
@@ -773,6 +784,28 @@ function maybePromoteHost(room) {
 // ---------------------------------------------------------------
 // Lobby UI
 // ---------------------------------------------------------------
+async function writeLobbyGameStateSnapshot(room) {
+  if (!session.isHost || !session.roomCode) return;
+  const meta = (room && room.meta) || {};
+  if (meta.status === 'running') return;
+  const playersMap = (room && room.players) || {};
+  const humanCount = Object.values(playersMap).filter(p => p && !p.isBot).length;
+  const now = Date.now();
+  try {
+    await update(ref(db, `rooms/${session.roomCode}`), {
+      gameState: {
+        phase:           'lobby',
+        _mpUiView:       'mp_lobby',
+        lobbyHumanCount: humanCount,
+        updatedAt:       now,
+      },
+      'meta/lastActivity': now,
+    });
+  } catch (err) {
+    console.warn('[VV_MP] writeLobbyGameStateSnapshot:', err);
+  }
+}
+
 function renderLobby() {
   setAppView('mp_lobby');
   const room = session.lastRoomSnapshot;
@@ -801,6 +834,10 @@ function paintLobby(room) {
 
   const filled = slots.filter(Boolean).length;
   const canStart = isHost && filled >= 2 && filled === MAX_HUMANS_PER_ROOM;
+  const lg = session.lobbyGameState;
+  const lobbyLiveHint = (!isHost && lg && lg.phase === 'lobby')
+    ? `<div class="menu-sub" style="text-align:center;margin-top:0.35rem;opacity:0.65;font-size:0.88rem;">${esc(DE('Raum-State: live mit Host verbunden', 'Room state: live with host'))}</div>`
+    : '';
 
   const slotRows = slots.map((p, i) => {
     if (!p) {
@@ -835,6 +872,7 @@ function paintLobby(room) {
       <div class="menu-card vvmp-lobby">
         <button class="menu-back" data-vvmp-leave>‹ ${esc(DE('Lobby verlassen', 'Leave lobby'))}</button>
         <div class="menu-title"><span class="accent">${esc(DE('Lobby', 'Lobby'))}</span></div>
+        ${lobbyLiveHint}
         <div class="vvmp-codebar">
           <div>
             <div class="vvmp-codelabel">${esc(DE('Raum-Code', 'Room code'))}</div>
@@ -890,6 +928,10 @@ function paintLobby(room) {
   });
   const startBtn = document.getElementById('vvmp-start');
   if (startBtn) startBtn.addEventListener('click', startGameFromLobby);
+
+  if (isHost && meta.status !== 'running') {
+    void writeLobbyGameStateSnapshot(room);
+  }
 }
 
 async function addBotToSlot(slotIdx) {
@@ -945,6 +987,7 @@ async function leaveRoom(silent) {
   session.roomCode = null;
   session.isHost = false;
   session.lastRoomSnapshot = null;
+  session.lobbyGameState = null;
   if (code && pid) {
     try { await remove(ref(db, `rooms/${code}/players/${pid}`)); } catch (_) {}
   }
@@ -1103,7 +1146,7 @@ async function submitInput(payload) {
   }));
 }
 
-function listenForInput(playerId, cb) {
+function listenForInput(playerId, cb, opts) {
   if (!session.roomCode || !playerId) return () => {};
   const r = ref(db, `rooms/${session.roomCode}/inputs/${playerId}`);
   const unsub = onValue(r, snap => {
@@ -1115,15 +1158,31 @@ function listenForInput(playerId, cb) {
       remove(r).catch(() => {});
     }
   });
-  session.unsubscribers.push(unsub);
+  if (!opts || opts.registerInSession !== false) {
+    session.unsubscribers.push(unsub);
+  }
   return unsub;
 }
 
+/**
+ * Zug-Zeiger für Clients (optional UI). Nur ab **Eröffnungsauktion** bzw. Saison sinnvoll —
+ * der **Draft** läuft parallel ohne `turns/`. Nicht im Draft-Phase aufrufen.
+ */
 async function setCurrentTurn(playerId, phase, action) {
   if (!session.isHost || !session.roomCode) return;
   await fb('setCurrentTurn', () => set(ref(db, `rooms/${session.roomCode}/turns/currentTurn`), {
     playerId, phase: phase || null, action: action || null, timestamp: Date.now()
   }));
+}
+
+/** Entfernt `rooms/.../turns` (z. B. vor parallelem Draft oder beim Wechsel Draft → Auktion). */
+async function clearRoomTurnState() {
+  if (!session.isHost || !session.roomCode) return;
+  try {
+    await remove(ref(db, `rooms/${session.roomCode}/turns`));
+  } catch (err) {
+    console.warn('[VV_MP] clearRoomTurnState:', err);
+  }
 }
 
 // ---------------------------------------------------------------
@@ -1197,7 +1256,7 @@ function installBridge() {
   window.VV_MP = {
     generateRoomCode, createRoom, joinRoom, leaveRoom,
     syncState, scheduleGameStateSync, resetSyncScheduler, forceGameStateSync,
-    submitInput, listenForInput, setCurrentTurn,
+    submitInput, listenForInput, setCurrentTurn, clearRoomTurnState,
     publishSeatPrompt, clearSeatPrompt, waitForSeatInput,
     pauseSelf, resumeSelf, handleDisconnect,
     paintViewerWaiting,

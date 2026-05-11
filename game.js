@@ -802,6 +802,9 @@ function beep(freq=440, dur=80, type='square', vol=0.05) {
 // ────────────────────────────────────────────────────────────────
 function setView(v) {
   state.view = v;
+  if (MULTIPLAYER && state.mpRoom && state.mpRoom.isHost && state.game) {
+    try { state.game._mpUiView = v; } catch (_) {}
+  }
   if (v !== 'draft') removeDraftRestartButton();
   document.getElementById('app').dataset.view = v;
   render();
@@ -1340,13 +1343,13 @@ function startMultiplayer(opts) {
     // and kick off the existing draft → auction → season pipeline.
     initMultiplayerGame(opts);
     setView('draft');
-    // Push state to Firebase: immediate first sync so non-hosts move out of
-    // the waiting screen quickly, then a slower periodic safety net.
+    try { mpHostRegisterDraftInputListeners(); } catch (_) {}
+    try { mpHostStartParallelDraft(); } catch (_) {}
     if (state.mpSyncTimer) clearInterval(state.mpSyncTimer);
     state.mpSyncTimer = setInterval(() => {
       try { if (window.VV_MP && window.VV_MP.forceGameStateSync) window.VV_MP.forceGameStateSync(); }
       catch (_) {}
-    }, 5000);
+    }, 10000);
     try { if (window.VV_MP && window.VV_MP.forceGameStateSync) window.VV_MP.forceGameStateSync(); } catch (_) {}
     toast(state.lang === 'de' ? 'Spiel gestartet — du bist Host.' : 'Game started — you are host.', 'good', 2200);
   } else {
@@ -1368,29 +1371,36 @@ function startMultiplayer(opts) {
   }
 }
 
+/** Spielerobjekt für den lokalen Sitz (mpId === localPlayerId). */
+function mpLocalGamePlayer() {
+  if (!MULTIPLAYER || !state.mpRoom || !state.game || !Array.isArray(state.game.players)) return null;
+  const id = state.mpRoom.localPlayerId;
+  return state.game.players.find(p => p && p.mpId === id) || null;
+}
+
+/** Sichtbare UI-Phase aus dem Host-Snapshot, falls _mpUiView fehlt (ältere Saves). */
+function inferMpUiViewFromGame(g) {
+  if (!g) return 'menu';
+  if (g.phase === 'lobby') return 'mp_lobby';
+  if (g.over && g.winner) return 'end';
+  if (g.phase === 'season') return 'game';
+  if (g.phase === 'auction') return 'auction';
+  if (g.phase === 'draft') return 'draft';
+  return 'game';
+}
+
 function applyRemoteState(remote) {
   if (!MULTIPLAYER) return;
   if (!remote) return;
-  // Non-host viewer: adopt the host's snapshot wholesale, but only flip to
-  // the live board once the host has finished the draft. During draft, the
-  // non-host stays on mp_viewer with a status indicator since they have no
-  // controls yet (draft is host-only). They become active in the auction.
+  if (remote.phase === 'lobby') return;
   try {
+    const targetView = remote._mpUiView || inferMpUiViewFromGame(remote);
+    const prevView = state.view;
     state.game = remote;
-    const phase = remote.phase || 'draft';
-    const shouldShowGame = (phase !== 'draft');
-
-    if (shouldShowGame && state.view === 'mp_viewer') {
-      setView('game');
-    } else if (state.view === 'game') {
+    if (prevView !== targetView || prevView === 'mp_viewer') {
+      setView(targetView);
+    } else {
       render();
-    } else if (state.view === 'mp_viewer') {
-      // Stay on viewer but refresh the status line (Host drafts… X/9 etc.).
-      try {
-        if (window.VV_MP && typeof window.VV_MP.paintViewerWaiting === 'function') {
-          window.VV_MP.paintViewerWaiting();
-        }
-      } catch (_) {}
     }
   } catch (e) {
     console.warn('[VV] applyRemoteState failed:', e);
@@ -1399,6 +1409,7 @@ function applyRemoteState(remote) {
 
 /** Stops host→Firebase sync interval and clears local MP flags (lobby leave, menu, play-again). */
 function resetLocalMultiplayerSession() {
+  try { mpHostUnregisterDraftInputListeners(); } catch (_) {}
   try {
     if (window.VV_MP && typeof window.VV_MP.resetSyncScheduler === 'function') window.VV_MP.resetSyncScheduler();
   } catch (_) {}
@@ -1425,6 +1436,177 @@ function mpSyncIfHost() {
     }
   } catch (_) {}
 }
+
+/** Ab Auktion/Saison: `turns/currentTurn` für MP-Clients (Draft: nie). */
+async function mpHostPublishSequentialTurn(player, phaseKey) {
+  if (!MULTIPLAYER || !mpIsMultiplayerHost() || !player || !player.mpId) return;
+  const mp = window.VV_MP;
+  if (!mp || typeof mp.setCurrentTurn !== 'function') return;
+  try {
+    await mp.setCurrentTurn(player.mpId, phaseKey, null);
+  } catch (_) {}
+}
+
+let _mpDraftInputUnsubs = [];
+
+function mpHostUnregisterDraftInputListeners() {
+  for (const u of _mpDraftInputUnsubs) {
+    try { if (typeof u === 'function') u(); } catch (_) {}
+  }
+  _mpDraftInputUnsubs = [];
+}
+
+function mpHostRegisterDraftInputListeners() {
+  mpHostUnregisterDraftInputListeners();
+  if (!mpIsMultiplayerHost() || !state.game || !state.game.players) return;
+  const mp = window.VV_MP;
+  if (!mp || typeof mp.listenForInput !== 'function') return;
+  for (const p of state.game.players) {
+    if (!p || p.mpIsBot || !p.mpId) continue;
+    const id = p.mpId;
+    const unsub = mp.listenForInput(id, (payload) => {
+      try { mpHostOnDraftInput(id, payload); } catch (e) { console.warn('[VV] mpHostOnDraftInput', e); }
+    }, { registerInSession: false });
+    _mpDraftInputUnsubs.push(unsub);
+  }
+}
+
+function mpHostOnDraftInput(mpId, payload) {
+  if (!mpIsMultiplayerHost() || !state.game || state.game.phase !== 'draft') return;
+  if (!payload || !payload.action) return;
+  const idx = state.game.players.findIndex(p => p && p.mpId === mpId);
+  if (idx < 0) return;
+  const subject = state.game.players[idx];
+  if (subject.mpIsBot) return;
+  const done = computeDraftStage(subject) === 'done';
+  if (done && (payload.action === 'draftDraw' || payload.action === 'draftPick1')) return;
+
+  if (payload.action === 'draftDraw') {
+    const stars = parseInt(payload.stars, 10);
+    const need = mpDraftExpectedStarsForStage(subject);
+    if (stars !== need) return;
+    const c = deckPoolForStars(stars);
+    if (!c) return;
+    placeIntoTeamOrBench(subject, c);
+    beep(740, 60);
+  } else if (payload.action === 'draftRedraw') {
+    mpDraftClearPlayerRosterReturn234ToPool(subject);
+    beep(520, 40);
+    mpAfterHostDraftMutation();
+    return;
+  } else if (payload.action === 'draftPersonalReset') {
+    const allCards = [...Object.values(subject.team).filter(Boolean), ...(subject.bench || [])];
+    if (!draftOverloadedPositions(allCards).length) return;
+    mpDraftClearPlayerRosterReturn234ToPool(subject);
+    beep(520, 40);
+    mpAfterHostDraftMutation();
+    return;
+  } else if (payload.action === 'draftPick1') {
+    const pos = payload.pos;
+    if (!pos || !POSITIONS.includes(pos)) return;
+    const counts = countByStars([...subject.bench, ...Object.values(subject.team).filter(Boolean)]);
+    if (counts[1] >= 3) return;
+    const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
+    const c = pickUnowned1Star(poolPos);
+    if (!c) return;
+    if (!subject.team[pos]) subject.team[pos] = c;
+    else placeIntoTeamOrBench(subject, c);
+    beep(640, 60);
+  } else {
+    return;
+  }
+
+  mpAfterHostDraftMutation();
+}
+
+/** Nach lokaler oder Remote-Draft-Aktion: ggf. Auktion, sonst UI + Sync. */
+function mpAfterHostDraftMutation() {
+  if (!MULTIPLAYER || !mpIsMultiplayerHost()) return;
+  mpMaybeFinishDraftToAuction();
+  if (state.game && state.game.phase === 'draft') {
+    renderDraft();
+    refreshDraftRestartButton();
+  }
+  mpSyncIfHost();
+  try { if (window.VV_MP && typeof window.VV_MP.forceGameStateSync === 'function') void window.VV_MP.forceGameStateSync(); } catch (_) {}
+}
+
+/** Sobald alle Sitzplätze den Draft abgeschlossen haben → Eröffnungsauktion. */
+function mpMaybeFinishDraftToAuction() {
+  if (!MULTIPLAYER || !mpIsMultiplayerHost() || !state.game || state.game.phase !== 'draft') return;
+  if (state.game.players.every(p => computeDraftStage(p) === 'done')) {
+    mpTransitionDraftToAuction();
+  }
+}
+
+/**
+ * Paralleler Draft ab Lobby-Start: kein Firebase-Zug (`turns/`), jeder Mensch zieht für sich.
+ * Runden-/Zuglogik (Bieter-Reihenfolge, Saison) beginnt erst mit der **Eröffnungsauktion**.
+ */
+function mpHostStartParallelDraft() {
+  if (!mpIsMultiplayerHost() || !state.game || state.game.phase !== 'draft') return;
+  try {
+    if (window.VV_MP && typeof window.VV_MP.clearRoomTurnState === 'function') {
+      void window.VV_MP.clearRoomTurnState();
+    }
+  } catch (_) {}
+  for (const p of state.game.players) {
+    if (p.mpIsBot) autoDraftBot(p);
+  }
+  mpMaybeFinishDraftToAuction();
+  if (state.game && state.game.phase === 'draft') {
+    renderDraft();
+    refreshDraftRestartButton();
+    mpSyncIfHost();
+    try { if (window.VV_MP && typeof window.VV_MP.forceGameStateSync === 'function') void window.VV_MP.forceGameStateSync(); } catch (_) {}
+  }
+}
+
+function mpDraftExpectedStarsForStage(p) {
+  const st = computeDraftStage(p);
+  if (st === 'draw_4') return 4;
+  if (st === 'draw_3') return 3;
+  if (st === 'draw_2') return 2;
+  return null;
+}
+
+function mpTransitionDraftToAuction() {
+  try { mpHostUnregisterDraftInputListeners(); } catch (_) {}
+  try {
+    if (window.VV_MP && typeof window.VV_MP.clearRoomTurnState === 'function') {
+      void window.VV_MP.clearRoomTurnState();
+    }
+  } catch (_) {}
+  const g = state.game;
+  if (!g) return;
+  for (const p of g.players) ensureFiveStarter(p);
+  for (const p of g.players) autoSelectLineup(p);
+  rebuildAuctionDeckAfterDraft();
+  assertNoDuplicates();
+  g.phase = 'auction';
+  setView('auction');
+  mpSyncIfHost();
+}
+
+function mpDraftGetSubjectForHostAction() {
+  if (!state.game || !state.game.players || !state.game.players[0]) return null;
+  if (!MULTIPLAYER || !state.mpRoom) return state.game.players[0];
+  return mpLocalGamePlayer() || state.game.players[0];
+}
+
+function mpDraftClientSubmit(payload) {
+  const mp = window.VV_MP;
+  if (!mp || typeof mp.submitInput !== 'function') return;
+  const g = state.game;
+  if (!g || g.phase !== 'draft') return;
+  const me = mpLocalGamePlayer();
+  if (!me || me.mpIsBot) {
+    toast(state.lang === 'de' ? 'Kein gültiger Spieler-Sitz.' : 'No valid player seat.', 'bad', 1800);
+    return;
+  }
+  void mp.submitInput(payload);
+}
+
 /** True on host for a lobby human seat that is controlled from another device (Firebase seatPrompt). */
 function mpSeatIsRemoteHumanOnHost(player) {
   if (!mpIsMultiplayerHost() || !player || player.mpIsBot) return false;
@@ -1511,6 +1693,7 @@ function initMultiplayerGame(opts) {
     const p = makePlayer(name, persona.color, persona.emoji, isHuman, persona.personality, persona.biasPos);
     p.mpId = s.id;
     p.mpIsBot = !!s.isBot;
+    p.mpSlotIndex = typeof s.slotIndex === 'number' ? s.slotIndex : i;
     return p;
   });
 
@@ -1635,15 +1818,31 @@ function setupSlotHtml(card, pos) {
 function refreshSetupTeamPanel() {
   const tp = document.getElementById('setup-team-panel');
   if (!tp || !state.game) return;
-  tp.innerHTML = setupTeamPanelHtml(state.game.players[0]);
+  const panelP = MULTIPLAYER ? (mpLocalGamePlayer() || state.game.players[0]) : state.game.players[0];
+  tp.innerHTML = setupTeamPanelHtml(panelP);
 }
 
 function renderDraft() {
   const app = $('#app');
   const g = state.game;
-  const me = g.players[0];
-  const haveCount = me.bench.length + Object.values(me.team).filter(Boolean).length;
-  const stage = computeDraftStage(me);
+  if (!g || !g.players || !g.players[0]) return;
+  const mySeat = MULTIPLAYER ? (mpLocalGamePlayer() || g.players[0]) : g.players[0];
+  const draftSubject = MULTIPLAYER ? mySeat : g.players[0];
+  const stage = computeDraftStage(draftSubject);
+  const de = state.lang === 'de';
+  const mpDone = MULTIPLAYER && mySeat && computeDraftStage(mySeat) === 'done';
+  const mpCanAct = MULTIPLAYER && mySeat && !mySeat.mpIsBot && !mpDone;
+  const mpBanner = MULTIPLAYER
+    ? `<div class="mp-sync-banner" style="margin-bottom:1rem;padding:0.75rem 1rem;border-radius:8px;background:rgba(250,204,21,0.12);border:1px solid rgba(250,204,21,0.35);font-size:0.95rem;">
+        ${mpDone
+          ? (de ? '<strong>Fertig.</strong> Warte, bis alle Spieler ihren Draft beendet haben — dann startet der Host die Auktion.' : '<strong>Done.</strong> Wait until every player has finished drafting — then the host opens the auction.')
+          : (de
+            ? '<strong>Parallel-Draft</strong> — sobald der Host das Spiel startet, baut jeder gleichzeitig sein Team. Bots werden sofort vom Host ausgefüllt.'
+            : '<strong>Parallel draft</strong> — after the host starts, everyone drafts at once. Bots are filled by the host immediately.')}
+      </div>`
+    : '';
+  const actionsDim = MULTIPLAYER && !mpCanAct && !mpDone;
+  const actionsWrapClass = 'draft-actions' + (actionsDim ? ' mp-readonly-actions' : '');
   app.innerHTML = `
     <div class="gh">
       <div class="gh-logo">VOLLEY VENDETTA</div>
@@ -1658,14 +1857,15 @@ function renderDraft() {
       <div>
         <h2 class="h-cond" style="font-size:2rem; margin-bottom:0.3rem;">${T('draft_h')}</h2>
         <div style="color:var(--silver); margin-bottom:1.4rem;">${T('draft_p')}</div>
-        <div class="draft-progress">${draftProgressHtml(me)}</div>
-        <div class="draft-actions" id="draft-actions" style="margin-top:1.4rem;">${draftActionsHtml(stage, me)}</div>
+        ${mpBanner}
+        <div class="draft-progress">${draftProgressHtml(draftSubject)}</div>
+        <div class="${actionsWrapClass}" id="draft-actions" style="margin-top:1.4rem;${actionsDim ? 'pointer-events:none;opacity:0.55;' : ''}">${draftActionsHtml(stage, draftSubject)}</div>
         <div style="margin-top:2rem;">
-          <h3 class="h-cond" style="font-size:1.1rem; margin-bottom:0.6rem;">${T('your')} · ${escapeHTML(me.name)} · ${fmtMoney(me.money)}</h3>
-          <div class="draft-cards" id="draft-cards">${draftHandHtml(me)}</div>
+          <h3 class="h-cond" style="font-size:1.1rem; margin-bottom:0.6rem;">${T('your')} · ${escapeHTML(draftSubject.name)} · ${fmtMoney(draftSubject.money)}</h3>
+          <div class="draft-cards" id="draft-cards">${draftHandHtml(draftSubject)}</div>
         </div>
       </div>
-      <div class="setup-team-panel" id="setup-team-panel">${setupTeamPanelHtml(me)}</div>
+      <div class="setup-team-panel" id="setup-team-panel">${setupTeamPanelHtml(mySeat)}</div>
     </div>`;
   refreshDraftRestartButton();
 }
@@ -1702,6 +1902,10 @@ function draftProgressHtml(p) {
 }
 
 function draftActionsHtml(stage, p) {
+  if (MULTIPLAYER && computeDraftStage(p) === 'done') {
+    const de = state.lang === 'de';
+    return `<p style="color:var(--silver);margin:0;">${de ? 'Dein Draft ist fertig. Warte auf die anderen …' : 'Your draft is complete. Waiting for others …'}</p>`;
+  }
   if (stage === 'draw_4' || stage === 'draw_3' || stage === 'draw_2') {
     const stars = stage === 'draw_4' ? 4 : stage === 'draw_3' ? 3 : 2;
     const stepLabel = T('draft_step_' + stars);
@@ -1723,7 +1927,10 @@ function draftActionsHtml(stage, p) {
       </div>
     </div>`;
   }
-  // done
+  if (MULTIPLAYER) {
+    const de = state.lang === 'de';
+    return `<p style="color:var(--silver);margin:0;">${de ? 'Warte auf andere Spieler …' : 'Waiting for other players …'}</p>`;
+  }
   return `<button class="btn btn-primary btn-large" onclick="VV.draftFinish()">${T('draft_continue')}</button>`;
 }
 
@@ -1784,6 +1991,31 @@ function draftOverloadedPositions(cards) {
   return Object.entries(counts).filter(([, n]) => n > 2).map(([pos]) => pos);
 }
 
+/** Nur diesen Spieler: 2–4★ zurück in den Draft-Pool, Team+Bank leeren (persönlicher Redraw / Neustart). */
+function mpDraftClearPlayerRosterReturn234ToPool(p) {
+  const g = state.game;
+  if (!g || !p) return;
+  if (!Array.isArray(g._draftDeck)) g._draftDeck = [];
+  const all = [...Object.values(p.team).filter(Boolean), ...(p.bench || [])];
+  for (const c of all) {
+    if (c && c.stars >= 2 && c.stars <= 4) g._draftDeck.push(c);
+  }
+  g._draftDeck.sort(() => Math.random() - 0.5);
+  p.team = { outside: null, outside2: null, middle: null, middle2: null, setter: null, diagonal: null, libero: null };
+  p.bench = [];
+}
+
+/** Spieler mit Positions-Overload (>3 gleiche Pos.): Solo = Mensch; MP = eigener Sitz. */
+function mpDraftPlayerForPersonalOverloadReset() {
+  const g = state.game;
+  if (!g || !g.players) return null;
+  const p = MULTIPLAYER ? mpLocalGamePlayer() : g.players[0];
+  if (!p) return null;
+  const allCards = [...Object.values(p.team).filter(Boolean), ...(p.bench || [])];
+  if (!draftOverloadedPositions(allCards).length) return null;
+  return p;
+}
+
 function removeDraftRestartButton() {
   try {
     const el = document.getElementById('draft-restart-btn');
@@ -1801,16 +2033,17 @@ function refreshDraftRestartButton() {
       removeDraftRestartButton();
       return;
     }
-    const me = state.game.players[0];
+    const me = mpDraftPlayerForPersonalOverloadReset();
     if (!me) {
       removeDraftRestartButton();
       return;
     }
-    const allCards = [...Object.values(me.team).filter(Boolean), ...(me.bench || [])];
-    const overloaded = draftOverloadedPositions(allCards);
-    if (!overloaded.length) {
-      removeDraftRestartButton();
-      return;
+    if (MULTIPLAYER && state.mpRoom) {
+      const localId = state.mpRoom.localPlayerId;
+      if (!localId || me.mpId !== localId) {
+        removeDraftRestartButton();
+        return;
+      }
     }
     const de = state.lang === 'de';
     let btn = document.getElementById('draft-restart-btn');
@@ -1835,13 +2068,26 @@ function refreshDraftRestartButton() {
   }
 }
 
-/** Resets ALL players' draft picks and reshuffles the deck. */
+/** Solo: kompletter Draft-Reset aller Plätze. Multiplayer: nur eigener Sitz bei Positions-Overload. */
 function draftResetAll() {
+  if (MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost) {
+    mpDraftClientSubmit({ action: 'draftPersonalReset' });
+    return;
+  }
   try {
     const g = state.game;
     if (!g._draftDeck) g._draftDeck = [];
+    if (MULTIPLAYER) {
+      const p = mpDraftPlayerForPersonalOverloadReset();
+      if (!p) return;
+      mpDraftClearPlayerRosterReturn234ToPool(p);
+      assertNoDuplicates();
+      if (mpIsMultiplayerHost()) {
+        mpAfterHostDraftMutation();
+      }
+      return;
+    }
     for (const p of g.players) {
-      // Return 2-4 star cards to the draft deck (1-star cards come from ALL_CARDS, just discard)
       for (const c of [...Object.values(p.team).filter(Boolean), ...(p.bench || [])]) {
         if (c.stars >= 2 && c.stars <= 4) g._draftDeck.push(c);
       }
@@ -1856,34 +2102,61 @@ function draftResetAll() {
 }
 
 function draftDraw(stars) {
-  const me = state.game.players[0];
+  if (MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost) {
+    mpDraftClientSubmit({ action: 'draftDraw', stars });
+    return;
+  }
+  const g = state.game;
+  const subject = MULTIPLAYER ? mpDraftGetSubjectForHostAction() : g.players[0];
+  if (MULTIPLAYER && !subject) return;
+  if (MULTIPLAYER && computeDraftStage(subject) === 'done') return;
+  const need = mpDraftExpectedStarsForStage(subject);
+  if (need == null || stars !== need) {
+    toast(state.lang === 'de' ? 'Ungültige Sternzahl für diese Draft-Stufe.' : 'Invalid star count for this draft step.', 'bad');
+    return;
+  }
   const c = deckPoolForStars(stars);
   if (!c) { toast(T('draft_deck_empty'), 'bad'); return; }
-  placeIntoTeamOrBench(me, c);
+  placeIntoTeamOrBench(subject, c);
   beep(740, 60);
-  renderDraft();
   toast(`+ ${c.name} (${c.stars}★)`, 'good', 1200);
+  if (MULTIPLAYER && mpIsMultiplayerHost()) {
+    mpAfterHostDraftMutation();
+    return;
+  }
+  renderDraft();
   refreshDraftRestartButton();
   mpSyncIfHost();
 }
 
 function draftRedraw() {
-  const me = state.game.players[0];
-  // Return all current draft cards to the deck and start over
-  const all = [...Object.values(me.team).filter(Boolean), ...me.bench];
-  for (const c of all) {
-    if (c && c.stars >= 2 && c.stars <= 4) state.game._draftDeck.push(c);
+  if (MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost) {
+    mpDraftClientSubmit({ action: 'draftRedraw' });
+    return;
   }
-  state.game._draftDeck.sort(()=>Math.random()-0.5);
-  me.team = { outside:null, outside2:null, middle:null, middle2:null, setter:null, diagonal:null, libero:null };
-  me.bench = [];
+  const g = state.game;
+  const me = MULTIPLAYER ? mpDraftGetSubjectForHostAction() : g.players[0];
+  if (MULTIPLAYER && !me) return;
+  if (MULTIPLAYER && computeDraftStage(me) === 'done') return;
+  mpDraftClearPlayerRosterReturn234ToPool(me);
+  if (MULTIPLAYER && mpIsMultiplayerHost()) {
+    mpAfterHostDraftMutation();
+    return;
+  }
   renderDraft();
   refreshDraftRestartButton();
   mpSyncIfHost();
 }
 
 function draftPick1(pos) {
-  const me = state.game.players[0];
+  if (MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost) {
+    mpDraftClientSubmit({ action: 'draftPick1', pos });
+    return;
+  }
+  const g = state.game;
+  const me = MULTIPLAYER ? mpDraftGetSubjectForHostAction() : g.players[0];
+  if (MULTIPLAYER && !me) return;
+  if (MULTIPLAYER && computeDraftStage(me) === 'done') return;
   const counts = countByStars([...me.bench, ...Object.values(me.team).filter(Boolean)]);
   if (counts[1] >= 3) { toast(T('draft_pick_limit'), 'bad'); return; }
   // outside2/middle2 share the same card pool as outside/middle
@@ -1897,12 +2170,17 @@ function draftPick1(pos) {
     placeIntoTeamOrBench(me, c);
   }
   beep(640, 60);
+  if (MULTIPLAYER && mpIsMultiplayerHost()) {
+    mpAfterHostDraftMutation();
+    return;
+  }
   renderDraft();
   refreshDraftRestartButton();
   mpSyncIfHost();
 }
 
 function draftFinish() {
+  if (MULTIPLAYER) return;
   // Now do bot drafts (auto)
   const g = state.game;
   for (let i = 1; i < g.players.length; i++) {
@@ -1972,6 +2250,9 @@ function ensureFiveStarter(p) {
 async function renderAuction() {
   removeDraftRestartButton();
   const app = $('#app');
+  const g = state.game;
+  const panelP = MULTIPLAYER ? (mpLocalGamePlayer() || g.players[0]) : g.players[0];
+  const isMpClient = MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost;
   app.innerHTML = `
     <div class="gh">
       <div class="gh-logo">VOLLEY VENDETTA</div>
@@ -1989,11 +2270,23 @@ async function renderAuction() {
         <div class="topbar" id="topbar">${state.game.players.map((p,i)=>playerCardHtml(p,i,false)).join('')}</div>
         <div id="auction-stage" class="stage" style="margin-top:1rem;"></div>
       </div>
-      <div class="setup-team-panel" id="setup-team-panel">${setupTeamPanelHtml(state.game.players[0])}</div>
+      <div class="setup-team-panel" id="setup-team-panel">${setupTeamPanelHtml(panelP)}</div>
     </div>`;
-  // Run the 6-card auction
+  if (isMpClient) {
+    const stage = $('#auction-stage');
+    const de = state.lang === 'de';
+    if (stage) {
+      stage.innerHTML = `<div class="event-card" style="max-width:560px;margin:0 auto;">
+        <div class="event-h">${de ? 'Eröffnungsauktion' : 'Opening auction'}</div>
+        <div class="event-p">${de
+          ? 'Der Host führt die Runde aus. Wenn du dran bist, erscheint dein Gebot als Popover — dieselbe Datenbasis wie beim Host.'
+          : 'The host runs this round. When it is your turn, your bid appears as an overlay — same state as the host.'}</div>
+      </div>`;
+    }
+    hideTeamSidebar();
+    return;
+  }
   await runOpeningAuction();
-  // Then proceed to starting roll
   setView('starting');
 }
 
@@ -2078,6 +2371,7 @@ async function runAuctionForCard(card, idx, total) {
       if (passes.has(p.id)) continue;
       if (p.id === lastBidder) continue; // don't bid against yourself when you're already high
       paint();
+      await mpHostPublishSequentialTurn(p, 'openingAuction');
       const minNext = currentBid > 0 ? currentBid + 1000 : minBid;
       if (p.isHuman) {
         // Human input
@@ -2192,6 +2486,8 @@ function humanBidPrompt(p, card, minNext) {
 function renderStarting() {
   const app = $('#app');
   const g = state.game;
+  const mpWait = MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost;
+  const de = state.lang === 'de';
   app.innerHTML = `
     <div class="gh">
       <div class="gh-logo">VOLLEY VENDETTA</div>
@@ -2209,11 +2505,14 @@ function renderStarting() {
         <div class="dice-num" id="dice-num">—</div>
       </div>
       <div id="starting-result" style="margin-top:1.2rem;"></div>
-      <button class="btn btn-primary btn-large" id="start-roll-btn" onclick="VV.rollStartingDice()" style="margin-top:1.2rem;">🎲 ${T('starting_roll')}</button>
+      ${mpWait
+        ? `<p id="mp-starting-wait" style="margin-top:1.2rem;color:var(--silver);">${de ? 'Der Host würfelt den Startspieler …' : 'The host is rolling for the first player …'}</p>`
+        : `<button class="btn btn-primary btn-large" id="start-roll-btn" onclick="VV.rollStartingDice()" style="margin-top:1.2rem;">🎲 ${T('starting_roll')}</button>`}
     </div>`;
 }
 
 async function rollStartingDice() {
+  if (MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost) return;
   const btn = $('#start-roll-btn'); if (btn) btn.disabled = true;
   const g = state.game;
   const result = $('#starting-result');
@@ -2277,6 +2576,7 @@ function eventTypeForDay(d) { return DAY_EVENT[d] || 'action'; }
 function renderGame() {
   const app = $('#app');
   const g = state.game;
+  const me = MULTIPLAYER ? (mpLocalGamePlayer() || g.players[0]) : g.players[0];
   app.innerHTML = `
     <div class="gh">
       <div class="gh-logo">VOLLEY VENDETTA</div>
@@ -2298,7 +2598,7 @@ function renderGame() {
         <div class="topbar-sep"></div>
         <div class="topbar-log-area"><div class="log" id="log"></div></div>
         <div class="topbar-sep"></div>
-        ${playerYouHtml(g.players[0], g)}
+        ${playerYouHtml(me, g)}
       </div>
       <div class="phase-bar" id="phase-bar"></div>
       <div class="gmid">
@@ -2312,9 +2612,9 @@ function renderGame() {
         <div class="gpanel-team">
           <div class="gpanel-team-header">
             <span>🏐 ${state.lang==='de'?'Mein Team':'My Team'}</span>
-            <span class="team-strength" id="team-strength-label">★ ${teamStrength(g.players[0])}</span>
+            <span class="team-strength" id="team-strength-label">★ ${teamStrength(me)}</span>
           </div>
-          <div class="gpanel-team-inner" id="team-panel">${teamPanelHtml(g.players[0])}</div>
+          <div class="gpanel-team-inner" id="team-panel">${teamPanelHtml(me)}</div>
         </div>
       </div>
       <div class="gbot">
@@ -2359,7 +2659,8 @@ function playerCardHtml(p, idx, withBars) {
 function playerYouHtml(p, g) {
   const isActive = g && g.players[g.activeIdx] === p;
   const str = teamStrength(p);
-  return `<div class="you-card ${isActive?'active':''}" data-pidx="0" data-player-id="${p.id}" style="border-left:4px solid ${p.color};">
+  const pidx = g && g.players ? Math.max(0, g.players.indexOf(p)) : 0;
+  return `<div class="you-card ${isActive?'active':''}" data-pidx="${pidx}" data-player-id="${p.id}" style="border-left:4px solid ${p.color};">
     <div class="yc-label">${state.lang==='de'?'DU':'YOU'}</div>
     <div class="yc-name">${p.emoji} ${escapeHTML(p.name)}</div>
     <div class="yc-stats">
@@ -4686,6 +4987,7 @@ async function runAuctionUI(card, titleLabel, firstPlayer) {
       if (lastBidder === p.id && order.filter(x => !passes.has(x.id)).length <= 1) break;
       const minNext = currentBid > 0 ? currentBid + 1000 : minBid;
       if (p.money < minNext) { passes.add(p.id); continue; }
+      await mpHostPublishSequentialTurn(p, 'liveAuction');
       if (p.isHuman) {
         renderPopup(feedLines);
         // Wait for DOM to settle after openGamePopup's requestAnimationFrame
@@ -5302,7 +5604,8 @@ function serveOnce() { dicePanel_roll(true, 'serveOnce'); }
 // ────────────────────────────────────────────────────────────────
 //  10d. RENDER DISPATCH
 // ────────────────────────────────────────────────────────────────
-function render() {
+/** Zentrale Phasen-Zeichnung (Host und Clients identisch, nur Interaktion unterscheidet sich). */
+function renderCurrentPhase() {
   switch (state.view) {
     case 'splash': /* HTML default */ break;
     case 'intro':       renderIntro(); break;
@@ -5317,6 +5620,10 @@ function render() {
     case 'game':        renderGame(); break;
     case 'end':         renderEnd(); break;
   }
+}
+
+function render() {
+  renderCurrentPhase();
   if (MULTIPLAYER && state.mpRoom && state.mpRoom.isHost && state.game
       && window.VV_MP && typeof window.VV_MP.scheduleGameStateSync === 'function') {
     try { window.VV_MP.scheduleGameStateSync(); } catch (_) {}
@@ -5499,6 +5806,7 @@ window.VV = {
   // ── Multiplayer interop (used by multiplayer.js) ──
   state, toast,
   startMultiplayer, applyRemoteState, resetLocalMultiplayerSession,
+  render, renderCurrentPhase,
 };
 
 // ────────────────────────────────────────────────────────────────
