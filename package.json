@@ -1,0 +1,14 @@
+{
+  "name": "volley-tactics",
+  "private": true,
+  "description": "Volley Vendetta — lokale Tests",
+  "scripts": {
+    "test": "node tests/card-uniqueness.mjs",
+    "test:card-uniqueness": "node tests/card-uniqueness.mjs",
+    "test:jsdom": "node tests/jsdom-smoke.mjs",
+    "test:all": "node tests/card-uniqueness.mjs && node tests/jsdom-smoke.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.3"
+  }
+}
