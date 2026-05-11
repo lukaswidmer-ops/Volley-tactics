@@ -13,8 +13,8 @@
 // ── Game constants — named values used throughout game.js ─────────────────
 const STARTING_GOLD      = 80000;  // money each player begins with
 const WEEKS_PER_SEASON   = 6;      // total weeks per season
-const EVENT_POPUP_MS     = 8000;   // auto-close delay for action-card popups (human turn)
-const BOT_POPUP_MS       = 5000;   // auto-close delay when a bot triggers the popup
+const EVENT_POPUP_MS     = 25000;  // auto-close delay for action-card popups (human turn) — 25 s
+const BOT_POPUP_MS       = 5000;   // auto-close delay when a bot triggers the popup — 5 s
 const SPONSOR_BONUS      = 15000;  // Trikotsponsor cash grant
 const AUDIENCE_LOSS      = 8000;   // Zuschauerrückgang deduction per player
 const VETERAN_BONUS      = 5000;   // Ehemaligentreffen bonus per 1-star card
@@ -2219,16 +2219,17 @@ async function runConeRoll(player) {
   const start = g.coneDay;
   const end = start + advance;
   appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🎲 ${v} (${state.lang==='de'?'+':'+'}${advance})`);
-  // Advance day-by-day — triggers for every day passed OR landed on (spec §2.8)
-  // Stop at day 8 (end of week / league match): cone must not cross into next week's events
+  // Animate movement step-by-step, but do NOT fire field events on intermediate fields.
+  // Stop advancing if the cone reaches the end-of-week boundary (day 8 of the week).
   for (let d = start + 1; d <= end; d++) {
     g.coneDay = d;
     refreshBoard();
     await sleep(speedMs(350));
-    await resolveDay(g.coneDay, player);
-    if (g.over) return;
     if (dayInWeekOf(d) === 8) break; // league match day = end of week, stop here
   }
+  // Resolve the field action ONCE — only for the final landing position.
+  await resolveDay(g.coneDay, player);
+  if (g.over) return;
   if (!g.over) {
     _expectedAdvance = 'coneContinue';
     delete _pendingFires['coneRollNow']; // must not carry over into continue step
@@ -2490,7 +2491,9 @@ function showActionPopup({ title, description, affectedCards = [], positiveCards
       });
     }
 
+    // isBot: detect from duration (bot popups use BOT_POPUP_MS ≤ 5 s)
     const hasCountdown = autoMs != null;
+    const isBot = hasCountdown && autoMs <= BOT_POPUP_MS + 500;
     const pid = 'upop-' + Date.now();
     const div = document.createElement('div');
     div.className = 'modal-popup';
@@ -2501,32 +2504,92 @@ function showActionPopup({ title, description, affectedCards = [], positiveCards
         <div class="action-upop-desc">${description.replace(/\n/g, '<br>')}</div>
         <div class="action-upop-footer">
           <button class="btn btn-primary" id="${pid}-ok">OK</button>
-          ${hasCountdown ? `<div class="action-upop-track"><div class="action-upop-bar" id="${pid}-bar"></div></div>` : ''}
+          ${hasCountdown ? `
+          <div class="popup-timer-wrap">
+            <span class="popup-timer-seconds${isBot ? '' : ''}" id="${pid}-secs">${Math.ceil(autoMs / 1000)}s</span>
+            <div class="popup-timer-bar-outer">
+              <div class="popup-timer-bar-inner${isBot ? ' bot' : ''}" id="${pid}-bar"></div>
+            </div>
+          </div>` : ''}
         </div>
       </div>`;
     document.body.appendChild(div);
     setTimeout(() => div.classList.add('open'), 10);
 
-    if (hasCountdown) {
-      const bar = document.getElementById(pid + '-bar');
-      if (bar) requestAnimationFrame(() => requestAnimationFrame(() => {
-        bar.style.transition = 'width ' + autoMs + 'ms linear';
-        bar.style.width = '0%';
-      }));
-    }
-
+    let cancelTimer = () => {};
     let done = false;
     const finish = () => {
       if (done) return; done = true;
+      cancelTimer();
       if (document.body.contains(div)) div.remove();
       for (const fn of cleanups) { try { fn(); } catch (_) {} }
       resolve();
     };
+
+    if (hasCountdown) {
+      // Start timer after the popup is visible
+      setTimeout(() => {
+        cancelTimer = startPopupTimer({
+          durationMs: autoMs,
+          isBot,
+          onExpire: finish,
+          secEl: document.getElementById(pid + '-secs'),
+          barEl: document.getElementById(pid + '-bar'),
+        });
+      }, 50);
+    }
+
     const okBtn = document.getElementById(pid + '-ok');
     if (okBtn) okBtn.addEventListener('click', finish);
     div.addEventListener('click', e => { if (e.target === div) finish(); });
-    if (hasCountdown) setTimeout(finish, autoMs);
   });
+}
+
+// ─── Reusable countdown timer for popups ──────────────────────────────────────
+// Drives the .popup-timer-seconds label and .popup-timer-bar-inner bar.
+// Returns a cancel() function; call it when the popup is dismissed early.
+function startPopupTimer({ durationMs, isBot, onExpire, secEl, barEl }) {
+  try {
+    const TICK  = 500;
+    const URGENT = 5000;
+    let remaining = durationMs;
+
+    const update = () => {
+      try {
+        const secs = Math.ceil(remaining / 1000);
+        const urgent = remaining <= URGENT;
+        if (secEl && document.body.contains(secEl)) {
+          secEl.textContent = secs + 's';
+          secEl.classList.toggle('urgent', urgent);
+        }
+        if (barEl && document.body.contains(barEl)) {
+          barEl.style.width = Math.max(0, (remaining / durationMs) * 100) + '%';
+          barEl.classList.toggle('urgent', urgent);
+          barEl.classList.toggle('bot', !!isBot);
+        }
+      } catch (_) {}
+    };
+
+    // Render initial state immediately
+    update();
+
+    const id = setInterval(() => {
+      try {
+        remaining -= TICK;
+        update();
+        if (remaining <= 0) {
+          clearInterval(id);
+          try { onExpire(); } catch (_) {}
+        }
+      } catch (_) { clearInterval(id); }
+    }, TICK);
+
+    return () => clearInterval(id);
+  } catch (err) {
+    // Fail-safe: call onExpire after duration so game never gets stuck
+    const fb = setTimeout(() => { try { onExpire(); } catch (_) {} }, durationMs);
+    return () => clearTimeout(fb);
+  }
 }
 
 function showActionPopupAsync(icon, title, bodyHtml, autoMs = EVENT_POPUP_MS) {
@@ -2581,19 +2644,42 @@ function pickOpponent(player) {
         <div class="modal-icon">🎯</div>
         <div class="modal-h">${de ? 'Gegner wählen' : 'Choose opponent'}</div>
         <div class="modal-p" style="display:flex;flex-wrap:wrap;justify-content:center">${btns}</div>
+        <div class="popup-timer-wrap" style="padding:0 1em .5em">
+          <span class="popup-timer-seconds" id="${pid}-secs">${Math.ceil(EVENT_POPUP_MS/1000)}s</span>
+          <div class="popup-timer-bar-outer">
+            <div class="popup-timer-bar-inner" id="${pid}-bar"></div>
+          </div>
+        </div>
+        <div id="${pid}-note" style="font-size:.78em;color:var(--silver);text-align:center;padding-bottom:.5em;min-height:1.2em"></div>
       </div>`;
     document.body.appendChild(div);
     setTimeout(() => div.classList.add('open'), 10);
+    let cancelTimer = () => {};
     let done = false;
-    const finish = opp => {
+    const finish = (opp, autoSelected = false) => {
       if (done) return; done = true;
-      if (document.body.contains(div)) div.remove();
-      resolve(opp || botPick());
+      cancelTimer();
+      if (autoSelected) {
+        const note = document.getElementById(pid + '-note');
+        if (note) note.textContent = de ? '⏱ Zeit abgelaufen — automatische Auswahl getroffen.' : '⏱ Time up — auto-selected.';
+        setTimeout(() => { if (document.body.contains(div)) div.remove(); resolve(opp || botPick()); }, 800);
+      } else {
+        if (document.body.contains(div)) div.remove();
+        resolve(opp || botPick());
+      }
     };
     div.querySelectorAll('[data-oid]').forEach(btn =>
       btn.addEventListener('click', () => finish(opponents.find(o => o.id === btn.dataset.oid)))
     );
-    setTimeout(() => finish(botPick()), EVENT_POPUP_MS);
+    setTimeout(() => {
+      cancelTimer = startPopupTimer({
+        durationMs: EVENT_POPUP_MS,
+        isBot: false,
+        onExpire: () => finish(botPick(), true),
+        secEl: document.getElementById(pid + '-secs'),
+        barEl: document.getElementById(pid + '-bar'),
+      });
+    }, 50);
   });
 }
 
@@ -2762,19 +2848,43 @@ async function ac_talentfoerderung(player) {
           <div class="modal-h">Talentförderung</div>
           <div class="modal-p">${de ? `Wähle einen von ${drawn.length} Spielern:` : `Pick one of ${drawn.length} players:`}</div>
           <div style="margin-top:.6em">${cardBtns}</div>
+          <div class="popup-timer-wrap" style="padding:.4em 1em 0">
+            <span class="popup-timer-seconds" id="${pid}-secs">${Math.ceil(EVENT_POPUP_MS/1000)}s</span>
+            <div class="popup-timer-bar-outer">
+              <div class="popup-timer-bar-inner" id="${pid}-bar"></div>
+            </div>
+          </div>
+          <div id="${pid}-note" style="font-size:.78em;color:var(--silver);text-align:center;padding:.3em 0;min-height:1.2em"></div>
         </div>`;
       document.body.appendChild(div);
       setTimeout(() => div.classList.add('open'), 10);
+      let cancelTimer = () => {};
       let done = false;
-      const finish = idx => {
+      const finish = (idx, autoSelected = false) => {
         if (done) return; done = true;
-        if (document.body.contains(div)) div.remove();
-        resolve(drawn[idx] ?? drawn[botIdx]);
+        cancelTimer();
+        const chosen = drawn[idx] ?? drawn[botIdx];
+        if (autoSelected) {
+          const note = document.getElementById(pid + '-note');
+          if (note) note.textContent = de ? '⏱ Zeit abgelaufen — automatische Auswahl getroffen.' : '⏱ Time up — auto-selected.';
+          setTimeout(() => { if (document.body.contains(div)) div.remove(); resolve(chosen); }, 800);
+        } else {
+          if (document.body.contains(div)) div.remove();
+          resolve(chosen);
+        }
       };
       div.querySelectorAll('[data-idx]').forEach(btn =>
         btn.addEventListener('click', () => finish(parseInt(btn.dataset.idx, 10)))
       );
-      setTimeout(() => finish(botIdx), EVENT_POPUP_MS);
+      setTimeout(() => {
+        cancelTimer = startPopupTimer({
+          durationMs: EVENT_POPUP_MS,
+          isBot: false,
+          onExpire: () => finish(botIdx, true),
+          secEl: document.getElementById(pid + '-secs'),
+          barEl: document.getElementById(pid + '-bar'),
+        });
+      }, 50);
     });
   }
   // Return unchosen cards to the bottom of the auction deck
@@ -2928,19 +3038,43 @@ async function ac_leihgeschaeft(player) {
           <div class="modal-p">${de ? `Welchen Spieler leihst du <b>${escapeHTML(player.name)}</b>?`
                                     : `Which player to loan to <b>${escapeHTML(player.name)}</b>?`}</div>
           <div style="margin-top:.6em">${btns}</div>
+          <div class="popup-timer-wrap" style="padding:.4em 1em 0">
+            <span class="popup-timer-seconds" id="${pid}-secs">${Math.ceil(EVENT_POPUP_MS/1000)}s</span>
+            <div class="popup-timer-bar-outer">
+              <div class="popup-timer-bar-inner" id="${pid}-bar"></div>
+            </div>
+          </div>
+          <div id="${pid}-note" style="font-size:.78em;color:var(--silver);text-align:center;padding:.3em 0;min-height:1.2em"></div>
         </div>`;
       document.body.appendChild(div);
       setTimeout(() => div.classList.add('open'), 10);
+      let cancelTimer = () => {};
       let done = false;
-      const finish = idx => {
+      const finish = (idx, autoSelected = false) => {
         if (done) return; done = true;
-        if (document.body.contains(div)) div.remove();
-        resolve(loanable[idx] ?? loanable[botPickIdx]);
+        cancelTimer();
+        const chosen = loanable[idx] ?? loanable[botPickIdx];
+        if (autoSelected) {
+          const note = document.getElementById(pid + '-note');
+          if (note) note.textContent = de ? '⏱ Zeit abgelaufen — automatische Auswahl getroffen.' : '⏱ Time up — auto-selected.';
+          setTimeout(() => { if (document.body.contains(div)) div.remove(); resolve(chosen); }, 800);
+        } else {
+          if (document.body.contains(div)) div.remove();
+          resolve(chosen);
+        }
       };
       div.querySelectorAll('[data-idx]').forEach(btn =>
         btn.addEventListener('click', () => finish(parseInt(btn.dataset.idx, 10)))
       );
-      setTimeout(() => finish(botPickIdx), EVENT_POPUP_MS);
+      setTimeout(() => {
+        cancelTimer = startPopupTimer({
+          durationMs: EVENT_POPUP_MS,
+          isBot: false,
+          onExpire: () => finish(botPickIdx, true),
+          secEl: document.getElementById(pid + '-secs'),
+          barEl: document.getElementById(pid + '-bar'),
+        });
+      }, 50);
     });
   } else {
     entry = loanable[botPickIdx];
@@ -3177,7 +3311,7 @@ async function showWeekStartSummary(g) {
       description,
       affectedCards,
       affectedPlayers,
-      autoMs: null,  // no countdown — human must click OK
+      autoMs: EVENT_POPUP_MS,  // 25 s — human can always click OK early
     });
   } catch (err) {
     console.error('[VV] showWeekStartSummary crashed:', err);
