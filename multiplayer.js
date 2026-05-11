@@ -101,6 +101,7 @@ const session = {
   heartbeatTimer: null,
   pauseTimer: null,
   lastRoomSnapshot: null,
+  gameLaunched: false,   // reset in leaveRoom so a new room can run onRoomUpdate → startMultiplayer again
 };
 
 function ensurePlayerId() {
@@ -442,6 +443,9 @@ function onRoomUpdate(room) {
   if (!session.isHost && room.gameState) {
     applyRemoteGameState(room.gameState);
   }
+
+  handleSeatPromptForClient(room);
+  updatePauseBarFromRoom(room);
 }
 
 function paintViewerWaiting() {
@@ -460,6 +464,183 @@ function paintViewerWaiting() {
   document.querySelectorAll('[data-vvmp-leave]').forEach(b => {
     b.addEventListener('click', () => leaveRoom());
   });
+}
+
+function dismissSeatPromptOverlay() {
+  document.querySelectorAll('#vvmp-seat-root').forEach(n => n.remove());
+}
+
+function updatePauseBarFromRoom(room) {
+  const view = ($('#app') || {}).dataset && $('#app').dataset.view;
+  if (view !== 'game' && view !== 'mp_viewer') {
+    document.getElementById('vvmp-pause-root')?.remove();
+    return;
+  }
+  const players = room && room.players;
+  if (!players) {
+    document.getElementById('vvmp-pause-root')?.remove();
+    return;
+  }
+  const now = Date.now();
+  let maxUntil = 0;
+  const names = [];
+  for (const [, p] of Object.entries(players)) {
+    if (p && typeof p.pauseUntil === 'number' && p.pauseUntil > now) {
+      maxUntil = Math.max(maxUntil, p.pauseUntil);
+      names.push(p.name || '…');
+    }
+  }
+  let el = document.getElementById('vvmp-pause-root');
+  if (!maxUntil) {
+    if (el) el.remove();
+    return;
+  }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'vvmp-pause-root';
+    document.body.appendChild(el);
+  }
+  const sec = Math.ceil((maxUntil - now) / 1000);
+  el.className = 'vvmp-pause-banner vvmp-pause-fixed';
+  el.innerHTML =
+    '<span class="vvmp-pause-ico">⏸</span> ' +
+    esc(DE('Pause', 'Pause')) +
+    (names.length ? ' — ' + esc(names.join(', ')) : '') +
+    ` <span class="countdown">${sec}s</span>`;
+}
+
+function handleSeatPromptForClient(room) {
+  if (session.isHost) return;
+  const pr = room && room.seatPrompt;
+  if (!pr || !pr.mpId) {
+    dismissSeatPromptOverlay();
+    return;
+  }
+  if (pr.mpId !== session.playerId) {
+    dismissSeatPromptOverlay();
+    return;
+  }
+  paintSeatPromptOverlay(pr);
+}
+
+function paintSeatPromptOverlay(pr) {
+  dismissSeatPromptOverlay();
+  if (!pr || !pr.type) return;
+  const root = document.createElement('div');
+  root.id = 'vvmp-seat-root';
+  root.className = 'vvmp-seat-overlay';
+
+  const card = pr.card || {};
+  const minNext = pr.minNext != null ? pr.minNext : 0;
+  const maxMoney = pr.maxMoney != null ? pr.maxMoney : 0;
+  const sugg = Math.min(maxMoney, minNext);
+
+  const send = (payload) => {
+    dismissSeatPromptOverlay();
+    submitInput(payload).catch(err => console.warn('[VV_MP] submitInput', err));
+  };
+
+  if (pr.type === 'openingAuction' || pr.type === 'liveAuction') {
+    const isDe = L() === 'de';
+    root.innerHTML = `
+      <div class="vvmp-seat-card">
+        <div class="vvmp-seat-h">${esc(pr.type === 'liveAuction' ? (isDe ? 'Auktion — dein Gebot' : 'Auction — your bid') : (isDe ? 'Eröffnungsauktion' : 'Opening auction'))}</div>
+        <div class="vvmp-seat-row">
+          <img class="vvmp-seat-img" src="${esc(card.url || '')}" alt="">
+          <div>
+            <div class="vvmp-seat-name">${esc(card.name || '')}</div>
+            <div class="vvmp-seat-meta">${esc(DE('Min.', 'Min.'))} ${esc(String(minNext))} · ${esc(DE('Budget', 'Cash'))} ${esc(String(maxMoney))}</div>
+          </div>
+        </div>
+        <div class="vvmp-seat-actions">
+          <input type="number" class="input vvmp-seat-inp" id="vvmp-seat-bid" min="${minNext}" max="${maxMoney}" step="1000" value="${sugg}">
+          <button type="button" class="btn btn-primary" id="vvmp-seat-go">${esc(DE('Bieten', 'Bid'))}</button>
+          <button type="button" class="btn btn-secondary" id="vvmp-seat-pass">${esc(DE('Passen', 'Pass'))}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(root);
+    const go = () => {
+      const v = parseInt((document.getElementById('vvmp-seat-bid') || {}).value || '0', 10);
+      if (!Number.isFinite(v) || v < minNext) {
+        showToast(DE('Gebot zu niedrig.', 'Bid too low.'), 'bad');
+        return;
+      }
+      if (v > maxMoney) {
+        showToast(DE('Nicht genug Geld.', 'Not enough money.'), 'bad');
+        return;
+      }
+      send({ type: pr.type, bid: v });
+    };
+    document.getElementById('vvmp-seat-go')?.addEventListener('click', go);
+    document.getElementById('vvmp-seat-pass')?.addEventListener('click', () => send({ type: pr.type, pass: true }));
+    document.getElementById('vvmp-seat-bid')?.addEventListener('keydown', e => {
+      if (e.key === 'Enter') go();
+    });
+    return;
+  }
+
+  if (pr.type === 'coneRoll') {
+    root.innerHTML = `
+      <div class="vvmp-seat-card">
+        <div class="vvmp-seat-h">${esc(DE('Du bist dran', 'Your turn'))}</div>
+        <p class="vvmp-seat-p">${esc(DE('Kegel ziehen — Host würfelt, sobald du bereit bist.', 'Cone move — the host rolls once you are ready.'))}</p>
+        <button type="button" class="btn btn-primary vvmp-seat-wide" id="vvmp-seat-ok">${esc(DE('Bereit / Würfeln', 'Ready / roll'))}</button>
+      </div>`;
+    document.body.appendChild(root);
+    document.getElementById('vvmp-seat-ok')?.addEventListener('click', () => send({ type: 'coneRoll', ok: true }));
+    return;
+  }
+
+  if (pr.type === 'coneContinue') {
+    root.innerHTML = `
+      <div class="vvmp-seat-card">
+        <div class="vvmp-seat-h">${esc(DE('Weiter', 'Continue'))}</div>
+        <p class="vvmp-seat-p">${esc(DE('Zug fortsetzen.', 'Continue your turn.'))}</p>
+        <button type="button" class="btn btn-primary vvmp-seat-wide" id="vvmp-seat-go2">${esc(DE('Weiter', 'Continue'))}</button>
+      </div>`;
+    document.body.appendChild(root);
+    document.getElementById('vvmp-seat-go2')?.addEventListener('click', () => send({ type: 'coneContinue', ok: true }));
+  }
+}
+
+async function publishSeatPrompt(pr) {
+  if (!session.isHost || !session.roomCode || !pr) return;
+  await fb('publishSeatPrompt', () => set(ref(db, `rooms/${session.roomCode}/seatPrompt`), {
+    ...pr,
+    at: Date.now(),
+  }));
+}
+
+async function clearSeatPrompt() {
+  if (!session.isHost || !session.roomCode) return;
+  try {
+    await remove(ref(db, `rooms/${session.roomCode}/seatPrompt`));
+  } catch (_) {}
+}
+
+function waitForSeatInput(playerId, timeoutMs = 120000, expectedType = null) {
+  if (!session.isHost || !session.roomCode || !playerId) return Promise.resolve(null);
+  const r = ref(db, `rooms/${session.roomCode}/inputs/${playerId}`);
+  return remove(r).catch(() => {}).then(() => new Promise((resolve) => {
+    let done = false;
+    let unsub = null;
+    const safeResolve = (v) => {
+      if (done) return;
+      done = true;
+      clearTimeout(to);
+      if (unsub) try { unsub(); } catch (_) {}
+      resolve(v);
+    };
+    const to = setTimeout(() => safeResolve(null), timeoutMs);
+    unsub = onValue(r, snap => {
+      if (!snap.exists()) return;
+      const pl = snap.val() && snap.val().payload;
+      if (!pl) return;
+      if (expectedType && pl.type !== expectedType) return;
+      remove(r).catch(() => {});
+      safeResolve(pl);
+    });
+  }));
 }
 
 function maybePromoteHost(room) {
@@ -648,6 +829,15 @@ async function removePlayer(playerId) {
 }
 
 async function leaveRoom(silent) {
+  try {
+    if (window.VV && typeof window.VV.resetLocalMultiplayerSession === 'function') {
+      window.VV.resetLocalMultiplayerSession();
+    }
+  } catch (_) {}
+  dismissSeatPromptOverlay();
+  document.getElementById('vvmp-pause-root')?.remove();
+  resetSyncScheduler();
+  session.gameLaunched = false;
   stopHeartbeat();
   stopListening();
   const code = session.roomCode;
@@ -701,13 +891,83 @@ async function startGameFromLobby() {
 
 // ---------------------------------------------------------------
 // State sync (host writes / non-host reads)
+// Dedupe + debounce: render() calls scheduleGameStateSync(); long
+// interval still forces occasional writes for drift recovery.
 // ---------------------------------------------------------------
+let _lastSyncedJson = '';
+let _lastSyncWriteAt = 0;
+let _syncDebounceTimer = null;
+let _syncMinGapTimer = null;
+const SYNC_DEBOUNCE_MS = 320;
+const SYNC_MIN_GAP_MS = 450;
+
+function resetSyncScheduler() {
+  if (_syncDebounceTimer) { clearTimeout(_syncDebounceTimer); _syncDebounceTimer = null; }
+  if (_syncMinGapTimer) { clearTimeout(_syncMinGapTimer); _syncMinGapTimer = null; }
+  _lastSyncedJson = '';
+  _lastSyncWriteAt = 0;
+}
+
+function scheduleGameStateSync() {
+  if (!session.isHost || !session.roomCode) return;
+  if (_syncDebounceTimer) clearTimeout(_syncDebounceTimer);
+  _syncDebounceTimer = setTimeout(() => {
+    _syncDebounceTimer = null;
+    flushGameStateSyncNow(false);
+  }, SYNC_DEBOUNCE_MS);
+}
+
+async function flushGameStateSyncNow(force) {
+  if (!session.isHost || !session.roomCode) return;
+  const now = Date.now();
+  const gap = SYNC_MIN_GAP_MS;
+  if (!force && _lastSyncWriteAt && (now - _lastSyncWriteAt) < gap) {
+    if (!_syncMinGapTimer) {
+      const wait = gap - (now - _lastSyncWriteAt);
+      _syncMinGapTimer = setTimeout(() => {
+        _syncMinGapTimer = null;
+        flushGameStateSyncNow(force);
+      }, Math.max(40, wait));
+    }
+    return;
+  }
+  let g;
+  try {
+    g = window.VV && window.VV.state && window.VV.state.game;
+  } catch (_) { return; }
+  if (!g) return;
+  let safe;
+  try {
+    safe = JSON.parse(JSON.stringify(g));
+  } catch (_) { return; }
+  let json;
+  try {
+    json = JSON.stringify(safe);
+  } catch (_) { return; }
+  if (!force && json === _lastSyncedJson) return;
+  try {
+    await set(ref(db, `rooms/${session.roomCode}/gameState`), safe);
+    _lastSyncedJson = json;
+    _lastSyncWriteAt = Date.now();
+  } catch (err) {
+    console.warn('[VV_MP] syncState failed:', err);
+  }
+}
+
+async function forceGameStateSync() {
+  _lastSyncedJson = '';
+  await flushGameStateSyncNow(true);
+}
+
 async function syncState(gameState) {
   if (!session.isHost || !session.roomCode) return;
   try {
-    // Deep-clone via JSON to drop functions / circular refs.
     const safe = JSON.parse(JSON.stringify(gameState || null));
+    const json = JSON.stringify(safe);
+    if (json === _lastSyncedJson) return;
     await set(ref(db, `rooms/${session.roomCode}/gameState`), safe);
+    _lastSyncedJson = json;
+    _lastSyncWriteAt = Date.now();
   } catch (err) {
     console.warn('[VV_MP] syncState failed:', err);
   }
@@ -784,6 +1044,11 @@ function handleDisconnect() {
   // Browsers fire pagehide on tab close. We do not promote to bot here —
   // the heartbeat will simply stop, and other clients will see the slot
   // as stale (> DISCONNECT_AFTER_MS) and let the host bot it.
+  try {
+    if (window.VV && typeof window.VV.resetLocalMultiplayerSession === 'function') {
+      window.VV.resetLocalMultiplayerSession();
+    }
+  } catch (_) {}
   stopHeartbeat();
   stopListening();
 }
@@ -822,7 +1087,9 @@ function installBridge() {
   // Public surface for advanced integration / future hooks
   window.VV_MP = {
     generateRoomCode, createRoom, joinRoom, leaveRoom,
-    syncState, submitInput, listenForInput, setCurrentTurn,
+    syncState, scheduleGameStateSync, resetSyncScheduler, forceGameStateSync,
+    submitInput, listenForInput, setCurrentTurn,
+    publishSeatPrompt, clearSeatPrompt, waitForSeatInput,
     pauseSelf, resumeSelf, handleDisconnect,
     paintViewerWaiting,
     get roomCode() { return session.roomCode; },

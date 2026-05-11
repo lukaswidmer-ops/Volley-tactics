@@ -976,9 +976,44 @@ function showTeamSidebar(auctionCard) {
 
 function hideTeamSidebar() {
   try {
+    teardownMarketSidebarHover();
     const el = document.getElementById('team-sidebar');
     if (el) el.remove();
   } catch (_) {}
+}
+
+let _marketSidebarHoverEl = null;
+function _marketSidebarPointerOver(ev) {
+  const mc = ev.target.closest('.mc[data-card-id]');
+  if (!mc || !state.game) return;
+  const id = mc.getAttribute('data-card-id');
+  const c = (state.game.market || []).find(x => x && x.id === id);
+  if (c) showTeamSidebar(c);
+}
+function _marketSidebarPointerOut(ev) {
+  const mc = ev.target.closest('.mc[data-card-id]');
+  if (!mc) return;
+  const to = ev.relatedTarget;
+  const body = document.getElementById('market-popup-body');
+  if (to && body && body.contains(to)) {
+    const toMc = to.closest && to.closest('.mc[data-card-id]');
+    if (toMc) return;
+  }
+  showTeamSidebar(null);
+}
+function teardownMarketSidebarHover() {
+  if (!_marketSidebarHoverEl) return;
+  _marketSidebarHoverEl.removeEventListener('pointerover', _marketSidebarPointerOver, true);
+  _marketSidebarHoverEl.removeEventListener('pointerout', _marketSidebarPointerOut, true);
+  _marketSidebarHoverEl = null;
+}
+function wireMarketSidebarHover() {
+  teardownMarketSidebarHover();
+  const body = document.getElementById('market-popup-body');
+  if (!body) return;
+  _marketSidebarHoverEl = body;
+  body.addEventListener('pointerover', _marketSidebarPointerOver, true);
+  body.addEventListener('pointerout', _marketSidebarPointerOut, true);
 }
 
 function openGamePopup(id, title, bodyHtml) {
@@ -1303,9 +1338,10 @@ function startMultiplayer(opts) {
     // Push state to Firebase periodically so spectators stay in sync.
     if (state.mpSyncTimer) clearInterval(state.mpSyncTimer);
     state.mpSyncTimer = setInterval(() => {
-      try { if (window.VV_MP && state.game) window.VV_MP.syncState(state.game); }
+      try { if (window.VV_MP && window.VV_MP.forceGameStateSync) window.VV_MP.forceGameStateSync(); }
       catch (_) {}
-    }, 1500);
+    }, 10000);
+    try { if (window.VV_MP && window.VV_MP.scheduleGameStateSync) window.VV_MP.scheduleGameStateSync(); } catch (_) {}
     toast(state.lang === 'de' ? 'Spiel gestartet — du bist Host.' : 'Game started — you are host.', 'good', 2200);
   } else {
     // Non-host: spectator mode. Wait for host's snapshot.
@@ -1338,6 +1374,82 @@ function applyRemoteState(remote) {
   }
 }
 
+/** Stops host→Firebase sync interval and clears local MP flags (lobby leave, menu, play-again). */
+function resetLocalMultiplayerSession() {
+  try {
+    if (window.VV_MP && typeof window.VV_MP.resetSyncScheduler === 'function') window.VV_MP.resetSyncScheduler();
+  } catch (_) {}
+  if (state.mpSyncTimer) {
+    clearInterval(state.mpSyncTimer);
+    state.mpSyncTimer = null;
+  }
+  if (MULTIPLAYER || state.mode === 'mp' || state.mpRoom) {
+    MULTIPLAYER = false;
+    state.mode = 'solo';
+    state.mpRoom = null;
+  }
+}
+
+function mpIsMultiplayerHost() {
+  return !!(MULTIPLAYER && state.mpRoom && state.mpRoom.isHost && state.mpRoom.localPlayerId);
+}
+/** True on host for a lobby human seat that is controlled from another device (Firebase seatPrompt). */
+function mpSeatIsRemoteHumanOnHost(player) {
+  if (!mpIsMultiplayerHost() || !player || player.mpIsBot) return false;
+  if (!player.mpId) return false;
+  return player.mpId !== state.mpRoom.localPlayerId;
+}
+
+async function humanBidPromptRemote(p, card, minNext) {
+  const mp = window.VV_MP;
+  if (!mp || typeof mp.waitForSeatInput !== 'function') return { pass: true };
+  try {
+    const cardLite = { id: card.id, name: card.name, url: card.url, stars: card.stars, pos: card.pos };
+    const pr = { type: 'openingAuction', mpId: p.mpId, minNext, maxMoney: p.money, card: cardLite };
+    const pWait = mp.waitForSeatInput(p.mpId, 120000, 'openingAuction');
+    await mp.publishSeatPrompt(pr);
+    const payload = await pWait;
+    if (!payload || payload.type !== 'openingAuction') return { pass: true };
+    if (payload.pass) return { pass: true };
+    const bid = parseInt(payload.bid, 10);
+    if (!Number.isFinite(bid)) return { pass: true };
+    return { bid };
+  } finally {
+    try { await mp.clearSeatPrompt(); } catch (_) {}
+  }
+}
+
+async function humanLiveAuctionBidRemote(p, card, minNext) {
+  const mp = window.VV_MP;
+  if (!mp || typeof mp.waitForSeatInput !== 'function') return { pass: true };
+  try {
+    const cardLite = { id: card.id, name: card.name, url: card.url, stars: card.stars, pos: card.pos };
+    const pr = { type: 'liveAuction', mpId: p.mpId, minNext, maxMoney: p.money, card: cardLite };
+    const pWait = mp.waitForSeatInput(p.mpId, 120000, 'liveAuction');
+    await mp.publishSeatPrompt(pr);
+    const payload = await pWait;
+    if (!payload || payload.type !== 'liveAuction') return { pass: true };
+    if (payload.pass) return { pass: true };
+    const bid = parseInt(payload.bid, 10);
+    if (!Number.isFinite(bid)) return { pass: true };
+    return { bid };
+  } finally {
+    try { await mp.clearSeatPrompt(); } catch (_) {}
+  }
+}
+
+async function mpWaitConeRemote(player, phase) {
+  const mp = window.VV_MP;
+  if (!mp || typeof mp.waitForSeatInput !== 'function') return;
+  try {
+    const pWait = mp.waitForSeatInput(player.mpId, 120000, phase);
+    await mp.publishSeatPrompt({ type: phase, mpId: player.mpId });
+    await pWait;
+  } finally {
+    try { await mp.clearSeatPrompt(); } catch (_) {}
+  }
+}
+
 // Build a 4-player roster from the lobby data and seed state.game with the
 // same shape solo uses. Local player goes to slot 0 so existing UI code
 // that reads `g.players[0]` keeps working.
@@ -1360,9 +1472,8 @@ function initMultiplayerGame(opts) {
   const players = ordered.map((s, i) => {
     const persona = personas[i] || personas[0];
     const isLocal = (s.id === localId);
-    // For this MVP: only the local player is human-on-this-device.
-    // Remote humans are driven by bot AI locally on the host until the
-    // per-turn input bridge is wired through every decision point.
+    // Only the local player uses host-side popups; other humans keep isHuman false
+    // on the host but are handled via mpSeatIsRemoteHumanOnHost + seatPrompt / inputs.
     const isHuman = isLocal;
     const name = s.name || ('P' + (i + 1));
     const p = makePlayer(name, persona.color, persona.emoji, isHuman, persona.personality, persona.biasPos);
@@ -1852,6 +1963,7 @@ async function renderAuction() {
 
 async function runOpeningAuction() {
   const g = state.game;
+  hideTeamSidebar();
   let cards = g.auctionDeck.splice(0, 6)
     .filter(c => c && Number.isFinite(Number(c.stars)));
   // Safety net: if the deck got short/corrupt, rebuild enough auction cards so setup never soft-locks.
@@ -1871,6 +1983,7 @@ async function runOpeningAuction() {
     if (stage) {
       stage.innerHTML = `<div class="event-card"><div class="event-h">${state.lang==='de'?'Auktion konnte nicht gestartet werden':'Auction could not start'}</div><div class="event-p">${state.lang==='de'?'Es wurden keine gültigen Auktionskarten gefunden. Starte bitte ein neues Spiel.':'No valid auction cards found. Please start a new game.'}</div></div>`;
     }
+    hideTeamSidebar();
     return;
   }
   for (let i = 0; i < cards.length; i++) {
@@ -1883,7 +1996,7 @@ async function runOpeningAuction() {
 
 async function runAuctionForCard(card, idx, total) {
   if (!card || !Number.isFinite(Number(card.stars))) return;
-  showTeamSidebar(card);
+  try {
   const stage = $('#auction-stage');
   const cardStars = Math.max(1, Math.floor(Number(card.stars) || 1));
   const minBid = cardStars * PRICE_PER_STAR;
@@ -1918,6 +2031,7 @@ async function runAuctionForCard(card, idx, total) {
         <div id="auction-input"></div>
         <div id="auction-feed" class="auction-feed"></div>
       </div>`;
+    showTeamSidebar(card);
   }
   paint();
 
@@ -1932,6 +2046,18 @@ async function runAuctionForCard(card, idx, total) {
       if (p.isHuman) {
         // Human input
         const result = await humanBidPrompt(p, card, minNext);
+        if (result.pass) {
+          passes.add(p.id);
+          appendAuctionFeed(`${p.emoji} ${escapeHTML(p.name)} → ${T('auction_pass')}`);
+        } else {
+          if (result.bid > p.money) { toast(state.lang==='de'?'Nicht genug Geld':'Not enough money', 'bad'); passes.add(p.id); continue; }
+          if (result.bid < minNext) { toast(state.lang==='de'?'Gebot zu niedrig':'Bid too low', 'bad'); passes.add(p.id); continue; }
+          currentBid = result.bid; currentHigh = p; lastBidder = p.id; bidThisRound = true;
+          appendAuctionFeed(`<b>${p.emoji} ${escapeHTML(p.name)}</b> → ${fmtMoney(currentBid)}’`);
+          beep(820, 50);
+        }
+      } else if (mpSeatIsRemoteHumanOnHost(p)) {
+        const result = await humanBidPromptRemote(p, card, minNext);
         if (result.pass) {
           passes.add(p.id);
           appendAuctionFeed(`${p.emoji} ${escapeHTML(p.name)} → ${T('auction_pass')}`);
@@ -1976,6 +2102,7 @@ async function runAuctionForCard(card, idx, total) {
     appendAuctionFeed(`<b style="color:var(--silver)">${T('auction_no_one')}</b>`);
     state.game.marketPile.push(card); // unsold → available in market phase
   }
+  showTeamSidebar(card);
   // Setup/auction view uses a flat playerCardHtml list in #topbar; refreshTopbar() targets
   // .topbar-bots/.you-card which only exist in the game view. Re-render directly here.
   const auctionTopbar = $('#topbar');
@@ -1986,7 +2113,9 @@ async function runAuctionForCard(card, idx, total) {
   }
   await sleep(speedMs(800));
   assertNoDuplicates();
-  hideTeamSidebar();
+  } finally {
+    hideTeamSidebar();
+  }
 }
 
 function appendAuctionFeed(html) {
@@ -2122,6 +2251,11 @@ function renderGame() {
         <span class="lang-pill ${state.lang==='en'?'active':''}" onclick="VV.setLang('en')">EN</span>
       </div>
     </div>
+    ${MULTIPLAYER && state.mpRoom ? `
+    <div class="vvmp-game-bar" id="vvmp-game-bar">
+      <button type="button" class="btn btn-secondary vvmp-pause-btn" onclick="if(window.VV&&VV.pauseSelf)VV.pauseSelf()">${state.lang==='de'?'Pause (60s)':'Pause (60s)'}</button>
+      <button type="button" class="btn btn-secondary vvmp-resume-btn" onclick="if(window.VV&&VV.resumeSelf)VV.resumeSelf()">${state.lang==='de'?'Pause beenden':'End pause'}</button>
+    </div>` : ''}
     <div class="game">
       <div class="topbar" id="topbar">
         <div class="topbar-bots">${g.players.filter(p=>!p.isHuman).map((p)=>playerCardHtml(p,g.players.indexOf(p),true)).join('')}</div>
@@ -2631,16 +2765,17 @@ function shouldTriggerOnPassthrough(fieldType) {
 // One cone-roll turn for a player
 async function runConeRoll(player) {
   const g = state.game;
+  const remoteH = mpSeatIsRemoteHumanOnHost(player);
   // New cone turn: clear stale pendings so a previous mistaken double-fire
   // cannot make the next waitFor(...) resolve instantly or out of order.
   delete _pendingFires['coneRollNow'];
   delete _pendingFires['coneContinue'];
-  setActiveBanner(player);
+  setActiveBanner(player, remoteH);
   setActionsHtml(`<h3>${T('phase_event')}</h3>${speedToggleHtml()}`);
   const stage = $('#stage');
   stage.innerHTML = `
     <div class="stage-h">${T('week')} ${boardWeekDisplay(g)} · ${T('cal_day')} ${dayInWeekOf(g.coneDay)}</div>
-    <div class="stage-sub">${escapeHTML(player.name)} ${player.isHuman?T('yourturn'):T('bot_thinking')+' …'}</div>
+    <div class="stage-sub">${escapeHTML(player.name)} ${(player.isHuman || remoteH) ? T('yourturn') : T('bot_thinking') + ' …'}</div>
     <div class="dice-area" style="margin-top:1rem;">
       <div class="dice-num" id="dice-num">—</div>
     </div>
@@ -2654,10 +2789,18 @@ async function runConeRoll(player) {
     if (dpBtn) {
       dpBtn.disabled = false;
       dpBtn.classList.add('pulse');
-      dpBtn.textContent = player.isHuman ? '🎲 Würfeln' : ('▶ ' + (state.lang === 'de' ? 'Weiter (Bot würfelt)' : 'Continue (bot rolls)'));
+      if (remoteH) {
+        dpBtn.disabled = true;
+        dpBtn.textContent = (state.lang === 'de' ? '⏳ Entfernte/r Spieler…' : '⏳ Remote player…');
+      } else {
+        dpBtn.textContent = player.isHuman ? '🎲 Würfeln' : ('▶ ' + (state.lang === 'de' ? 'Weiter (Bot würfelt)' : 'Continue (bot rolls)'));
+      }
     }
-    // Human AND bot turns both wait for the user to click "▶ Weiter (Bot würfelt)" / "🎲 Würfeln"
-    await waitFor('coneRollNow');
+    if (remoteH) {
+      await mpWaitConeRemote(player, 'coneRoll');
+    } else {
+      await waitFor('coneRollNow');
+    }
     if (dpBtn) {
       dpBtn.disabled = true;
       dpBtn.classList.remove('pulse');
@@ -2714,13 +2857,26 @@ async function runConeRoll(player) {
     if (stageSub) stageSub.textContent = `${player.name} — ${T('cone_continue')}`;
     setActionsHtml(`<h3>${T('phase_event')}</h3>${speedToggleHtml()}`);
     const dpBtn2 = document.getElementById('dice-panel-btn');
-    if (dpBtn2) { dpBtn2.disabled = false; dpBtn2.classList.add('pulse'); dpBtn2.textContent = '▶ ' + T('cone_continue'); }
-    // Bots and auto-speed continue automatically; human always waits for manual click
-    if (state.speed === 'auto' || !player.isHuman) {
+    if (dpBtn2) {
+      dpBtn2.disabled = false;
+      dpBtn2.classList.add('pulse');
+      if (remoteH) {
+        dpBtn2.disabled = true;
+        dpBtn2.textContent = (state.lang === 'de' ? '⏳ Entfernte/r Spieler…' : '⏳ Remote player…');
+      } else {
+        dpBtn2.textContent = '▶ ' + T('cone_continue');
+      }
+    }
+    // Bots and auto-speed continue automatically; human (local or remote seat) waits
+    if (state.speed === 'auto' || (!player.isHuman && !remoteH)) {
       setTimeout(()=>fire('coneContinue'), speedMs(3000));
     }
-    const continueAutoMs = (state.speed === 'auto' || !player.isHuman) ? speedMs(4000) : 0;
-    await waitFor('coneContinue', continueAutoMs);
+    const continueAutoMs = (state.speed === 'auto' || (!player.isHuman && !remoteH)) ? speedMs(4000) : 0;
+    if (remoteH) {
+      await mpWaitConeRemote(player, 'coneContinue');
+    } else {
+      await waitFor('coneContinue', continueAutoMs);
+    }
     if (dpBtn2) { dpBtn2.disabled = true; dpBtn2.classList.remove('pulse'); dpBtn2.textContent = '🎲 Würfeln'; }
   }
 }
@@ -2729,16 +2885,17 @@ async function runConeRoll(player) {
 // This prevents dead clicks when UI labels and active waiter briefly desync.
 function coneRollNow() { dicePanel_roll(true, 'coneRollNow'); }
 function coneContinue() { dicePanel_roll(true, 'coneContinue'); }
-function setActiveBanner(p) {
+function setActiveBanner(p, remoteHumanSeat) {
   // Big floating banner
   let banner = $('#turn-banner');
   if (!banner) { banner = document.createElement('div'); banner.id='turn-banner'; document.body.appendChild(banner); }
-  banner.className = 'turn-banner-floating ' + (p.isHuman ? 'human' : 'bot');
-  banner.innerHTML = p.isHuman
+  const asHuman = p.isHuman || remoteHumanSeat;
+  banner.className = 'turn-banner-floating ' + (asHuman ? 'human' : 'bot');
+  banner.innerHTML = asHuman
     ? `<span class="tb-emoji">${p.emoji}</span> <span>${T('yourturn')}</span>`
     : `<span class="tb-emoji">${p.emoji}</span> <span>${escapeHTML(p.name)}</span> <span class="thinking"><span></span><span></span><span></span></span>`;
   banner.style.display = 'flex';
-  setTimeout(() => { banner.style.display = 'none'; }, p.isHuman ? 1600 : 1200);
+  setTimeout(() => { banner.style.display = 'none'; }, asHuman ? 1600 : 1200);
 }
 
 function appendConeLog(html) {
@@ -4438,7 +4595,7 @@ function regenMarket() {
 // Shared multi-round popup auction used both for weekly market reveal and mid-week transfer events.
 // firstPlayer: if set, they bid first (for the transfer event — the player who triggered it).
 async function runAuctionUI(card, titleLabel, firstPlayer) {
-  showTeamSidebar(card);
+  try {
   const g = state.game;
   const de = state.lang === 'de';
   const minBid = cardBasePrice(card);
@@ -4450,6 +4607,7 @@ async function runAuctionUI(card, titleLabel, firstPlayer) {
   let currentBid = 0, winner = null;
   const popId = 'live-auction-popup';
   const renderPopup = (feedLines) => {
+    showTeamSidebar(card);
     const feedHtml = feedLines.map(l => `<div style="font-size:0.78rem;color:var(--silver);margin-top:0.2rem;">${l}</div>`).join('');
     const body = `
       <div style="display:flex;gap:1rem;align-items:flex-start;margin-bottom:0.8rem;">
@@ -4538,6 +4696,20 @@ async function runAuctionUI(card, titleLabel, firstPlayer) {
           addFeed(`<b>${p.emoji} ${escapeHTML(p.name)}</b> → ${fmtMoney(currentBid)}`);
           beep(820, 50);
         }
+      } else if (mpSeatIsRemoteHumanOnHost(p)) {
+        renderPopup(feedLines);
+        await sleep(80);
+        const result = await humanLiveAuctionBidRemote(p, card, minNext);
+        if (result.pass) {
+          passes.add(p.id);
+          addFeed(`${p.emoji} ${escapeHTML(p.name)} → ${de?'Passt':'Pass'}`);
+        } else {
+          currentBid = result.bid; winner = p; lastBidder = p.id; bidThisRound = true;
+          addFeed(`<b>${p.emoji} ${escapeHTML(p.name)}</b> → ${fmtMoney(currentBid)}`);
+          beep(820, 50);
+          const bidLine = document.querySelector(`#${popId}-body .wa-bid-line`);
+          if (bidLine) bidLine.innerHTML = `${de?'Aktuelles Gebot':'Current bid'}: <b style="color:var(--gold)">${fmtMoney(currentBid)}</b> <span style="color:var(--silver)">(${escapeHTML(winner.name)})</span>`;
+        }
       } else {
         await sleep(speedMs(400));
         const dec = window.VV_BOTS.shouldBid(p, card, currentBid, minNext, order);
@@ -4551,6 +4723,7 @@ async function runAuctionUI(card, titleLabel, firstPlayer) {
           // Update the current-bid display in-place (don't rebuild the whole popup)
           const bidLine = document.querySelector(`#${popId}-body .wa-bid-line`);
           if (bidLine) bidLine.innerHTML = `${de?'Aktuelles Gebot':'Current bid'}: <b style="color:var(--gold)">${fmtMoney(currentBid)}</b> <span style="color:var(--silver)">(${escapeHTML(winner.name)})</span>`;
+          showTeamSidebar(card);
         }
       }
       if (order.filter(x => !passes.has(x.id)).length <= 1) break;
@@ -4572,6 +4745,7 @@ async function runAuctionUI(card, titleLabel, firstPlayer) {
     addFeed(`<span style="color:var(--silver)">${de?'Niemand geboten — Karte kommt auf den Markt.':'No bids — card goes to market.'}</span>`);
   }
   refreshTopbar(); refreshTeamPanel();
+  showTeamSidebar(card);
   // Wait for user to manually close the popup (click OK or ✕)
   await new Promise(resolve => {
     // Add an OK button to the feed area
@@ -4588,12 +4762,14 @@ async function runAuctionUI(card, titleLabel, firstPlayer) {
   });
   await sleep(200);
   assertNoDuplicates();
-  hideTeamSidebar();
+  } finally {
+    hideTeamSidebar();
+  }
 }
 
 async function runWeeklyAuction() {
   const card = drawAuctionCard();
-  if (!card) return;
+  if (!card) { hideTeamSidebar(); return; }
   const de = state.lang === 'de';
   await runAuctionUI(card, `🔖 ${de ? 'Wöchentliche Auktion' : 'Weekly Auction'}`);
 }
@@ -4628,6 +4804,7 @@ async function runForcedSaleAuctions() {
 
 async function runMarketPhase() {
   const g = state.game;
+  hideTeamSidebar();
   // Clear ALL stale fires and waiters — a tournament/match in the same week can leave
   // pendingFires that would instantly resolve the market's waitFor
   ['coneRollNow','coneContinue','continueAfterMatch','serveOnce','endMarket'].forEach(k => {
@@ -4683,6 +4860,7 @@ async function runMarketPhase() {
   const marketAutoCloseMs = state.speed === 'auto' ? speedMs(800) : 0; // 0 = no auto-close; human must click
   if (marketAutoCloseMs > 0) setTimeout(() => { if (_waiters['endMarket']) endMarket(); }, marketAutoCloseMs);
   await waitFor('endMarket', marketAutoCloseMs || undefined);
+  hideTeamSidebar();
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -4817,6 +4995,7 @@ function renderMarket() {
   setActionsHtml(`<h3>${T('phase_buy')}</h3>${speedToggleHtml()}
     <button class="action-btn pulse" onclick="VV.endMarket()">${T('finish_buying')}</button>`);
   _setMarketBtnActive(true);
+  wireMarketSidebarHover();
 }
 
 function oneStarMarketHtml(me, weakPos) {
@@ -4827,7 +5006,7 @@ function oneStarMarketHtml(me, weakPos) {
     if (!c) return '';
     const canAfford = me.money >= PRICE_PER_STAR;
     const suggested = pos === weakPos;
-    return `<div class="mc ${canAfford?'':'poor'} ${suggested?'suggested':''}" data-tip="1★ ${posLabel(pos)} · 10’000 · ${escapeHTML(cardImageBasename(c))}">
+    return `<div class="mc ${canAfford?'':'poor'} ${suggested?'suggested':''}" data-card-id="${escapeHTML(c.id)}" data-tip="1★ ${posLabel(pos)} · 10’000 · ${escapeHTML(cardImageBasename(c))}">
       <div class="card-thumb">
         <img class="mc-img" src="${c.url}" alt="${escapeHTML(c.name)}" loading="lazy">
       </div>
@@ -4919,7 +5098,7 @@ function marketCardHtml(c, player, opts) {
   const _poolPos = { outside2: 'outside', middle2: 'middle' };
   const _sp = opts && opts.suggestedPos;
   const suggested = _sp && (c.pos === _sp || c.pos === (_poolPos[_sp] || _sp));
-  return `<div class="mc ${canAfford?'':'poor'} ${suggested?'suggested':''}" data-tip="${escapeHTML(c.name)} · ${escapeHTML(cardImageBasename(c))}">
+  return `<div class="mc ${canAfford?'':'poor'} ${suggested?'suggested':''}" data-card-id="${escapeHTML(c.id)}" data-tip="${escapeHTML(c.name)} · ${escapeHTML(cardImageBasename(c))}">
     <div class="card-thumb">
       <img class="mc-img" src="${c.url}" alt="${escapeHTML(c.name)}" loading="lazy">
     </div>
@@ -5067,8 +5246,8 @@ function renderEnd() {
   beep(900, 350);
 }
 
-function playAgain() { initSoloGame(); setView('draft'); }
-function toMenu() { state.game = null; setView('menu'); }
+function playAgain() { resetLocalMultiplayerSession(); initSoloGame(); setView('draft'); }
+function toMenu() { resetLocalMultiplayerSession(); state.game = null; setView('menu'); }
 
 function speedToggleHtml() { return ''; } // speed buttons removed — clicking them during a match caused render() to rebuild the DOM and lose all waitFor listeners
 
@@ -5092,6 +5271,10 @@ function render() {
     case 'starting':    renderStarting(); break;
     case 'game':        renderGame(); break;
     case 'end':         renderEnd(); break;
+  }
+  if (MULTIPLAYER && state.mpRoom && state.mpRoom.isHost && state.game
+      && window.VV_MP && typeof window.VV_MP.scheduleGameStateSync === 'function') {
+    try { window.VV_MP.scheduleGameStateSync(); } catch (_) {}
   }
 }
 
@@ -5270,7 +5453,7 @@ window.VV = {
   exportLog, showFullHistory,
   // ── Multiplayer interop (used by multiplayer.js) ──
   state, toast,
-  startMultiplayer, applyRemoteState,
+  startMultiplayer, applyRemoteState, resetLocalMultiplayerSession,
 };
 
 // ────────────────────────────────────────────────────────────────
