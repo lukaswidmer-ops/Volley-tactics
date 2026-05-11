@@ -2219,15 +2219,30 @@ async function runConeRoll(player) {
   const start = g.coneDay;
   const end = start + advance;
   appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🎲 ${v} (${state.lang==='de'?'+':'+'}${advance})`);
-  // Animate movement step-by-step, but do NOT fire field events on intermediate fields.
-  // Stop advancing if the cone reaches the end-of-week boundary (day 8 of the week).
+  // Animate step-by-step.
+  // • Cup / tournament day (day 4) → fires immediately when passed through.
+  // • Liga / league day (day 8) → always the terminal step (break); resolveDay fires after loop.
+  // • All other fields (red, transfer, action, VNL, injury) → silent passthrough, only final landing fires.
   for (let d = start + 1; d <= end; d++) {
     g.coneDay = d;
     refreshBoard();
     await sleep(speedMs(350));
-    if (dayInWeekOf(d) === 8) break; // league match day = end of week, stop here
+
+    const dInW        = dayInWeekOf(d);
+    const isLeagueDay = dInW === 8;
+    const weekEv      = weekEventByWeek(weekOfDay(d));
+    const isCupDay    = weekEv != null && weekEv.day === dInW;
+    const isFinalStep = (d === end) || isLeagueDay;
+
+    // Intermediate cup/tournament field: fire it now, then keep moving
+    if (!isFinalStep && isCupDay) {
+      await resolveDay(d, player);
+      if (g.over) return;
+    }
+
+    if (isLeagueDay) break; // end-of-week boundary; cone rests here
   }
-  // Resolve the field action ONCE — only for the final landing position.
+  // Resolve the final landing field exactly once.
   await resolveDay(g.coneDay, player);
   if (g.over) return;
   if (!g.over) {
@@ -2752,68 +2767,6 @@ async function ac_transfergeruecht(player) {
   });
 }
 
-// AC 4 — Positionstausch: cards of a random position rotate clockwise
-async function ac_positionstausch(player) {
-  const g = state.game;
-  const de = state.lang === 'de';
-  const basePos = ['outside', 'middle', 'setter', 'diagonal', 'libero'];
-  const pickedPos = choice(basePos);
-  const posName = posLabel(pickedPos);
-  const slots = pickedPos === 'outside' ? ['outside', 'outside2']
-              : pickedPos === 'middle'  ? ['middle',  'middle2']
-              : [pickedPos];
-
-  // For each player: highest-star non-disabled card of the chosen position
-  const participants = [];
-  for (const p of g.players) {
-    let best = null, bestSlot = null;
-    for (const s of slots) {
-      const c = p.team[s];
-      if (c && !c.disabled && (!best || c.stars > best.stars)) { best = c; bestSlot = s; }
-    }
-    if (best) participants.push({ p, card: best, fromSlot: bestSlot });
-  }
-
-  const logLines = [];
-  for (const p of g.players) {
-    if (!participants.some(e => e.p === p))
-      logLines.push(de ? `${p.emoji} ${escapeHTML(p.name)}: kein ${posName} — übersprungen`
-                       : `${p.emoji} ${escapeHTML(p.name)}: no ${posName} — skipped`);
-  }
-
-  if (participants.length < 2) {
-    const msg = de ? `Nicht genug Spieler auf ${posName} — kein Tausch.`
-                   : `Not enough ${posName} players — no swap.`;
-    appendConeLog(`🔄 Positionstausch · ${msg}`);
-    await showActionPopup({ title: '🔄 Positionstausch — ' + posName, description: msg, autoMs: player.isHuman ? EVENT_POPUP_MS : BOT_POPUP_MS });
-    return;
-  }
-
-  // Clockwise rotation: last card → index 0, rest shift right
-  const cards   = participants.map(e => e.card);
-  const rotated = [cards[cards.length - 1], ...cards.slice(0, -1)];
-
-  for (let i = 0; i < participants.length; i++) {
-    const { p, fromSlot } = participants[i];
-    p.team[fromSlot] = rotated[i];
-    logLines.push(de
-      ? `${p.emoji} ${escapeHTML(p.name)}: gibt <b>${escapeHTML(cards[i].name)}</b> (★${cards[i].stars}) → ${participants[(i + 1) % participants.length].p.emoji} ${escapeHTML(participants[(i + 1) % participants.length].p.name)}`
-      : `${p.emoji} ${escapeHTML(p.name)}: gives <b>${escapeHTML(cards[i].name)}</b> (★${cards[i].stars}) → ${participants[(i + 1) % participants.length].p.emoji} ${escapeHTML(participants[(i + 1) % participants.length].p.name)}`);
-  }
-  refreshTeamPanel();
-  if (typeof refreshFloatingPanel === 'function') refreshFloatingPanel();
-
-  appendConeLog(`🔄 Positionstausch (${posName}) · ${participants.map(e => escapeHTML(e.card.name)).join(' → ')}`);
-  await showActionPopup({
-    title: '🔄 Positionstausch — ' + posName,
-    description: logLines.join('\n'),
-    affectedCards: participants.map(e => e.card),
-    positiveCards: rotated,
-    affectedPlayers: participants.map(e => e.p),
-    autoMs: player.isHuman ? EVENT_POPUP_MS : BOT_POPUP_MS,
-  });
-}
-
 // AC 5 — Talentförderung: draw 3 cards, keep 1
 async function ac_talentfoerderung(player) {
   const g = state.game;
@@ -3132,12 +3085,12 @@ async function ac_zuschauerruckgang(player) {
   });
 }
 
-// Dispatcher — pick one of the 10 cards at random each time
+// Dispatcher — pick one of the 9 active action cards at random each time
 async function applyActionCard(player) {
   const CARDS = [
-    ac_muskelfaserriss, ac_trikotsponsor,    ac_transfergeruecht, ac_positionstausch,
-    ac_talentfoerderung, ac_busunfall,       ac_transfersperre,   ac_ehemaligentreffen,
-    ac_leihgeschaeft,   ac_zuschauerruckgang,
+    ac_muskelfaserriss, ac_trikotsponsor,  ac_transfergeruecht,
+    ac_talentfoerderung, ac_busunfall,     ac_transfersperre,
+    ac_ehemaligentreffen, ac_leihgeschaeft, ac_zuschauerruckgang,
   ];
   await choice(CARDS)(player);
 }
