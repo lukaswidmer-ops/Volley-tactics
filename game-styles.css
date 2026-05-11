@@ -951,6 +951,28 @@ button, a, input, select { font-family:inherit; }
 .tile .cone-marker { font-size:1rem; }
 @keyframes tileBounce { 0%,100%{transform:scale(1)} 50%{transform:scale(1.12)} }
 
+/* ─── Draft: optional full reset (overload >2 per position) ─── */
+.draft-restart-btn {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #E6007C;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 28px;
+  font-size: 0.95rem;
+  font-weight: bold;
+  cursor: pointer;
+  z-index: 999;
+  box-shadow: 0 4px 16px #0008;
+  transition: opacity 0.3s;
+}
+.draft-restart-btn:hover {
+  opacity: 0.85;
+}
+
 /* ─── Draft progress / cards ─── */
 .draft-steps { display:flex; flex-wrap:wrap; gap:0.4rem; }
 .draft-step { display:flex; gap:0.4rem; align-items:center; padding:0.4rem 0.85rem; background:rgba(255,255,255,0.04); border:1px solid var(--line); border-radius:3px; font-size:0.8rem; color:var(--silver); }

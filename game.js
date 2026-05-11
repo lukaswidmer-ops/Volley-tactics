@@ -531,12 +531,6 @@ function cardImageBasename(card) {
   const parts = clean.split('/');
   return parts[parts.length - 1] || clean;
 }
-function cardNameFileCaptionHtml(card) {
-  if (!card) return '';
-  const name = escapeHTML(card.name || '');
-  const file = escapeHTML(cardImageBasename(card));
-  return `<div class="card-namefile"><div class="card-namefile-name">${name}</div><div class="card-namefile-file">${file}</div></div>`;
-}
 
 // Dice roll utilities
 function roll(n) { return 1 + Math.floor(Math.random()*n); }
@@ -800,6 +794,7 @@ function beep(freq=440, dur=80, type='square', vol=0.05) {
 // ────────────────────────────────────────────────────────────────
 function setView(v) {
   state.view = v;
+  if (v !== 'draft') removeDraftRestartButton();
   document.getElementById('app').dataset.view = v;
   render();
   window.scrollTo(0, 0);
@@ -1394,6 +1389,7 @@ function renderDraft() {
       </div>
       <div class="setup-team-panel" id="setup-team-panel">${setupTeamPanelHtml(me)}</div>
     </div>`;
+  refreshDraftRestartButton();
 }
 
 function computeDraftStage(p) {
@@ -1510,54 +1506,55 @@ function draftOverloadedPositions(cards) {
   return Object.entries(counts).filter(([, n]) => n > 2).map(([pos]) => pos);
 }
 
-/** Shows the restart-offer popup. Resolves 'restart' or 'continue'. */
-function showDraftRestartOffer(overloadedPos) {
-  return new Promise(resolve => {
-    try {
-      const de = state.lang === 'de';
-      const firstPosLabel = posLabel(overloadedPos[0]).toUpperCase();
-      const allPosLabels  = overloadedPos.map(p => posLabel(p)).join(', ');
-      const title = de
-        ? `⚠️ ZU VIELE ${firstPosLabel} IM KADER`
-        : `⚠️ TOO MANY ${firstPosLabel} IN SQUAD`;
-      const desc = de
-        ? `Du hast zu viele <b>${allPosLabels}</b>-Spieler gezogen (mehr als 2 pro Position).\nMaximal 2 pro Position empfohlen.\n\nMöchtest du den Draft neu starten?\n(Alle bisherigen Picks werden zurückgesetzt — auch die der Gegner)`
-        : `You drafted too many <b>${allPosLabels}</b> players (more than 2 per position).\nMax. 2 per position recommended.\n\nDo you want to restart the draft?\n(All picks will be reset — including opponents')`;
+function removeDraftRestartButton() {
+  try {
+    const el = document.getElementById('draft-restart-btn');
+    if (el) el.remove();
+  } catch (_) {}
+}
 
-      const pid = 'dr-' + Date.now();
-      const div = document.createElement('div');
-      div.className = 'modal-popup';
-      div.innerHTML = `
-        <div class="modal-card action-upop" style="max-width:480px">
-          <div class="action-upop-title" style="color:#FFD700">${title}</div>
-          <hr class="action-upop-divider">
-          <div class="action-upop-desc">${desc.replace(/\n/g, '<br>')}</div>
-          <div class="action-upop-footer" style="justify-content:space-between;gap:1rem;margin-top:1rem">
-            <button class="btn" id="${pid}-restart"
-              style="background:#c0392b;color:#fff;border:none;padding:.5em 1.2em;border-radius:6px;cursor:pointer;font-weight:700">
-              ${de ? '🔄 Neu starten' : '🔄 Restart'}
-            </button>
-            <button class="btn btn-secondary" id="${pid}-continue">
-              ${de ? 'Weiter spielen' : 'Continue'}
-            </button>
-          </div>
-        </div>`;
-      document.body.appendChild(div);
-      setTimeout(() => div.classList.add('open'), 10);
-
-      let done = false;
-      const finish = choice => {
-        if (done) return; done = true;
-        if (document.body.contains(div)) div.remove();
-        resolve(choice);
-      };
-      document.getElementById(pid + '-restart').addEventListener('click', () => finish('restart'));
-      document.getElementById(pid + '-continue').addEventListener('click', () => finish('continue'));
-    } catch (err) {
-      console.error('[VV] showDraftRestartOffer crashed:', err);
-      resolve('continue');
+/**
+ * Unaufdringlicher Neustart-Button (fix unten), nur im Draft wenn >2 Karten gleicher Position.
+ * Blockiert keine Auktion — nur Anzeige/Entfernen per Zustand.
+ */
+function refreshDraftRestartButton() {
+  try {
+    if (state.view !== 'draft' || !state.game) {
+      removeDraftRestartButton();
+      return;
     }
-  });
+    const me = state.game.players[0];
+    if (!me) {
+      removeDraftRestartButton();
+      return;
+    }
+    const allCards = [...Object.values(me.team).filter(Boolean), ...(me.bench || [])];
+    const overloaded = draftOverloadedPositions(allCards);
+    if (!overloaded.length) {
+      removeDraftRestartButton();
+      return;
+    }
+    const de = state.lang === 'de';
+    let btn = document.getElementById('draft-restart-btn');
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.id = 'draft-restart-btn';
+      btn.type = 'button';
+      btn.className = 'draft-restart-btn';
+      btn.addEventListener('click', () => {
+        try {
+          draftResetAll();
+          renderDraft();
+        } catch (err) {
+          console.error('[VV] draft restart button crashed:', err);
+        }
+      });
+      document.body.appendChild(btn);
+    }
+    btn.textContent = de ? '🔄 Draft neu starten' : '🔄 Restart draft';
+  } catch (err) {
+    console.error('[VV] refreshDraftRestartButton crashed:', err);
+  }
 }
 
 /** Resets ALL players' draft picks and reshuffles the deck. */
@@ -1580,40 +1577,7 @@ function draftResetAll() {
   }
 }
 
-/** Called after every human pick. Shows restart offer if any position has >2 cards. */
-async function checkDraftOverload() {
-  try {
-    const me = state.game.players[0];
-    const allCards = [...Object.values(me.team).filter(Boolean), ...(me.bench || [])];
-    const overloaded = draftOverloadedPositions(allCards);
-    if (!overloaded.length) return;
-
-    const choice = await showDraftRestartOffer(overloaded);
-    if (choice !== 'restart') return;
-
-    draftResetAll();
-
-    // Brief confirmation popup
-    const de = state.lang === 'de';
-    const pid = 'dr-confirm-' + Date.now();
-    const div = document.createElement('div');
-    div.className = 'modal-popup';
-    div.innerHTML = `
-      <div class="modal-card" style="max-width:320px;text-align:center;padding:2rem 1.5rem">
-        <div style="font-size:2rem;margin-bottom:.6rem">🔄</div>
-        <div style="font-weight:700;font-size:1.1rem">${de ? 'Draft wird neu gestartet…' : 'Restarting draft…'}</div>
-      </div>`;
-    document.body.appendChild(div);
-    setTimeout(() => div.classList.add('open'), 10);
-    await sleep(2000);
-    if (document.body.contains(div)) div.remove();
-    renderDraft();
-  } catch (err) {
-    console.error('[VV] checkDraftOverload crashed:', err);
-  }
-}
-
-async function draftDraw(stars) {
+function draftDraw(stars) {
   const me = state.game.players[0];
   const c = deckPoolForStars(stars);
   if (!c) { toast(T('draft_deck_empty'), 'bad'); return; }
@@ -1621,7 +1585,7 @@ async function draftDraw(stars) {
   beep(740, 60);
   renderDraft();
   toast(`+ ${c.name} (${c.stars}★)`, 'good', 1200);
-  await checkDraftOverload();
+  refreshDraftRestartButton();
 }
 
 function draftRedraw() {
@@ -1635,9 +1599,10 @@ function draftRedraw() {
   me.team = { outside:null, outside2:null, middle:null, middle2:null, setter:null, diagonal:null, libero:null };
   me.bench = [];
   renderDraft();
+  refreshDraftRestartButton();
 }
 
-async function draftPick1(pos) {
+function draftPick1(pos) {
   const me = state.game.players[0];
   const counts = countByStars([...me.bench, ...Object.values(me.team).filter(Boolean)]);
   if (counts[1] >= 3) { toast(T('draft_pick_limit'), 'bad'); return; }
@@ -1653,7 +1618,7 @@ async function draftPick1(pos) {
   }
   beep(640, 60);
   renderDraft();
-  await checkDraftOverload();
+  refreshDraftRestartButton();
 }
 
 function draftFinish() {
@@ -1723,6 +1688,7 @@ function ensureFiveStarter(p) {
 //  11d. OPENING AUCTION (Setup Step 3)
 // ────────────────────────────────────────────────────────────────
 async function renderAuction() {
+  removeDraftRestartButton();
   const app = $('#app');
   app.innerHTML = `
     <div class="gh">
@@ -4728,8 +4694,7 @@ function oneStarMarketHtml(me, weakPos) {
     const suggested = pos === weakPos;
     return `<div class="mc ${canAfford?'':'poor'} ${suggested?'suggested':''}" data-tip="1★ ${posLabel(pos)} · 10’000 · ${escapeHTML(cardImageBasename(c))}">
       <div class="card-thumb">
-        <img class="mc-img" src="${c.url}" alt="" loading="lazy">
-        ${cardNameFileCaptionHtml(c)}
+        <img class="mc-img" src="${c.url}" alt="${escapeHTML(c.name)}" loading="lazy">
       </div>
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <span class="mc-pos" style="background:${posColor(pos)}">${posShort(pos)}</span>
@@ -4746,8 +4711,7 @@ function benchCardHtml(c, me) {
   const sellPrice = Math.floor(cardBasePrice(c) / 2);
   return `<div class="bc">
     <div class="card-thumb">
-      <img src="${c.url}" alt="" class="bc-img" loading="lazy">
-      ${cardNameFileCaptionHtml(c)}
+      <img src="${c.url}" alt="${escapeHTML(c.name)}" class="bc-img" loading="lazy">
     </div>
     <div class="bc-meta">
       <span class="mc-pos" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
@@ -4822,8 +4786,7 @@ function marketCardHtml(c, player, opts) {
   const suggested = _sp && (c.pos === _sp || c.pos === (_poolPos[_sp] || _sp));
   return `<div class="mc ${canAfford?'':'poor'} ${suggested?'suggested':''}" data-tip="${escapeHTML(c.name)} · ${escapeHTML(cardImageBasename(c))}">
     <div class="card-thumb">
-      <img class="mc-img" src="${c.url}" alt="" loading="lazy">
-      ${cardNameFileCaptionHtml(c)}
+      <img class="mc-img" src="${c.url}" alt="${escapeHTML(c.name)}" loading="lazy">
     </div>
     <div style="display:flex; justify-content:space-between; align-items:center;">
       <span class="mc-pos" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
