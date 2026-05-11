@@ -1765,7 +1765,14 @@ async function runAuctionForCard(card, idx, total) {
     appendAuctionFeed(`<b style="color:var(--silver)">${T('auction_no_one')}</b>`);
     state.game.marketPile.push(card); // unsold → available in market phase
   }
-  refreshTopbar();
+  // Setup/auction view uses a flat playerCardHtml list in #topbar; refreshTopbar() targets
+  // .topbar-bots/.you-card which only exist in the game view. Re-render directly here.
+  const auctionTopbar = $('#topbar');
+  if (auctionTopbar && !auctionTopbar.querySelector('.topbar-bots')) {
+    auctionTopbar.innerHTML = state.game.players.map((p, i) => playerCardHtml(p, i, false)).join('');
+  } else {
+    refreshTopbar();
+  }
   await sleep(speedMs(800));
   hideTeamSidebar();
 }
