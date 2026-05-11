@@ -1,4 +1,4 @@
-﻿/* ================================================================
+/* ================================================================
    VOLLEY VENDETTA — Online Game (Classic Mode, single season)
    Rule-faithful build per official rulebook (April 2026 edition).
    Pure vanilla JS, no build step.
@@ -63,18 +63,13 @@ const i18n = {
     starting_roll: 'Würfeln',
     starting_winner: '%s beginnt!',
 
-    pos_outside: 'Aussenangreifer', pos_outside2: 'Aussenangreifer 2', pos_middle: 'Mittelblocker', pos_middle2: 'Mittelblocker 2', pos_setter: 'Setter',
+    pos_outside: 'Aussenangreifer', pos_middle: 'Mittelblocker', pos_setter: 'Setter',
     pos_diagonal: 'Diagonal', pos_libero: 'Libero',
-    pos_short_outside: 'OH', pos_short_outside2: 'OH2', pos_short_middle: 'MB', pos_short_middle2: 'MB2', pos_short_setter: 'S',
+    pos_short_outside: 'OH', pos_short_middle: 'MB', pos_short_setter: 'S',
     pos_short_diagonal: 'OPP', pos_short_libero: 'L',
 
-    week: 'Woche', of: 'von', cal_day: 'Tag',
-    rally_even: 'Keiner punktet — Ballwechsel ohne Ergebnis.',
-    draft_deck_empty: 'Keine passende Karte mehr im Draft-Stapel.',
-    draft_pick_limit: 'Bereits 3× 1★ gewählt.',
-    phase_event: 'Event', phase_match: 'Liga', phase_buy: 'Markt', phase_weekend: 'Wochenende', phase_done: 'Ende',
-    weekend_match: 'Wochenend-Spiel', weekend_match1: 'Spiel 1', weekend_match2: 'Spiel 2',
-    weekend_win: 'Sieg! +3\'000', weekend_loss: 'Niederlage',
+    week: 'Woche', of: 'von',
+    phase_event: 'Event', phase_match: 'Liga', phase_buy: 'Markt', phase_done: 'Wochenende',
     week_event_supercup: 'SuperCup', week_event_cl: 'Champions League',
     week_event_cup: 'Cup', week_event_cupfinal: 'Cup-Final', week_event_clfinal: 'CL-Final',
     week_event_league: 'Liga',
@@ -106,7 +101,7 @@ const i18n = {
     market_suggest: 'Schwächste Position', market_sell: 'Verkaufen',
     market_sell_t: 'Hälfte des Sternenwerts',
 
-    money: 'Geld', vp: 'Siegpunkte', str: 'Stärke', pos: 'Pos', you: 'Du', stats_lp: 'Liga-P',
+    money: 'Geld', vp: 'Siegpunkte', str: 'Stärke', pos: 'Pos', you: 'Du',
     homeaway_home: 'Heim', homeaway_away: 'Auswärts',
     set: 'Satz', sets: 'Sätze',
     serve_keeps: 'Aufschlag bleibt', sideout: 'Sideout!', rotation: 'Rotation!',
@@ -233,18 +228,13 @@ const i18n = {
     starting_roll: 'Roll',
     starting_winner: '%s starts!',
 
-    pos_outside: 'Outside', pos_outside2: 'Outside 2', pos_middle: 'Middle', pos_middle2: 'Middle 2', pos_setter: 'Setter',
+    pos_outside: 'Outside', pos_middle: 'Middle', pos_setter: 'Setter',
     pos_diagonal: 'Diagonal', pos_libero: 'Libero',
-    pos_short_outside: 'OH', pos_short_outside2: 'OH2', pos_short_middle: 'MB', pos_short_middle2: 'MB2', pos_short_setter: 'S',
+    pos_short_outside: 'OH', pos_short_middle: 'MB', pos_short_setter: 'S',
     pos_short_diagonal: 'OPP', pos_short_libero: 'L',
 
-    week: 'Week', of: 'of', cal_day: 'Day',
-    rally_even: 'No point — rally continues.',
-    draft_deck_empty: 'No matching card left in the draft deck.',
-    draft_pick_limit: 'You already picked 3× 1★ cards.',
-    phase_event: 'Event', phase_match: 'League', phase_buy: 'Market', phase_weekend: 'Weekend', phase_done: 'Done',
-    weekend_match: 'Weekend Match', weekend_match1: 'Match 1', weekend_match2: 'Match 2',
-    weekend_win: 'Win! +3\'000', weekend_loss: 'Defeat',
+    week: 'Week', of: 'of',
+    phase_event: 'Event', phase_match: 'League', phase_buy: 'Market', phase_done: 'Weekend',
     week_event_supercup: 'Super Cup', week_event_cl: 'Champions League',
     week_event_cup: 'Cup', week_event_cupfinal: 'Cup Final', week_event_clfinal: 'CL Final',
     week_event_league: 'League',
@@ -276,7 +266,7 @@ const i18n = {
     market_suggest: 'Weakest position', market_sell: 'Sell',
     market_sell_t: 'Half of star value',
 
-    money: 'Money', vp: 'Victory pts', str: 'Strength', pos: 'Pos', you: 'You', stats_lp: 'LP',
+    money: 'Money', vp: 'Victory pts', str: 'Strength', pos: 'Pos', you: 'You',
     homeaway_home: 'Home', homeaway_away: 'Away',
     set: 'Set', sets: 'Sets',
     serve_keeps: 'Serve stays', sideout: 'Sideout!', rotation: 'Rotation!',
@@ -377,7 +367,7 @@ const COMMENTARY = {
       'Reservespieler reingebracht und sofort den Punkt gemacht! 🔄',
       '%player% mit einem Lob in die Lücke — die Verteidigung steht falsch! 🎯',
       'Zweite Welle! Nach dem Block schlägt %player% noch ein zweites Mal zu! 🌊',
-      'Zuspiel sitzt perfekt — %player% hämmert in die Lücke! 🎯',
+      'Set perfectly placed — %player% spikes it into the joint zone! 🎯',
     ],
     away_score: [
       'Fehler im Aufbau — %team% nutzt die Chance sofort aus! ⚡',
@@ -484,47 +474,46 @@ const $$ = (s, r) => Array.from((r||document).querySelectorAll(s));
 const T = (k) => (i18n[state.lang] && i18n[state.lang][k]) || k;
 const fmt = (str, ...args) => { let i=0; return str.replace(/%[ds]|%(\d+)/g, () => args[i++]); };
 const fmtMoney = n => (n||0).toLocaleString('de-CH').replace(/,/g,'’');
-/** Safe table points for UI + math (avoids NaN from += on undefined). */
-function leaguePointsVal(p) {
-  const n = Number(p && p.leaguePoints);
-  return Number.isFinite(n) ? n : 0;
-}
 const choice = arr => arr[Math.floor(Math.random()*arr.length)];
-const sleep = ms => new Promise(r => setTimeout(r, (state.skipping ? 0 : ms)));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 const range = n => Array.from({length:n}, (_,i)=>i);
+function hash(str) { let h=0; for (let i=0;i<str.length;i++) h=((h<<5)-h)+str.charCodeAt(i); return Math.abs(h); }
 function speedMs(ms) {
   if (state.speed === 'fast') return Math.max(40, ms*0.3);
   if (state.speed === 'auto') return Math.max(15, ms*0.08);
-  // Slightly slower when a human is playing, so events feel less rushed
-  const humanPlaying = state.game && state.game.players.some(p => p.isHuman);
-  return humanPlaying ? ms * 1.5 : ms;
+  return ms;
 }
 function uid(){ return Math.random().toString(36).slice(2,10); }
 function escapeHTML(s){ return String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function cardStars(file) {
+  const r = hash(file) % 100;
+  if (r < 30) return 1;
+  if (r < 58) return 2;
+  if (r < 82) return 3;
+  if (r < 95) return 4;
+  return 5;
+}
 function cardPrice(stars) { return [0,5000,10000,20000,35000,55000][stars] || 5000; }
-function cardImageBasename(card) {
-  const raw = String((card && card.url) || '');
-  if (!raw) return '';
-  const clean = raw.split('?')[0].split('#')[0];
-  const parts = clean.split('/');
-  return parts[parts.length - 1] || clean;
-}
-function cardNameFileCaptionHtml(card) {
-  if (!card) return '';
-  const name = escapeHTML(card.name || '');
-  const file = escapeHTML(cardImageBasename(card));
-  return `<div class="card-namefile"><div class="card-namefile-name">${name}</div><div class="card-namefile-file">${file}</div></div>`;
-}
 
 // Dice roll utilities
 function roll(n) { return 1 + Math.floor(Math.random()*n); }
 
-// Build flat card pool — delegates to cards.js (window.VV_CARDS_DB)
+// Build flat card pool with stable IDs
 function buildAllCards() {
-  const db = (typeof window !== 'undefined' && Array.isArray(window.VV_CARDS_DB))
-    ? window.VV_CARDS_DB : [];
-  if (!db.length) console.error('[VV] VV_CARDS_DB ist leer – cards.js nicht geladen?');
-  return db.map(c => Object.assign({}, c, { price: cardPrice(c.stars) }));
+  if (typeof CARDS === 'undefined') return [];
+  const all = [];
+  for (const pos of Object.keys(CARDS)) {
+    const def = CARDS[pos];
+    for (const f of def.files) {
+      const id = pos + '/' + f;
+      const url = (def.folder ? def.folder + '/' : '') + f;
+      const stars = cardStars(f);
+      const num = (f.match(/(\d+)/) || ['','00'])[1];
+      const name = (def.label_en || pos).replace(/\s+/g,'') + ' #' + num;
+      all.push({ id, pos, file:f, url, stars, name, price: cardPrice(stars) });
+    }
+  }
+  return all;
 }
 let ALL_CARDS = [];
 
@@ -538,10 +527,8 @@ const state = {
   introIdx: 0,
   playerName: localStorage.getItem('vv_name') || '',
   mode: null,
-  // Always normal: speed UI was removed; old localStorage 'fast'/'auto' caused auto-advance without clicks.
-  speed: 'normal',
+  speed: localStorage.getItem('vv_speed') || 'normal',
   game: null,
-  skipping: false,
 };
 
 // ────────────────────────────────────────────────────────────────
@@ -574,16 +561,6 @@ function logEntry(text, kind='') {
     log.scrollTop = log.scrollHeight;
     while (log.children.length > 100) log.removeChild(log.firstChild);
   }
-  refreshPhaseLog();
-}
-
-function refreshPhaseLog() {
-  const strip = document.getElementById('phase-log-strip');
-  if (!strip || !state.game) return;
-  const entries = state.game.log.slice(-6).reverse();
-  strip.innerHTML = entries.map((e, i) =>
-    `<span class="pls-entry ${e.kind||''}" style="opacity:${Math.max(0.25, 1 - i * 0.16)}">${e.text}</span>`
-  ).join('<span class="pls-sep">›</span>');
 }
 
 function ensureFloatingLog() {
@@ -629,7 +606,6 @@ function setView(v) {
   // Hide floating log + panel outside game
   const lp = document.getElementById('log-panel'); if (lp) lp.style.display = (v === 'game') ? '' : 'none';
   const fp = document.getElementById('floating-panel'); if (fp) fp.style.display = (v === 'game') ? '' : 'none';
-  refreshDebugHud();
 }
 function setLang(l) {
   state.lang = l;
@@ -637,125 +613,27 @@ function setLang(l) {
   document.documentElement.lang = l;
   render();
 }
-function setSpeed(s) { state.speed = s; localStorage.setItem('vv_speed', s); } // no render() — would destroy waitFor listeners mid-game
+function setSpeed(s) { state.speed = s; localStorage.setItem('vv_speed', s); render(); }
 
 // Wait/fire helpers
 const _waiters = {};
-const _pendingFires = {}; // catches fire() calls when no waiter is set up yet
-let _expectedAdvance = 'coneRollNow';
-let _lastAdvanceSource = '-';
-let _lastFired = '-';
-let _lastAdvanceClickAt = 0;
-function refreshDebugHud() {
-  const el = document.getElementById('vv-debug-hud');
-  if (el) el.remove();
-}
 function waitFor(name, autoMs) {
   return new Promise(resolve => {
-    if (state.skipping) { setTimeout(resolve, 0); return; }
     if (!name) { setTimeout(resolve, autoMs||1); return; }
-    // If user already clicked before we got here, resolve immediately
-    if (_pendingFires[name]) {
-      const val = _pendingFires[name];
-      delete _pendingFires[name];
-      setTimeout(() => resolve(val === true ? undefined : val), 0);
-      return;
-    }
     _waiters[name] = resolve;
-    refreshDebugHud();
-    let tAuto = 0, tSafe = 0;
-    const done = () => {
-      if (_waiters[name] !== resolve) return;
-      if (tAuto) clearTimeout(tAuto);
-      if (tSafe) clearTimeout(tSafe);
-      tAuto = tSafe = 0;
-      delete _waiters[name];
-      resolve();
-      refreshDebugHud();
-    };
-    if (autoMs) {
-      // autoMs > 0: an automatic trigger is expected — also set a safety net
-      tAuto = setTimeout(done, autoMs);
-      tSafe = setTimeout(done, Math.max(autoMs * 3, 15000));
-    }
-    // autoMs === 0 (or not passed): waiting for manual user click — NO safety timeout
+    if (autoMs) setTimeout(() => { if (_waiters[name]) { delete _waiters[name]; resolve(); } }, autoMs);
   });
 }
 function fire(name, val) {
-  _lastFired = name;
   const r = _waiters[name];
-  if (r) { delete _waiters[name]; r(val); refreshDebugHud(); return; }
-  // No waiter yet — remember the fire so the next waitFor with this name resolves instantly
-  _pendingFires[name] = val !== undefined ? val : true;
-  // Keep pending clicks longer so early "Continue" presses during animations/events
-  // are not lost before waitFor(...) is reached.
-  setTimeout(() => { delete _pendingFires[name]; }, 30000);
-  refreshDebugHud();
-}
-function skipAll() {
-  state.skipping = true;
-  ['coneRollNow','coneContinue','continueAfterMatch','serveOnce','endMarket'].forEach(fire);
-  document.querySelectorAll('.modal-popup, .event-popup-banner, .game-popup').forEach(m => m.remove());
-  setTimeout(() => { state.skipping = false; }, 3000);
-}
-
-// ── Generic full-screen game popup ──
-// Registry for custom close-actions per popup (e.g. endMarket, pass-bid)
-const _popupCloseCallbacks = {};
-function registerPopupClose(id, fn) { _popupCloseCallbacks[id] = fn; }
-
-function openGamePopup(id, title, bodyHtml) {
-  let pop = document.getElementById(id);
-  if (!pop) {
-    pop = document.createElement('div');
-    pop.id = id;
-    pop.className = 'game-popup';
-    document.body.appendChild(pop);
-    // Backdrop click → run close callback (if any) then close
-    pop.addEventListener('click', e => {
-      if (e.target === pop) {
-        if (_popupCloseCallbacks[id]) _popupCloseCallbacks[id]();
-        closeGamePopup(id);
-      }
-    });
-  }
-  pop.innerHTML = `
-    <div class="game-popup-inner">
-      <div class="game-popup-head">
-        <span class="game-popup-title">${title}</span>
-        <button class="game-popup-close" id="${id}-close-btn">✕</button>
-      </div>
-      <div class="game-popup-body" id="${id}-body">${bodyHtml}</div>
-    </div>`;
-  requestAnimationFrame(() => {
-    pop.classList.add('open');
-    const closeBtn = document.getElementById(`${id}-close-btn`);
-    if (closeBtn) closeBtn.onclick = () => {
-      if (_popupCloseCallbacks[id]) _popupCloseCallbacks[id]();
-      closeGamePopup(id);
-    };
-  });
-}
-function closeGamePopup(id) {
-  const pop = document.getElementById(id);
-  if (pop) { pop.classList.remove('open'); setTimeout(() => { pop.remove(); delete _popupCloseCallbacks[id]; }, 200); }
-}
-function updateGamePopupBody(id, bodyHtml) {
-  const body = document.getElementById(id + '-body');
-  if (body) body.innerHTML = bodyHtml;
-}
-
-function setActionsHtml(html) {
-  const el = $('#actions');
-  if (!el) return;
-  el.innerHTML = html;
+  if (r) { delete _waiters[name]; r(val); }
 }
 
 // ────────────────────────────────────────────────────────────────
 //  Position helpers
 // ────────────────────────────────────────────────────────────────
-const POSITIONS = ['outside','outside2','middle','middle2','setter','diagonal','libero'];
-const POS_COLORS = { outside:'#e84317', outside2:'#c2410c', middle:'#16a34a', middle2:'#166534', setter:'#0ea5e9', diagonal:'#4f46e5', libero:'#ca8a04' };
+const POSITIONS = ['outside','middle','setter','diagonal','libero'];
+const POS_COLORS = { outside:'#e84317', middle:'#16a34a', setter:'#0ea5e9', diagonal:'#4f46e5', libero:'#ca8a04' };
 function posShort(p) { return T('pos_short_'+p); }
 function posLabel(p) { return T('pos_'+p); }
 function posColor(p) { return POS_COLORS[p]; }
@@ -764,14 +642,212 @@ function teamStrength(p) {
   return POSITIONS.reduce((s,k) => s + ((p.team[k] && !p.team[k].disabled ? p.team[k].stars : 0)), 0);
 }
 function teamFront(p) { return ['outside','middle','setter'].reduce((s,k) => s + ((p.team[k]&&!p.team[k].disabled?p.team[k].stars:0)),0); }
-function teamBack(p)  {
-  return ((p.team.libero&&!p.team.libero.disabled?p.team.libero.stars:0))
-       + ((p.team.diagonal&&!p.team.diagonal.disabled?p.team.diagonal.stars:0))
-       + ((p.team.outside&&!p.team.outside.disabled?p.team.outside.stars:0)/2)
-       + ((p.team.outside2&&!p.team.outside2.disabled?p.team.outside2.stars:0)/2);
-}
-function teamBlock(p) { return ['outside','outside2','middle','middle2'].reduce((s,k) => s + ((p.team[k]&&!p.team[k].disabled?p.team[k].stars:0)),0); }
+function teamBack(p)  { return ((p.team.libero&&!p.team.libero.disabled?p.team.libero.stars:0)) + ((p.team.diagonal&&!p.team.diagonal.disabled?p.team.diagonal.stars:0)) + ((p.team.outside&&!p.team.outside.disabled?p.team.outside.stars:0)/2); }
+function teamBlock(p) { return ['outside','middle'].reduce((s,k) => s + ((p.team[k]&&!p.team[k].disabled?p.team[k].stars:0)),0); }
 
+
+// ────────────────────────────────────────────────────────────────
+//  3D DICE — improved (multi-type, animated, pretty)
+// ────────────────────────────────────────────────────────────────
+const DICE = {
+  three: null,
+  cur: null,
+};
+
+function ensureDiceArea() {
+  let area = $('.dice-area');
+  if (!area) return null;
+  let holder = $('.dice-3d', area);
+  if (!holder) {
+    holder = document.createElement('div'); holder.className='dice-3d';
+    area.insertBefore(holder, area.firstChild);
+  }
+  return holder;
+}
+
+// Build dice mesh of type d3 / d6 / d12.  Faces have a number texture.
+function buildDiceMesh(type) {
+  const THREE_ = window.THREE;
+  if (!THREE_) return null;
+  let mesh, faces;
+  const matBase = { roughness: 0.35, metalness: 0.4, emissive: 0x331400, emissiveIntensity: 0.18 };
+  if (type === 6) {
+    const mats = [];
+    for (let i = 1; i <= 6; i++) mats.push(new THREE_.MeshStandardMaterial({ ...matBase, color: 0xe84317, map: faceTexture(i, '#e84317', '#fff8e6') }));
+    const g = new THREE_.BoxGeometry(1.4, 1.4, 1.4);
+    mesh = new THREE_.Mesh(g, mats);
+    // Box face indexing: 0:+x, 1:-x, 2:+y, 3:-y, 4:+z, 5:-z. We label 1..6 in that order.
+    faces = [
+      { value: 1, dir: [ 1, 0, 0] }, // +x
+      { value: 2, dir: [-1, 0, 0] }, // -x
+      { value: 3, dir: [ 0, 1, 0] }, // +y
+      { value: 4, dir: [ 0,-1, 0] }, // -y
+      { value: 5, dir: [ 0, 0, 1] }, // +z
+      { value: 6, dir: [ 0, 0,-1] }, // -z
+    ];
+    return { mesh, faces };
+  }
+  if (type === 3) {
+    // Tetrahedron — 4 faces. We pretend it's a d3 by mapping only 3 of them; 4th re-rolls.
+    const g = new THREE_.TetrahedronGeometry(1.3, 0);
+    const mat = new THREE_.MeshStandardMaterial({ ...matBase, color: 0xfacc15, flatShading: true });
+    mesh = new THREE_.Mesh(g, mat);
+    // Tet face normals (manually derived)
+    faces = [
+      { value: 1, dir: [ 1, 1, 1] },
+      { value: 2, dir: [-1,-1, 1] },
+      { value: 3, dir: [-1, 1,-1] },
+      { value: 1, dir: [ 1,-1,-1] }, // 4th face also shows 1 (we re-roll on 4)
+    ];
+    // Add edge highlight
+    const edges = new THREE_.LineSegments(new THREE_.EdgesGeometry(g), new THREE_.LineBasicMaterial({ color: 0xfff8e6, transparent: true, opacity: 0.7 }));
+    mesh.add(edges);
+    return { mesh, faces };
+  }
+  // d12 — Dodecahedron with 12 face-colored pentagons.
+  const g = new THREE_.DodecahedronGeometry(1.3, 0);
+  const mat = new THREE_.MeshStandardMaterial({ ...matBase, color: 0xe84317, flatShading: true });
+  mesh = new THREE_.Mesh(g, mat);
+  // Add edges and small "facet number" sprite that we manually orient post-roll
+  const edges = new THREE_.LineSegments(new THREE_.EdgesGeometry(g), new THREE_.LineBasicMaterial({ color: 0xfacc15 }));
+  mesh.add(edges);
+  // Compute face centers / normals
+  const pos = g.getAttribute('position');
+  const seen = new Set(); const centers = [];
+  for (let i = 0; i < pos.count; i += 3) {
+    // each triangle's normal — but pentagons share normal, so dedupe by rounded normal
+    const v0 = [pos.getX(i),  pos.getY(i),  pos.getZ(i)];
+    const v1 = [pos.getX(i+1),pos.getY(i+1),pos.getZ(i+1)];
+    const v2 = [pos.getX(i+2),pos.getY(i+2),pos.getZ(i+2)];
+    const nx = (v0[0]+v1[0]+v2[0])/3, ny = (v0[1]+v1[1]+v2[1])/3, nz = (v0[2]+v1[2]+v2[2])/3;
+    const len = Math.sqrt(nx*nx+ny*ny+nz*nz);
+    const dir = [nx/len, ny/len, nz/len];
+    const key = dir.map(v => v.toFixed(2)).join(',');
+    if (!seen.has(key)) { seen.add(key); centers.push(dir); }
+  }
+  faces = centers.slice(0, 12).map((d, idx) => ({ value: idx+1, dir: d }));
+  return { mesh, faces };
+}
+
+// Tiny canvas-based face texture (a number on a circle)
+function faceTexture(num, fg, bg) {
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = fg; ctx.fillRect(0,0,128,128);
+  ctx.fillStyle = bg;
+  ctx.beginPath(); ctx.arc(64, 64, 50, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = fg;
+  ctx.font = 'bold 70px "Barlow Condensed", sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(String(num), 64, 70);
+  const tex = new window.THREE.CanvasTexture(c);
+  tex.anisotropy = 4;
+  return tex;
+}
+
+function setupDiceScene(holder, type) {
+  const THREE_ = window.THREE;
+  if (!THREE_) return null;
+  while (holder.firstChild) holder.removeChild(holder.firstChild);
+  const w = holder.clientWidth || 200, h = holder.clientHeight || 200;
+  const scene = new THREE_.Scene();
+  const camera = new THREE_.PerspectiveCamera(40, w/h, 0.1, 100);
+  camera.position.set(0, 0, 5);
+  const renderer = new THREE_.WebGLRenderer({ alpha:true, antialias:true });
+  renderer.setSize(w, h); renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+  holder.appendChild(renderer.domElement);
+  // Lights
+  scene.add(new THREE_.AmbientLight(0xffffff, 0.55));
+  const dl = new THREE_.DirectionalLight(0xffffff, 0.95); dl.position.set(2,3,4); scene.add(dl);
+  const rim = new THREE_.DirectionalLight(0xfacc15, 0.4); rim.position.set(-3,-2,2); scene.add(rim);
+  const built = buildDiceMesh(type);
+  if (!built) return null;
+  scene.add(built.mesh);
+  return { scene, camera, renderer, holder, mesh: built.mesh, faces: built.faces, type };
+}
+
+// Compute a quaternion rotating face direction `dir` to (0,0,1) (pointing camera)
+function rotationToFace(dir) {
+  const THREE_ = window.THREE;
+  const v = new THREE_.Vector3(...dir).normalize();
+  const target = new THREE_.Vector3(0, 0, 1);
+  const q = new THREE_.Quaternion().setFromUnitVectors(v, target);
+  return q;
+}
+
+async function rollDice(type, value) {
+  const THREE_ = window.THREE;
+  const numEl = $('#dice-num');
+  if (numEl) { numEl.textContent = '…'; numEl.style.color = ''; }
+  const holder = ensureDiceArea();
+  if (!holder || !THREE_) {
+    // Fallback — animate the number only
+    const dur = speedMs(700);
+    const start = performance.now();
+    return new Promise(r => {
+      function tick(t) {
+        const k = (t - start)/dur;
+        if (numEl) numEl.textContent = roll(type);
+        if (k < 1) requestAnimationFrame(tick);
+        else { if (numEl) numEl.textContent = value; r(); }
+      }
+      requestAnimationFrame(tick);
+    });
+  }
+  // Build/refresh scene if needed
+  if (!DICE.cur || DICE.cur.holder !== holder || DICE.cur.type !== type) {
+    DICE.cur = setupDiceScene(holder, type);
+  }
+  const D = DICE.cur;
+  if (!D) return;
+  // Find a face with the desired value
+  const targetFace = (type === 3
+    ? D.faces.filter(f => f.value === value)[Math.floor(Math.random()*D.faces.filter(f=>f.value===value).length)]
+    : D.faces.find(f => f.value === value)) || D.faces[0];
+  const targetQ = rotationToFace(targetFace.dir);
+  const startQ = D.mesh.quaternion.clone();
+  // Wild random spin axes
+  const spinAxis1 = new THREE_.Vector3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).normalize();
+  const spinAxis2 = new THREE_.Vector3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).normalize();
+  return new Promise(resolve => {
+    const dur = speedMs(1100);
+    const t0 = performance.now();
+    function frame(t) {
+      const k = Math.min(1, (t - t0)/dur);
+      // Phase A: chaotic spin
+      const eased = 1 - Math.pow(1 - k, 3);    // ease-out cubic
+      // intensity decays
+      const spinIntensity = (1 - k) * 6.5 + 0.4;
+      // Mix two axis rotations smoothly
+      const angle1 = (1 - k) * Math.PI * 4 * spinIntensity;
+      const angle2 = (1 - k) * Math.PI * 3 * spinIntensity;
+      const q1 = new THREE_.Quaternion().setFromAxisAngle(spinAxis1, angle1);
+      const q2 = new THREE_.Quaternion().setFromAxisAngle(spinAxis2, angle2);
+      const spinQ = q1.multiply(q2);
+      // Slerp to target quaternion as k → 1
+      D.mesh.quaternion.slerpQuaternions(spinQ, targetQ, eased);
+      // Bounce position (subtle vertical bob)
+      const bobY = Math.sin(k*Math.PI*4) * (1-k) * 0.18;
+      D.mesh.position.y = bobY;
+      D.renderer.render(D.scene, D.camera);
+      if (k < 1) requestAnimationFrame(frame);
+      else {
+        D.mesh.quaternion.copy(targetQ);
+        D.mesh.position.set(0, 0, 0);
+        D.renderer.render(D.scene, D.camera);
+        if (numEl) {
+          numEl.textContent = value;
+          numEl.style.transform = 'scale(1.4)'; numEl.style.color = '#facc15';
+          setTimeout(() => { numEl.style.transform = 'scale(1)'; }, 180);
+        }
+        beep(680 + value*15, 90);
+        resolve();
+      }
+    }
+    requestAnimationFrame(frame);
+  });
+}
 
 function performDiceRoll(type) {
   const value = roll(type);
@@ -806,30 +882,11 @@ function animateDicePanel(type, finalValue) {
   });
 }
 
-// dicePanel_roll: fires the currently active waiter
-// `force=true` lets non-dice buttons trigger even if dice button is disabled.
-function dicePanel_roll(force, preferredWaiter) {
-  const now = Date.now();
-  if (now - _lastAdvanceClickAt < 140) return; // anti-spam guard
-  _lastAdvanceClickAt = now;
-  _lastAdvanceSource = force ? 'action-btn' : 'dice-btn';
+// dicePanel_roll: called by the dice panel button — fires the current waiter
+function dicePanel_roll() {
   const btn = document.getElementById('dice-panel-btn');
-  if (!force && btn && btn.disabled) return;
-  // Prefer explicit intent from the clicked action button.
-  if (preferredWaiter && _waiters[preferredWaiter]) { fire(preferredWaiter); return; }
-  // Then prefer what the flow expects next.
-  if (_expectedAdvance && _waiters[_expectedAdvance]) { fire(_expectedAdvance); return; }
-  // Fallback: first active waiter wins.
-  if (_waiters['serveOnce']) { fire('serveOnce'); return; }
-  if (_waiters['continueAfterMatch']) { fire('continueAfterMatch'); return; }
-  if (_waiters['coneContinue']) { fire('coneContinue'); return; }
-  if (_waiters['coneRollNow']) { fire('coneRollNow'); return; }
-  if (_waiters['endMarket']) { fire('endMarket'); return; }
-  // No active waiter yet (e.g. short animation/event gap):
-  // queue exactly ONE action — never fire two names; that leaves stale pendings
-  // (e.g. coneRollNow) and the next bot turn can resolve waitFor('coneRollNow') instantly → chaos.
-  fire(_expectedAdvance || 'coneRollNow');
-  refreshDebugHud();
+  if (btn && btn.disabled) return;
+  fire('coneRollNow');
 }
 
 
@@ -872,8 +929,6 @@ function startConfetti(durationMs = 8000) {
 //  BOOT, INTRO, MENU
 // ────────────────────────────────────────────────────────────────
 function boot() {
-  state.speed = 'normal';
-  localStorage.setItem('vv_speed', 'normal');
   ALL_CARDS = buildAllCards();
   const stBtn = $('#sound-toggle');
   if (stBtn) {
@@ -994,14 +1049,13 @@ function makePlayer(name, color, emoji, isHuman, personality, biasPos) {
   return {
     id: uid(), name, color, emoji, isHuman: !!isHuman, personality: personality || 'balanced', biasPos: biasPos || 'outside',
     money: 80000, vp: 0,
-    team: { outside:null, outside2:null, middle:null, middle2:null, setter:null, diagonal:null, libero:null },
+    team: { outside:null, middle:null, setter:null, diagonal:null, libero:null },
     bench: [],
     suspended: [], // [{ card, pos, reason }] — players sidelined by Red Card / Injury / VNL until next league match
     matchesWon: 0, totalEarned: 0,
     leaguePoints: 0,
     flag: choice(['IT','BR','PL','FR','USA','RU','JP','SLO']),
     starterIdx: 0,  // who the starting player is (set after starting roll)
-    courtRotation: 0, // 0..5 — volleyball rotation on court (synced with match mini + team panel)
   };
 }
 
@@ -1019,18 +1073,16 @@ function initSoloGame() {
     phase: 'draft',
     log: [],
     market: [],
-    marketPile: [],    // unsold auction cards — appear on the market for direct purchase
     auctionDeck: [],   // shuffled 2-5 star cards for in-game auctions/transfers
+    drafted: 0,        // how many players completed their draft
     coneDay: 1,        // black cone position on the timeline (day 1 → 50)
+    weekResults: [],
     over: false, winner: null,
     leagueMatchesPlayed: 0,
-    season: 1,
   };
-  // Build auction deck: fresh copies of all 2-5★ cards, shuffled
-  state.game.auctionDeck = ALL_CARDS
-    .filter(c => c.stars >= 2)
-    .map(c => Object.assign({}, c))   // fresh copy per card — no shared references
-    .sort(() => Math.random() - 0.5);
+  // Build auction deck: all 2-5 star cards (1-star are fixed-price separate)
+  const aDeck = ALL_CARDS.filter(c => c.stars >= 2).slice().sort(()=>Math.random()-0.5);
+  state.game.auctionDeck = aDeck;
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -1056,7 +1108,7 @@ function setupTeamPanelHtml(p) {
       <div class="vb-row-label" style="margin-top:0.4rem">${state.lang==='de'?'Hinten':'Back'}</div>
       <div class="vb-row vb-row-3">
         ${setupSlotHtml(s.diagonal, 'diagonal')}
-        ${setupSlotHtml(s.outside2, 'outside2')}
+        ${setupSlotHtml(s.outside,  'outside')}
         ${setupSlotHtml(s.libero,   'libero')}
       </div>
     </div>
@@ -1175,7 +1227,7 @@ function draftHandHtml(p) {
   const all = [...Object.values(p.team).filter(Boolean), ...p.bench];
   if (!all.length) return `<div style="color:var(--silver); font-style:italic;">—</div>`;
   return all.map(c => `
-    <div class="draft-card" data-tip="${escapeHTML(c.name)}·${c.stars}★">
+    <div class="draft-card" data-tip="${c.name} · ${c.stars}★">
       <span class="pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
       <img src="${c.url}" alt="" loading="lazy">
       <div class="draft-stars">${'★'.repeat(c.stars)}</div>
@@ -1196,24 +1248,13 @@ function deckPoolForStars(stars) {
   return card;
 }
 
-// Maps primary positions to their secondary slot (two-OH / two-MB rule)
-const POS_SECONDARY = { outside: 'outside2', middle: 'middle2' };
-
 function placeIntoTeamOrBench(p, card) {
-  const primary = card.pos;
-  const secondary = POS_SECONDARY[primary];
-
-  if (!p.team[primary]) {
-    p.team[primary] = card;
-  } else if (secondary && !p.team[secondary]) {
-    // Primary slot taken → fill secondary slot (same position type)
-    p.team[secondary] = card;
-  } else if (p.team[primary].stars < card.stars) {
-    p.bench.push(p.team[primary]);
-    p.team[primary] = card;
-  } else if (secondary && p.team[secondary] && p.team[secondary].stars < card.stars) {
-    p.bench.push(p.team[secondary]);
-    p.team[secondary] = card;
+  if (!p.team[card.pos]) {
+    p.team[card.pos] = card;
+  } else if (p.team[card.pos].stars < card.stars) {
+    // upgrade — old goes to bench
+    p.bench.push(p.team[card.pos]);
+    p.team[card.pos] = card;
   } else {
     p.bench.push(card);
   }
@@ -1222,7 +1263,7 @@ function placeIntoTeamOrBench(p, card) {
 function draftDraw(stars) {
   const me = state.game.players[0];
   const c = deckPoolForStars(stars);
-  if (!c) { toast(T('draft_deck_empty'), 'bad'); return; }
+  if (!c) { toast('No cards left', 'bad'); return; }
   placeIntoTeamOrBench(me, c);
   beep(740, 60);
   renderDraft();
@@ -1236,7 +1277,7 @@ function draftRedraw() {
   const all = [...Object.values(me.team).filter(Boolean), ...me.bench];
   for (const c of all) state.game._draftDeck.push(c);
   state.game._draftDeck.sort(()=>Math.random()-0.5);
-  me.team = { outside:null, outside2:null, middle:null, middle2:null, setter:null, diagonal:null, libero:null };
+  me.team = { outside:null, middle:null, setter:null, diagonal:null, libero:null };
   me.bench = [];
   renderDraft();
 }
@@ -1244,18 +1285,12 @@ function draftRedraw() {
 function draftPick1(pos) {
   const me = state.game.players[0];
   const counts = countByStars([...me.bench, ...Object.values(me.team).filter(Boolean)]);
-  if (counts[1] >= 3) { toast(T('draft_pick_limit'), 'bad'); return; }
-  // outside2/middle2 share the same card pool as outside/middle
-  const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
-  const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === poolPos);
+  if (counts[1] >= 3) { toast('Already 3× 1★', 'bad'); return; }
+  // Pick a 1-star card of the given position from the pool
+  const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === pos);
   if (!opts.length) { toast(T('no_card_for_pos')||'No card', 'bad'); return; }
   const c = choice(opts);
-  // Force placement into the correct target slot
-  if (!me.team[pos]) {
-    me.team[pos] = c;
-  } else {
-    placeIntoTeamOrBench(me, c);
-  }
+  placeIntoTeamOrBench(me, c);
   beep(640, 60);
   renderDraft();
 }
@@ -1288,12 +1323,8 @@ function autoDraftBot(bot) {
   for (let i = 0; i < 3; i++) {
     const empties = POSITIONS.filter(p => !bot.team[p]);
     let pos = empties.length ? choice(empties) : (bot.biasPos || choice(POSITIONS));
-    const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
-    const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === poolPos);
-    if (opts.length) {
-      const c = choice(opts);
-      if (!bot.team[pos]) bot.team[pos] = c; else placeIntoTeamOrBench(bot, c);
-    }
+    const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === pos);
+    if (opts.length) placeIntoTeamOrBench(bot, choice(opts));
   }
   ensureFiveStarter(bot);
 }
@@ -1302,18 +1333,16 @@ function ensureFiveStarter(p) {
   // Move bench cards into empty starter slots for any unfilled position
   for (const pos of POSITIONS) {
     if (!p.team[pos]) {
-      const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
-      const idx = p.bench.findIndex(c => c.pos === poolPos);
+      const idx = p.bench.findIndex(c => c.pos === pos);
       if (idx >= 0) {
         p.team[pos] = p.bench.splice(idx, 1)[0];
       }
     }
   }
-  // If still empty, pick any 1-star card from the pool
+  // If still empty (rare), pick any 1-star card from the pool
   for (const pos of POSITIONS) {
     if (!p.team[pos]) {
-      const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
-      const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === poolPos);
+      const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === pos);
       if (opts.length) p.team[pos] = choice(opts);
     }
   }
@@ -1352,24 +1381,7 @@ async function renderAuction() {
 
 async function runOpeningAuction() {
   const g = state.game;
-  let cards = g.auctionDeck.splice(0, 6)
-    .filter(c => c && Number.isFinite(Number(c.stars)));
-  // Safety net: if the deck got short/corrupt, rebuild enough auction cards so setup never soft-locks.
-  if (cards.length < 6) {
-    const missing = 6 - cards.length;
-    const refill = ALL_CARDS
-      .filter(c => c && Number(c.stars) >= 2)
-      .sort(() => Math.random() - 0.5)
-      .slice(0, missing);
-    cards = cards.concat(refill);
-  }
-  const stage = $('#auction-stage');
-  if (!cards.length) {
-    if (stage) {
-      stage.innerHTML = `<div class="event-card"><div class="event-h">${state.lang==='de'?'Auktion konnte nicht gestartet werden':'Auction could not start'}</div><div class="event-p">${state.lang==='de'?'Es wurden keine gültigen Auktionskarten gefunden. Starte bitte ein neues Spiel.':'No valid auction cards found. Please start a new game.'}</div></div>`;
-    }
-    return;
-  }
+  const cards = g.auctionDeck.splice(0, 6);
   for (let i = 0; i < cards.length; i++) {
     await runAuctionForCard(cards[i], i+1, cards.length);
     refreshTopbar();
@@ -1378,10 +1390,8 @@ async function runOpeningAuction() {
 }
 
 async function runAuctionForCard(card, idx, total) {
-  if (!card || !Number.isFinite(Number(card.stars))) return;
   const stage = $('#auction-stage');
-  const cardStars = Math.max(1, Math.floor(Number(card.stars) || 1));
-  const minBid = cardStars * 10000;
+  const minBid = card.stars * 10000;
   let high = 0; let highBidder = null;
   // Auction rounds: youngest first (we treat human as youngest), then clockwise
   let currentBid = 0;
@@ -1404,7 +1414,7 @@ async function runAuctionForCard(card, idx, total) {
           <img class="ac-img" src="${card.url}" alt="">
           <div class="ac-info">
             <div class="ac-pos" style="background:${posColor(card.pos)}">${posShort(card.pos)} · ${posLabel(card.pos)}</div>
-            <div class="ac-stars">${'★'.repeat(cardStars)} <span style="color:var(--silver)">${escapeHTML(card.name)}</span></div>
+            <div class="ac-stars">${'★'.repeat(card.stars)} <span style="color:var(--silver)">${card.name}</span></div>
             <div class="ac-bid">
               <div>${T('auction_currentbid')}: <b style="color:var(--gold)">${currentBid?fmtMoney(currentBid):'—'}</b>${currentHigh?` <span style="color:var(--silver)">(${escapeHTML(currentHigh.name)})</span>`:''}</div>
             </div>
@@ -1438,10 +1448,10 @@ async function runAuctionForCard(card, idx, total) {
           beep(820, 50);
         }
       } else {
-        await sleep(speedMs(300));
+        await sleep(speedMs(700));
         const opps = order.filter(o => o !== p);
         const decision = window.VV_BOTS.shouldBid(p, card, currentBid, minNext, opps);
-        if (decision.pass || decision.bid > p.money || decision.bid < minNext) {
+        if (decision.pass) {
           passes.add(p.id);
           appendAuctionFeed(`${p.emoji} ${escapeHTML(p.name)} → ${T('auction_pass')}`);
         } else {
@@ -1469,7 +1479,7 @@ async function runAuctionForCard(card, idx, total) {
     beep(900, 120);
   } else {
     appendAuctionFeed(`<b style="color:var(--silver)">${T('auction_no_one')}</b>`);
-    state.game.marketPile.push(card); // unsold → available in market phase
+    state.game.auctionDeck.push(card);  // back on the pile
   }
   refreshTopbar();
   await sleep(speedMs(800));
@@ -1554,7 +1564,6 @@ async function rollStartingDice() {
   // Begin season
   g.phase = 'season';
   g.week = 1; g.coneDay = 1;
-  for (const pl of g.players) pl.courtRotation = 0;
   setView('game');
   setTimeout(runSeason, speedMs(400));
 }
@@ -1583,12 +1592,10 @@ function weekEventByWeek(w) {
 function dayOf(week, dayInWeek) { return (week - 1)*8 + dayInWeek; }
 function weekOfDay(day) { return Math.floor((day - 1) / 8) + 1; }
 function dayInWeekOf(day) { return ((day - 1) % 8) + 1; }
-/** Calendar week 1–6 on the 6×8 board from absolute cone day (matches week strip / phase bar). */
-function boardWeekDisplay(g) { return g && g.coneDay ? weekOfDay(g.coneDay) : 1; }
 
-// Fixed event per day-in-week (per spec): Day 4=tournament, Day 8=league handled separately
-const DAY_EVENT = { 1:'red', 2:'transfer', 3:'action', 5:'vnl', 6:'action', 7:'injury' };
-function eventTypeForDay(d) { return DAY_EVENT[d] || 'action'; }
+// Random event for non-special days
+const EVENT_TYPES = ['red', 'transfer', 'action', 'vnl', 'injury'];
+function randomEventType() { return choice(EVENT_TYPES); }
 
 function renderGame() {
   const app = $('#app');
@@ -1597,20 +1604,14 @@ function renderGame() {
     <div class="gh">
       <div class="gh-logo">VOLLEY VENDETTA</div>
       <div class="gh-spacer"></div>
-      <div class="gh-mini">${T('week')} ${boardWeekDisplay(g)} ${T('of')} 6</div>
+      <div class="gh-mini">${T('week')} ${g.week} ${T('of')} 6</div>
       <div class="gh-lang">
         <span class="lang-pill ${state.lang==='de'?'active':''}" onclick="VV.setLang('de')">DE</span>
         <span class="lang-pill ${state.lang==='en'?'active':''}" onclick="VV.setLang('en')">EN</span>
       </div>
     </div>
     <div class="game">
-      <div class="topbar" id="topbar">
-        <div class="topbar-bots">${g.players.filter(p=>!p.isHuman).map((p)=>playerCardHtml(p,g.players.indexOf(p),true)).join('')}</div>
-        <div class="topbar-sep"></div>
-        <div class="topbar-log-area"><div class="log" id="log"></div></div>
-        <div class="topbar-sep"></div>
-        ${playerYouHtml(g.players[0], g)}
-      </div>
+      <div class="topbar" id="topbar">${g.players.map((p,i)=>playerCardHtml(p,i,true)).join('')}</div>
       <div class="phase-bar" id="phase-bar"></div>
       <div class="gmid">
         <div class="gpanel-board" id="board-panel">
@@ -1629,92 +1630,34 @@ function renderGame() {
         </div>
       </div>
       <div class="gbot">
-        <div class="actions-wrap">
-          <div class="actions" id="actions"></div>
-          <button class="market-toggle-btn" id="market-toggle-btn" onclick="VV.toggleMarketPopup()">🛒 Markt</button>
-        </div>
+        <div class="actions" id="actions"><div class="stage" id="stage"></div></div>
         <div class="dice-panel" id="dice-panel">
           <div class="dice-panel-label" id="dice-panel-label">🎲 D3</div>
           <div class="dice-panel-result" id="dice-panel-result">—</div>
           <button class="dice-panel-btn" id="dice-panel-btn" disabled onclick="VV.dicePanel_roll()">Würfeln</button>
-          <button class="skip-btn" onclick="VV.skipAll()" title="Alles überspringen">⏭</button>
         </div>
-        <div class="stage-panel" id="stage-panel">
-          <div class="stage" id="stage"></div>
-        </div>
-        <div class="week-strip" id="week-strip">${weekStripHtml(g)}</div>
+        <div class="log" id="log"></div>
       </div>
     </div>`;
   ensureFloatingLog();
   for (const e of state.game.log.slice(-30)) logEntry(e.text, e.kind);
   refreshFloatingPanel();
-  refreshDebugHud();
 }
 
 function playerCardHtml(p, idx, withBars) {
   const g = state.game;
   const isYou = p.isHuman;
   const isActive = idx === (g && g.activeIdx);
-  return `<div class="player-card ${isActive?'active':''} ${isYou?'you':''}" data-pidx="${idx}" style="border-left:3px solid ${p.color};">
+  return `<div class="player-card ${isActive?'active':''} ${isYou?'you':''}" style="border-left:3px solid ${p.color};">
     <div class="pc-name"><span class="pc-emoji">${p.emoji}</span>${escapeHTML(p.name)}</div>
     <div class="pc-stats">
       <div>${T('money')}</div><b>${fmtMoney(p.money)}</b>
       <div>${T('vp')}</div><b>${p.vp}/8</b>
       <div>${T('str')}</div><b>★ ${teamStrength(p)}</b>
-      <div>${T('stats_lp')}</div><b>${leaguePointsVal(p)}</b>
+      <div>L-Pts</div><b>${p.leaguePoints||0}</b>
     </div>
     ${withBars ? `<div class="pc-vp">${range(8).map(i=>`<span class="${i<p.vp?'fill':''}"></span>`).join('')}</div>` : ''}
   </div>`;
-}
-
-function playerYouHtml(p, g) {
-  const isActive = g && g.players[g.activeIdx] === p;
-  const str = teamStrength(p);
-  return `<div class="you-card ${isActive?'active':''}" data-pidx="0" style="border-left:4px solid ${p.color};">
-    <div class="yc-label">${state.lang==='de'?'DU':'YOU'}</div>
-    <div class="yc-name">${p.emoji} ${escapeHTML(p.name)}</div>
-    <div class="yc-stats">
-      <div class="yc-stat"><span class="yc-key">${T('money')}</span><span class="yc-val">${fmtMoney(p.money)}'</span></div>
-      <div class="yc-stat"><span class="yc-key">${T('vp')}</span><span class="yc-val">${p.vp}/8</span></div>
-      <div class="yc-stat"><span class="yc-key">${T('str')}</span><span class="yc-val">★ ${str}</span></div>
-      <div class="yc-stat"><span class="yc-key">${T('stats_lp')}</span><span class="yc-val">${leaguePointsVal(p)}</span></div>
-    </div>
-  </div>`;
-}
-
-function weekStripHtml(g) {
-  const w = Math.floor((g.coneDay - 1) / 8) + 1;
-  const dInW = ((g.coneDay - 1) % 8) + 1;
-  const tourney = weekEventByWeek(w);
-  const EV_ICON = { red:'🟥', transfer:'🔁', action:'🎴', vnl:'🚩', injury:'🩹',
-    supercup:'🏆', cup:'🥈', cupfinal:'🥇', cl:'🌍', clfinal:'🌟' };
-  const days = range(8).map(i => {
-    const day = i + 1;
-    let icon;
-    if (day === 4 && tourney)   icon = EV_ICON[tourney.type] || '🏆';
-    else if (day === 8)         icon = '🤝';
-    else                        icon = EV_ICON[DAY_EVENT[day]] || '·';
-    const isCur = day === dInW, isPast = day < dInW;
-    return `<div class="ws-day${isCur?' ws-cur':''}${isPast?' ws-past':''}">
-      <span class="ws-ico">${icon}</span>
-      <span class="ws-num">${day}</span>
-    </div>`;
-  }).join('');
-  const evLabel = dInW === 4 && tourney
-    ? (EV_ICON[tourney.type]||'🏆') + ' ' + tourney.type.toUpperCase()
-    : dInW === 8 ? '🤝 Liga'
-    : EV_ICON[DAY_EVENT[dInW]] + ' ' + (T('cone_event_' + (DAY_EVENT[dInW]||'action')) || '');
-  return `<div class="ws-head">
-      <span class="ws-wlabel">${T('week')} ${w}<span style="color:var(--silver)">/6</span></span>
-      <span class="ws-dlabel">${T('cal_day')} ${dInW}</span>
-    </div>
-    <div class="ws-days">${days}</div>
-    <div class="ws-ev">${evLabel}</div>`;
-}
-function refreshWeekStrip() {
-  const el = $('#week-strip');
-  if (!el || !state.game) return;
-  el.innerHTML = weekStripHtml(state.game);
 }
 
 // Board grid coordinates measured on perfektes-spielbrett.png (1254×1254).
@@ -1765,43 +1708,23 @@ function boardHtml(g) {
   </div>`;
 }
 
-// Same 6-slot ring as match mini-court (setter starts front-right at rotation 0).
-const COURT_ROTATION_RING = ['middle2', 'outside2', 'diagonal', 'middle', 'outside', 'setter'];
-function courtRotationNorm(rotation) { return ((rotation || 0) % 6 + 6) % 6; }
-function courtSlotRawPos(rotation, slotIdx) {
-  const r = courtRotationNorm(rotation);
-  return COURT_ROTATION_RING[((slotIdx - r) % 6 + 6) % 6];
-}
-/** Roster key shown in slot 0..5 (back row 0–2, front 3–5), including Libero-for-MB swap in back row */
-function courtSlotDisplayPos(rotation, slotIdx) {
-  const raw = courtSlotRawPos(rotation, slotIdx);
-  const liberoSwapSlots = new Set();
-  for (const s of [0, 1, 2]) {
-    const pr = courtSlotRawPos(rotation, s);
-    if (pr === 'middle' || pr === 'middle2') liberoSwapSlots.add(s);
-  }
-  if (slotIdx <= 2 && liberoSwapSlots.has(slotIdx) && (raw === 'middle' || raw === 'middle2')) return 'libero';
-  return raw;
-}
-
-function teamPanelHtml(p, opts) {
-  // Volleyball rotation: 6 slots on court (same model as match). Team panel + opponent mirror this.
+function teamPanelHtml(p) {
+  // Volleyball rotation: 6 positions in court order
+  // Front row (left→right): pos4=OH, pos3=MB, pos2=OPP
+  // Back row  (left→right): pos5=OH2(empty slot), pos6=Libero, pos1=Setter
+  // In our 5-player setup: Front: [outside, middle, diagonal], Back: [setter, libero]
+  // Standard rotation: OH ↔ OH (opposite sides), MB ↔ Libero (sub), OPP ↔ S (opposite)
   const s = p.team;
   const bench = p.bench || [];
-  const suspended = Array.isArray(p.suspended) ? p.suspended : [];
-  const readOnly = !!(opts && opts.readOnly);
-  const sellMode = !readOnly && !!state.sellMode;
+  const sellMode = !!state.sellMode;
   
   function teamSlotHtml(card, pos) {
     if (!card) return `<div class="slot empty vb-team-slot" data-tip="${posLabel(pos)}"><span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span></div>`;
-    // Safety: a disabled non-sub card should never be in the formation — show as empty
-    if (card.disabled && !card._isSub) return `<div class="slot empty vb-team-slot" data-tip="${posLabel(pos)} · ⛔"><span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span></div>`;
     const dis = card.disabled ? 'disabled' : '';
     const sub = card._isSub ? 'is-sub' : '';
-    const click = readOnly ? '' : `onclick="VV.handleFloatingClick('${pos}')"`;
     return `<div class="slot vb-team-slot ${dis} ${sub} ${sellMode?'sellable':''}" 
       data-tip="${escapeHTML(card.name)} · ${card.stars}★${card.disabled?' · '+(card.disabledReason||''):''}${sub?' · '+T('sub_tooltip'):''}"
-      ${click}>
+      onclick="VV.handleFloatingClick('${pos}')">
       <span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
       <img src="${card.url}" alt="">
       <div class="stars">${'★'.repeat(card.stars)}</div>
@@ -1811,10 +1734,9 @@ function teamPanelHtml(p, opts) {
   }
   
   function benchSlotHtml(c) {
-    const click = readOnly ? '' : `onclick="VV.handleFloatingBenchClick('${c.id}')"`;
     return `<div class="slot vb-bench-slot ${sellMode?'sellable':''}" 
       data-tip="${escapeHTML(c.name)} · ${c.stars}★ · ${posLabel(c.pos)}${c.disabled?' · ⛔':''}"
-      ${click}>
+      onclick="VV.handleFloatingBenchClick('${c.id}')">
       <span class="pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
       <img src="${c.url}" alt="">
       <div class="stars">${'★'.repeat(c.stars)}</div>
@@ -1822,78 +1744,39 @@ function teamPanelHtml(p, opts) {
     </div>`;
   }
 
-  function suspendedSlotHtml(entry) {
-    const c = entry && entry.card;
-    const pos = (entry && entry.pos) || (c && c.pos) || 'outside';
-    const reason = (entry && entry.reason) || (state.lang === 'de' ? 'Ausfall' : 'Unavailable');
-    if (!c) {
-      return `<div class="slot vb-bench-slot vb-suspended-slot empty"
-        data-tip="${escapeHTML(reason)} · ${posLabel(pos)}">
-        <span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
-        <div class="dis-overlay">⛔</div>
-      </div>`;
-    }
-    return `<div class="slot vb-bench-slot vb-suspended-slot disabled"
-      data-tip="${escapeHTML(c.name)} · ${c.stars}★ · ${posLabel(pos)} · ${escapeHTML(reason)}">
-      <span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
-      <img src="${c.url}" alt="">
-      <div class="stars">${'★'.repeat(c.stars)}</div>
-      <div class="dis-overlay">⛔</div>
-    </div>`;
-  }
-
-  const lang = state.lang === 'de';
-  const rot = (opts && opts.rotation != null) ? courtRotationNorm(opts.rotation) : courtRotationNorm(p.courtRotation);
-  const frontSlots = [3, 4, 5];
-  const backSlots = [2, 1, 0];
-  const shownKeys = new Set();
-  const frontCells = frontSlots.map((sl) => {
-    const rk = courtSlotDisplayPos(rot, sl);
-    shownKeys.add(rk);
-    return teamSlotHtml(s[rk], rk);
-  }).join('');
-  const backCells = backSlots.map((sl) => {
-    const rk = courtSlotDisplayPos(rot, sl);
-    shownKeys.add(rk);
-    return teamSlotHtml(s[rk], rk);
-  }).join('');
-  // Off-court positions (the 7th slot not in the 3×2 rotation) → shown right of court
-  const offCourtKeys = POSITIONS.filter(k => !shownKeys.has(k));
-  const offCourtPanel = offCourtKeys.length
-    ? `<div class="vb-mb2-panel">
-        <div class="vb-mb2-label">
-          <span class="vb-mb2-icon">↔</span>
-          ${offCourtKeys.map(k => `<span>${posShort(k)}</span>`).join('')}
-          <span style="font-size:0.48rem;opacity:0.45">${lang?'raus-rot.':'rotated'}</span>
-        </div>
-        ${offCourtKeys.map(k => teamSlotHtml(s[k] || null, k)).join('')}
-      </div>`
-    : '';
-
   return `
-    ${readOnly ? '' : `<div class="vb-sell-bar">
+    <div class="vb-sell-bar">
+      <span style="font-size:0.7rem;color:var(--silver)">${state.lang==='de'?'Klicke Karte zum Verkaufen':'Click card to sell'}</span>
       <button class="vb-sell-toggle ${sellMode?'on':''}" onclick="VV.toggleSellMode()">
-        🔴 ${sellMode?(lang?'Verkauf AN':'Sell ON'):(lang?'Verkaufen':'Sell')}
+        🔴 ${sellMode?(state.lang==='de'?'Verkauf AN':'Sell ON'):(state.lang==='de'?'Verkaufen':'Sell')}
       </button>
-    </div>`}
-    <div class="vb-formation-wrap">
-      <div class="vb-formation">
-        <div class="vb-net-line"></div>
-        <div class="vb-row vb-row-3">${frontCells}</div>
-        <div class="vb-row vb-row-3" style="margin-top:0.35rem">${backCells}</div>
+    </div>
+    <div class="vb-formation">
+      <div class="vb-net-line"></div>
+      <div class="vb-pos-labels">
+        <span>4</span><span>3</span><span>2</span>
       </div>
-      ${offCourtPanel}
+      <div class="vb-row-label">${state.lang==='de'?'Vorne (netznahe)':'Front (near net)'}</div>
+      <div class="vb-row vb-row-3">
+        ${teamSlotHtml(s.middle,   'middle')}
+        ${teamSlotHtml(s.outside,  'outside')}
+        ${teamSlotHtml(s.setter,   'setter')}
+      </div>
+      <div class="vb-pos-labels" style="margin-top:0.5rem">
+        <span>5</span><span>6</span><span>1</span>
+      </div>
+      <div class="vb-row-label">${state.lang==='de'?'Hinten':'Back'}</div>
+      <div class="vb-row vb-row-3">
+        ${teamSlotHtml(s.diagonal, 'diagonal')}
+        ${teamSlotHtml(s.outside,  'outside')}
+        ${teamSlotHtml(s.libero,   'libero')}
+      </div>
     </div>
     <div class="vb-bench">
-      <div class="vb-bench-label">⬇ ${lang?'Bank':'Bench'} (${bench.length})</div>
+      <div class="vb-bench-label">⬇ ${state.lang==='de'?'Ersatz':'Bench'} (${bench.length})</div>
       <div class="vb-bench-row">
-        ${bench.map(c => benchSlotHtml(c)).join('') || `<span style="font-size:0.7rem;color:rgba(255,255,255,0.3)">${lang?'Leer':'Empty'}</span>`}
+        ${bench.map(c => benchSlotHtml(c)).join('') || `<span style="font-size:0.7rem;color:rgba(255,255,255,0.3)">${state.lang==='de'?'Keine Ersatzspieler':'No bench players'}</span>`}
       </div>
-      ${suspended.length ? `
-      <div class="vb-bench-label vb-out-label">⛔ ${lang?'Ausfälle':'Out'} (${suspended.length})</div>
-      <div class="vb-bench-row vb-out-row">
-        ${suspended.map(e => suspendedSlotHtml(e)).join('')}
-      </div>` : ''}
     </div>`;
 }
 function slotHtml(card, pos) {
@@ -1912,17 +1795,7 @@ function slotHtml(card, pos) {
 
 function refreshTopbar() {
   const tb = $('#topbar'); if (!tb || !state.game) return;
-  const g = state.game;
-  // Update only bot-cards and YOU card — preserve topbar-log-area and #log
-  const botsEl = tb.querySelector('.topbar-bots');
-  if (botsEl) botsEl.innerHTML = g.players.filter(p=>!p.isHuman).map(p=>playerCardHtml(p,g.players.indexOf(p),true)).join('');
-  const youEl = tb.querySelector('.you-card');
-  if (youEl) {
-    const newYou = document.createElement('div');
-    newYou.innerHTML = playerYouHtml(g.players[0], g);
-    const yc = newYou.firstElementChild;
-    if (yc) youEl.replaceWith(yc);
-  }
+  tb.innerHTML = state.game.players.map((p,i)=>playerCardHtml(p,i,true)).join('');
   refreshFloatingPanel();
 }
 function refreshBoard() {
@@ -1950,11 +1823,9 @@ function refreshBoard() {
         `<span class="vbi-day">${state.lang==='de'?'Tag':'Day'} ${dInW}/8</span>` +
         (ev ? `<span class="vbi-ev">${T('week_event_'+ev.type)}</span>` : '');
     }
-    refreshWeekStrip();
     return;
   }
   b.innerHTML = boardHtml(state.game);
-  refreshWeekStrip();
 }
 function refreshTeamPanel() {
   const tp = $('#team-panel'); if (!tp || !state.game) return;
@@ -1962,31 +1833,20 @@ function refreshTeamPanel() {
   const sl = $('#team-strength-label');
   if (sl) sl.textContent = '★ ' + teamStrength(state.game.players[0]);
 }
-/** During a match, keep human team panel + opponent board in sync with courtRotation */
-function refreshMatchSidePanels(M) {
-  const g = state.game;
-  if (!g || !M) return;
-  const me = g.players.find(p => p.isHuman) || g.players[0];
-  if (M.home !== me && M.away !== me) return;
-  refreshTeamPanel();
-  const wrap = document.querySelector('.opp-team-wrap');
-  if (wrap) {
-    const opp = M.home === me ? M.away : M.home;
-    wrap.innerHTML = teamPanelHtml(opp, { readOnly: true });
-  }
-}
 function showOpponentBoard(opponent) {
   const boardInner = $('#board');
   if (!boardInner) return;
   boardInner.innerHTML = `
     <div class="opp-panel">
-      <div class="opp-panel-header">
-        <span class="opp-panel-title">⚔️ ${escapeHTML(opponent.name)}</span>
-        <span class="opp-panel-stats">${opponent.emoji || ''} ★ ${teamStrength(opponent)} &nbsp;·&nbsp; ${fmtMoney(opponent.money)}'</span>
+      <div class="opp-panel-title">⚔️ ${escapeHTML(opponent.name)}</div>
+      <div style="font-size:0.7rem;color:var(--silver);text-align:center;margin-bottom:0.4rem">★ ${teamStrength(opponent)} · ${fmtMoney(opponent.money)}'</div>
+      <div class="opp-team-grid">
+        ${['middle','setter','diagonal','outside','libero'].map(pos => slotHtml(opponent.team[pos], pos)).join('')}
       </div>
-      <div class="opp-team-wrap">
-        ${teamPanelHtml(opponent, { readOnly: true })}
-      </div>
+      ${(opponent.bench||[]).length ? `<div style="font-size:0.65rem;color:var(--silver);margin-top:0.5rem;letter-spacing:2px;text-transform:uppercase">Bench</div>
+      <div style="display:flex;gap:0.3rem;flex-wrap:wrap;margin-top:0.2rem">
+        ${(opponent.bench||[]).map(c=>`<div class="slot vb-slot-narrow" data-tip="${escapeHTML(c.name)} · ${c.stars}★"><span class="pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span><img src="${c.url}" alt=""><div class="stars">${'★'.repeat(c.stars)}</div></div>`).join('')}
+      </div>` : ''}
     </div>`;
 }
 function restoreBoardPanel() {
@@ -1996,19 +1856,17 @@ function restoreBoardPanel() {
 }
 function setPhase(active) {
   const phases = [
-    { id:'event',   label:T('phase_event'),   icon:'🎲' },
-    { id:'match',   label:T('phase_match'),   icon:'🏐' },
-    { id:'buy',     label:T('phase_buy'),     icon:'🛒' },
-    { id:'weekend', label:T('phase_weekend'), icon:'🏅' },
-    { id:'done',    label:T('phase_done'),    icon:'✅' },
+    { id:'event', label:T('phase_event'), icon:'🏆' },
+    { id:'match', label:T('phase_match'), icon:'🏐' },
+    { id:'buy',   label:T('phase_buy'),   icon:'🛒' },
+    { id:'done',  label:T('phase_done'),  icon:'✅' },
   ];
-  const order = ['event','match','buy','weekend','done'];
+  const order = ['event','match','buy','done'];
   const bar = $('#phase-bar'); if (!bar) return;
   bar.innerHTML = phases.map(p => {
     const cls = p.id === active ? 'active' : (order.indexOf(p.id) < order.indexOf(active) ? 'done' : '');
     return `<span class="phase ${cls}">${p.icon} ${p.label}</span>`;
-  }).join('') + `<div class="phase-log-strip" id="phase-log-strip"></div><span class="phase">${T('week')} ${state.game ? boardWeekDisplay(state.game) : 1}/6</span>`;
-  refreshPhaseLog();
+  }).join('') + `<span class="gh-spacer" style="flex:1"></span><span class="phase">${T('week')} ${state.game.week}/6</span>`;
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -2016,52 +1874,23 @@ function setPhase(active) {
 // ────────────────────────────────────────────────────────────────
 async function runSeason() {
   const g = state.game;
-  // `g.week` is the inner-loop index (1..6) for `targetEndOfWeek`; it increments right after
-  // the weekend while `coneDay` may still sit on the league boundary (e.g. 8). UI week labels
-  // use `boardWeekDisplay(g)` (= weekOfDay(coneDay)) so header, phase bar and week strip agree.
   while (g.week <= 6 && !g.over) {
     refreshBoard();
-    // For each week: simulate cone advancement until cone reaches day 8 (league match)
-    // Strict < so the loop exits the moment coneDay hits the league-match boundary (day 8, 16, 24…)
+    // For each week: simulate cone advancement until past day 8
     const targetEndOfWeek = g.week * 8;
-    while (g.coneDay < targetEndOfWeek && !g.over) {
-      try {
-        const active = g.players[g.activeIdx];
-        // Active player rolls 3-die (or auto in fast mode)
-        setPhase('event');
-        await runConeRoll(active);
-        if (g.over) return;
-        // Move to next active player (clockwise)
-        g.activeIdx = (g.activeIdx + 1) % g.players.length;
-        _expectedAdvance = 'coneRollNow';
-        refreshTopbar();
-      } catch (err) {
-        console.error('[VV] season-step crashed:', err);
-        // Fire any pending waiters so the game can continue from a clean state
-        ['coneRollNow','coneContinue','continueAfterMatch','serveOnce','endMarket'].forEach(fire);
-        _expectedAdvance = 'coneRollNow';
-        toast(`⚠️ Fehler: ${err.message || err} — Spiel versucht fortzufahren`, 'bad', 5000);
-        refreshTopbar();
-        await sleep(1500);
-      }
+    while (g.coneDay <= targetEndOfWeek && !g.over) {
+      const active = g.players[g.activeIdx];
+      // Active player rolls 3-die (or auto in fast mode)
+      setPhase('event');
+      await runConeRoll(active);
+      if (g.over) return;
+      // Move to next active player (clockwise)
+      g.activeIdx = (g.activeIdx + 1) % g.players.length;
+      refreshTopbar();
     }
-    // Weekend matches first, then market
-    setPhase('weekend');
-    await runWeekendMatches(g.week);
-    if (g.over) return;
-    // After weekend, restore suspended/injured players for the next week
-    restoreDisabledCards(true);
-    // Market phase after the weekend matches
+    // Week complete — market phase
     setPhase('buy');
-    // Ensure marketPile exists (safety for older saves)
-    if (!Array.isArray(g.marketPile)) g.marketPile = [];
-    try {
-      await runMarketPhase();
-    } catch (err) {
-      console.error('[VV] runMarketPhase crashed:', err);
-      toast(`⚠️ Markt-Fehler: ${err.message || err}`, 'bad', 5000);
-      delete _pendingFires['endMarket'];
-    }
+    await runMarketPhase();
     if (g.over) return;
     g.week += 1;
   }
@@ -2074,79 +1903,55 @@ async function runSeason() {
 // One cone-roll turn for a player
 async function runConeRoll(player) {
   const g = state.game;
-  // New cone turn: clear stale pendings so a previous mistaken double-fire
-  // cannot make the next waitFor(...) resolve instantly or out of order.
-  delete _pendingFires['coneRollNow'];
-  delete _pendingFires['coneContinue'];
   setActiveBanner(player);
-  setActionsHtml(`<h3>${T('phase_event')}</h3>${speedToggleHtml()}`);
   const stage = $('#stage');
+  const actions = $('#actions');
   stage.innerHTML = `
-    <div class="stage-h">${T('week')} ${boardWeekDisplay(g)} · ${T('cal_day')} ${dayInWeekOf(g.coneDay)}</div>
+    <div class="stage-h">${T('week')} ${g.week} · Tag ${dayInWeekOf(g.coneDay)}</div>
     <div class="stage-sub">${escapeHTML(player.name)} ${player.isHuman?T('yourturn'):T('bot_thinking')+' …'}</div>
     <div class="dice-area" style="margin-top:1rem;">
       <div class="dice-num" id="dice-num">—</div>
     </div>
     <div id="cone-log" style="margin-top:1rem;"></div>`;
+  actions.innerHTML = `<h3>${T('phase_event')}</h3>
+    ${speedToggleHtml()}
+    <button id="cone-roll-btn" class="action-btn pulse" data-tip="${T('cone_roll')}" onclick="VV.coneRollNow()">🎲 ${T('cone_roll')}</button>`;
   // Update dice panel
   const dpBtn = document.getElementById('dice-panel-btn');
   const dpLbl = document.getElementById('dice-panel-label');
   if (dpLbl) dpLbl.textContent = '🎲 D3';
-  _expectedAdvance = 'coneRollNow';
-  if (state.speed !== 'auto') {
-    if (dpBtn) {
-      dpBtn.disabled = false;
-      dpBtn.classList.add('pulse');
-      dpBtn.textContent = player.isHuman ? '🎲 Würfeln' : ('▶ ' + (state.lang === 'de' ? 'Weiter (Bot würfelt)' : 'Continue (bot rolls)'));
-    }
-    // Human AND bot turns both wait for the user to click "▶ Weiter (Bot würfelt)" / "🎲 Würfeln"
+  if (player.isHuman && state.speed !== 'auto') {
+    if (dpBtn) { dpBtn.disabled = false; dpBtn.classList.add('pulse'); dpBtn.textContent = '🎲 Würfeln'; }
     await waitFor('coneRollNow');
-    if (dpBtn) {
-      dpBtn.disabled = true;
-      dpBtn.classList.remove('pulse');
-      dpBtn.textContent = '🎲 Würfeln';
-    }
+    if (dpBtn) { dpBtn.disabled = true; dpBtn.classList.remove('pulse'); }
   } else {
     if (dpBtn) dpBtn.disabled = true;
-    await sleep(speedMs(3000)); // bot thinking pause before roll
+    await sleep(speedMs(700));
   }
   const v = await performDiceRoll(3);
   const advance = v >= 3 ? 2 : 1;     // rule: 1=+1, 2=+1, 3=+2
   const start = g.coneDay;
   const end = start + advance;
   appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🎲 ${v} (${state.lang==='de'?'+':'+'}${advance})`);
-  // Advance day-by-day — triggers for every day passed OR landed on (spec §2.8)
-  // Stop at day 8 (end of week / league match): cone must not cross into next week's events
+  // Advance day-by-day, resolve any landings/passes
   for (let d = start + 1; d <= end; d++) {
     g.coneDay = d;
     refreshBoard();
-    await sleep(speedMs(350));
+    await sleep(speedMs(220));
     await resolveDay(g.coneDay, player);
     if (g.over) return;
-    if (dayInWeekOf(d) === 8) break; // league match day = end of week, stop here
   }
   if (!g.over) {
-    _expectedAdvance = 'coneContinue';
-    delete _pendingFires['coneRollNow']; // must not carry over into continue step
-    const stageSub = document.querySelector('#stage .stage-sub');
-    if (stageSub) stageSub.textContent = `${player.name} — ${T('cone_continue')}`;
-    setActionsHtml(`<h3>${T('phase_event')}</h3>${speedToggleHtml()}`);
-    const dpBtn2 = document.getElementById('dice-panel-btn');
-    if (dpBtn2) { dpBtn2.disabled = false; dpBtn2.classList.add('pulse'); dpBtn2.textContent = '▶ ' + T('cone_continue'); }
-    // Bots and auto-speed continue automatically; human always waits for manual click
-    if (state.speed === 'auto' || !player.isHuman) {
-      setTimeout(()=>fire('coneContinue'), speedMs(3000));
-    }
-    const continueAutoMs = (state.speed === 'auto' || !player.isHuman) ? speedMs(4000) : 0;
-    await waitFor('coneContinue', continueAutoMs);
-    if (dpBtn2) { dpBtn2.disabled = true; dpBtn2.classList.remove('pulse'); dpBtn2.textContent = '🎲 Würfeln'; }
+    actions.innerHTML = `<h3>${T('phase_event')}</h3>
+      ${speedToggleHtml()}
+      <button class="action-btn pulse" onclick="VV.coneContinue()">${T('cone_continue')}</button>`;
+    if (state.speed === 'auto' || !player.isHuman) setTimeout(()=>fire('coneContinue'), speedMs(400));
+    await waitFor('coneContinue', !player.isHuman ? speedMs(2000) : 0);
   }
 }
 
-// Route both action buttons through the same waiter-dispatch logic.
-// This prevents dead clicks when UI labels and active waiter briefly desync.
-function coneRollNow() { dicePanel_roll(true, 'coneRollNow'); }
-function coneContinue() { dicePanel_roll(true, 'coneContinue'); }
+function coneRollNow() { fire('coneRollNow'); }
+function coneContinue() { fire('coneContinue'); }
 function setActiveBanner(p) {
   // Big floating banner
   let banner = $('#turn-banner');
@@ -2174,7 +1979,6 @@ async function resolveDay(day, triggerPlayer) {
   const w = weekOfDay(day);
   const dInW = dayInWeekOf(day);
   const ev = weekEventByWeek(w);
-  try {
   if (dInW === ev?.day) {
     // Tournament
     appendConeLog(`<b>${T('week_event_'+ev.type)}</b>`);
@@ -2182,18 +1986,16 @@ async function resolveDay(day, triggerPlayer) {
     return;
   }
   if (dInW === 8) {
-    // End of week — just log it; the weekly match is the weekend fixture
-    appendConeLog(`<b>${T('week')} ${w} — ${state.lang === 'de' ? 'Wochenende' : 'Weekend'}</b>`);
+    // League match line — auto trigger as cone passes
+    appendConeLog(`<b>${T('phase_match')}</b> · ${T('week')} ${w}`);
+    await runLeagueMatch();
+    // After league match, restore disabled cards (suspensions/injuries/VNL)
+    restoreDisabledCards(true);
     return;
   }
-  // Fixed event per day-in-week (spec §2.7)
-  const evType = eventTypeForDay(dInW);
+  // Otherwise: random event for the trigger player only
+  const evType = randomEventType();
   await runEventSpace(evType, triggerPlayer);
-  } catch (err) {
-    console.error('[VV] resolveDay crashed (day=' + day + '):', err);
-    ['coneRollNow','coneContinue','continueAfterMatch','serveOnce','endMarket'].forEach(fire);
-    toast(`⚠️ Event-Fehler (Tag ${day}): ${err.message || err}`, 'bad', 4000);
-  }
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -2201,7 +2003,6 @@ async function resolveDay(day, triggerPlayer) {
 // ────────────────────────────────────────────────────────────────
 async function runEventSpace(type, player) {
   const stage = $('#stage');
-  if (!stage) return;
   const map = {
     red:      { h:T('cone_event_red'),      p:T('cone_event_red_p'),      icon:'🟥' },
     transfer: { h:T('cone_event_transfer'), p:T('cone_event_transfer_p'), icon:'🔁' },
@@ -2210,7 +2011,6 @@ async function runEventSpace(type, player) {
     injury:   { h:T('cone_event_injury'),   p:T('cone_event_injury_p'),   icon:'🩹' },
   };
   const e = map[type];
-  if (!e) { console.warn('[VV] Unknown event type:', type); return; }
   // Render event modal-ish
   stage.innerHTML += `
     <div class="event-card">
@@ -2226,9 +2026,10 @@ async function runEventSpace(type, player) {
   if (type === 'action')   await applyActionCard(player);
   if (type === 'vnl')      await applyVnlEvent(player);
   if (type === 'injury')   await applyInjury(player);
-  await sleep(speedMs(1500));
+  await sleep(speedMs(800));
 }
 
+const POS_ORDER_BY_DICE = ['outside','middle','setter','diagonal','libero']; // pos by 6-die roll: 1=back-right=libero traditionally; we map 1..5 to our 5 starters and 6=back-mid (diagonal if alone)
 function diePositionFor(roll6) {
   // Map 1..6 to a starter position (deterministic abstraction)
   return ['libero','outside','middle','setter','diagonal','outside'][roll6-1];
@@ -2236,7 +2037,6 @@ function diePositionFor(roll6) {
 
 async function applyRedCard(player) {
   const detail = $('#event-detail');
-  if (!detail) return;
   detail.innerHTML = `<div class="dice-area"><div class="dice-num" id="dice-num">—</div></div>`;
   const v = await performDiceRoll(6);
   const pos = diePositionFor(v);
@@ -2246,554 +2046,49 @@ async function applyRedCard(player) {
   refreshFloatingPanel();
 }
 
-function ownedCardIds() {
-  // Returns a Set of card IDs currently in any player's team, bench, suspended, or marketPile.
-  const g = state.game;
-  if (!g) return new Set();
-  const ids = new Set();
-  for (const p of g.players) {
-    for (const pos of POSITIONS) {
-      const c = p.team[pos]; if (c && c.id) ids.add(c.id);
-    }
-    for (const c of (p.bench || [])) { if (c && c.id) ids.add(c.id); }
-    for (const e of (p.suspended || [])) { if (e && e.card && e.card.id) ids.add(e.card.id); }
-  }
-  for (const c of (g.marketPile || [])) { if (c && c.id) ids.add(c.id); }
-  for (const c of (g.market || []))     { if (c && c.id) ids.add(c.id); }
-  return ids;
-}
-
-function drawAuctionCard() {
-  const g = state.game;
-  if (!Array.isArray(g.auctionDeck)) g.auctionDeck = [];
-  // Remove cards already owned/in-market before drawing
-  const owned = ownedCardIds();
-  g.auctionDeck = g.auctionDeck.filter(c => c && !owned.has(c.id));
-  if (g.auctionDeck.length === 0) {
-    // Refill with only unowned 2-5★ cards
-    g.auctionDeck = (ALL_CARDS || [])
-      .filter(c => c && Number(c.stars) >= 2 && !owned.has(c.id))
-      .sort(() => Math.random() - 0.5);
-    console.log('[VV] auctionDeck refilled:', g.auctionDeck.length, 'unowned cards');
-  }
-  const card = g.auctionDeck.shift();
-  if (!card) return null;
-  // Return a fresh copy so placing it doesn't mutate the ALL_CARDS template
-  return Object.assign({}, card);
-}
-
 async function applyTransfer(player) {
-  const card = drawAuctionCard();
-  if (!card) { appendConeLog(T('auction_no_one')); return; }
-  const de = state.lang === 'de';
-  // Use the shared visible auction UI; triggering player bids first
-  await runAuctionUI(card, `🔁 ${T('cone_event_transfer')} — ${escapeHTML(player.name)}`, player);
-  // Log result (winner/market already handled inside runAuctionUI)
-  appendConeLog(`🔁 ${de ? 'Transfer-Auktion beendet' : 'Transfer auction done'}`);
-}
-
-function humanBidPopup(p, card, minNext) {
-  return new Promise(resolve => {
-    let settled = false;
-    const finish = (val) => { if (settled) return; settled = true; resolve(val); };
-    const sugg = Math.min(p.money, minNext);
-    const id = 'transfer-bid-popup';
-    const body = `
-      <div style="display:flex;gap:1rem;align-items:flex-start;margin-bottom:1rem;">
-        <div class="card-thumb card-thumb-narrow" style="width:80px;flex-shrink:0;">
-          <img src="${card.url}" style="width:100%;border-radius:4px;display:block;" alt="">
-        </div>
-        <div>
-          <div style="font-weight:700;font-size:1rem;">${escapeHTML(card.name)}</div>
-          <div style="color:var(--silver);font-size:0.72rem;word-break:break-all;">${escapeHTML(cardImageBasename(card))}</div>
-          <div style="color:var(--silver);font-size:0.8rem;">${'\u2605'.repeat(card.stars)} \u00b7 ${posLabel(card.pos)}</div>
-          <div style="color:var(--silver);font-size:0.8rem;margin-top:0.3rem;">${T('auction_minbid')}: <b>${fmtMoney(minNext)}'</b> \u00b7 ${T('money')}: <b>${fmtMoney(p.money)}'</b></div>
-        </div>
-      </div>
-      <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
-        <input type="number" id="bid-popup-input" min="${minNext}" max="${p.money}" step="1000" value="${sugg}"
-          style="width:130px;padding:0.4rem 0.6rem;background:#111;border:1px solid var(--line);color:#fff;border-radius:4px;font-size:0.9rem;">
-        <button class="btn btn-primary" id="bid-popup-do">${T('auction_bid')}</button>
-        <button class="btn btn-secondary" id="bid-popup-pass">${T('auction_pass')}</button>
-      </div>`;
-    const passAndClose = () => { closeGamePopup(id); finish({ pass: true }); };
-    // ✕ and backdrop close = same as "pass"
-    registerPopupClose(id, () => finish({ pass: true }));
-    openGamePopup(id, `\ud83d\udd01 ${T('cone_event_transfer')} \u2014 ${escapeHTML(p.name)}`, body);
-    setTimeout(() => {
-      const doBtn = document.getElementById('bid-popup-do');
-      const passBtn = document.getElementById('bid-popup-pass');
-      const input = document.getElementById('bid-popup-input');
-      if (doBtn) doBtn.onclick = () => {
-        const v = parseInt((input && input.value) || '0', 10);
-        closeGamePopup(id);
-        finish({ bid: v });
-      };
-      if (passBtn) passBtn.onclick = passAndClose;
-      if (input) {
-        input.focus();
-        input.addEventListener('keydown', e => { if (e.key === 'Enter' && doBtn) doBtn.click(); });
-      }
-    }, 50);
-    // Safety timeout: auto-pass if popup is left open.
-    setTimeout(() => {
-      if (!settled) { closeGamePopup(id); finish({ pass: true }); }
-    }, 12000);
-  });
-}
-
-// ────────────────────────────────────────────────────────────────
-//  ACTION CARDS — 10 distinct effects
-// ────────────────────────────────────────────────────────────────
-
-// Show a modal popup that resolves when OK is clicked or auto-closes.
-function showActionPopupAsync(icon, title, bodyHtml, autoMs = 8000) {
-  return new Promise(resolve => {
-    const pid = 'ac-pop-' + Date.now();
-    const div = document.createElement('div');
-    div.className = 'modal-popup';
-    div.id = pid;
-    div.innerHTML = `
-      <div class="modal-card">
-        <div class="modal-icon">${icon}</div>
-        <div class="modal-h">${title}</div>
-        <div class="modal-p">${bodyHtml}</div>
-        <button class="btn btn-primary" id="${pid}-ok">OK</button>
-      </div>`;
-    document.body.appendChild(div);
-    setTimeout(() => div.classList.add('open'), 10);
-    let done = false;
-    const finish = () => {
-      if (done) return; done = true;
-      if (document.body.contains(div)) div.remove();
-      resolve();
-    };
-    const okBtn = div.querySelector(`#${pid}-ok`);
-    if (okBtn) okBtn.addEventListener('click', finish);
-    div.addEventListener('click', e => { if (e.target === div) finish(); });
-    setTimeout(finish, autoMs);
-  });
-}
-
-// Show opponent picker; bots auto-pick the wealthiest opponent.
-function pickOpponent(player) {
-  const g = state.game;
-  const de = state.lang === 'de';
-  const opponents = g.players.filter(p => p !== player);
-  const botPick = () => opponents.reduce((a, b) => a.money >= b.money ? a : b);
-  if (!player.isHuman || state.speed === 'auto') return Promise.resolve(botPick());
-  return new Promise(resolve => {
-    const pid = 'ac-opp-' + Date.now();
-    const div = document.createElement('div');
-    div.className = 'modal-popup';
-    div.id = pid;
-    const btns = opponents.map(o =>
-      `<button class="btn btn-secondary" data-oid="${o.id}"
-        style="margin:.3em .2em;min-width:140px">
-        ${o.emoji} ${escapeHTML(o.name)}<br>
-        <span style="font-size:.78em;color:var(--silver)">${fmtMoney(o.money)}'</span>
-      </button>`
-    ).join('');
-    div.innerHTML = `
-      <div class="modal-card">
-        <div class="modal-icon">🎯</div>
-        <div class="modal-h">${de ? 'Gegner wählen' : 'Choose opponent'}</div>
-        <div class="modal-p" style="display:flex;flex-wrap:wrap;justify-content:center">${btns}</div>
-      </div>`;
-    document.body.appendChild(div);
-    setTimeout(() => div.classList.add('open'), 10);
-    let done = false;
-    const finish = opp => {
-      if (done) return; done = true;
-      if (document.body.contains(div)) div.remove();
-      resolve(opp || botPick());
-    };
-    div.querySelectorAll('[data-oid]').forEach(btn =>
-      btn.addEventListener('click', () => finish(opponents.find(o => o.id === btn.dataset.oid)))
-    );
-    setTimeout(() => finish(botPick()), 8000);
-  });
-}
-
-// AC 1 — Muskelfaserriss: best team card is suspended this week
-async function ac_muskelfaserriss(player) {
-  const de = state.lang === 'de';
-  let bestPos = null, bestCard = null;
-  for (const pos of POSITIONS) {
-    const c = player.team[pos];
-    if (c && !c.disabled && (!bestCard || c.stars > bestCard.stars)) { bestCard = c; bestPos = pos; }
-  }
-  if (!bestCard) {
-    const msg = de ? 'Kein Spieler im Team — keine Auswirkung.' : 'No player in team — no effect.';
-    appendConeLog(`🩻 Muskelfaserriss · ${player.emoji} ${escapeHTML(player.name)} · ${msg}`);
-    return;
-  }
-  disablePlayerOnTeam(player, bestPos, de ? 'Muskelfaserriss' : 'Muscle Tear');
-  refreshTeamPanel();
-  if (typeof refreshFloatingPanel === 'function') refreshFloatingPanel();
+  // Pull a card from auctionDeck and run a quick auction
+  const card = state.game.auctionDeck.shift();
+  if (!card) { appendConeLog(`${T('auction_no_one')}`); return; }
+  // Quick auction: triggering player bids first, others can join
+  // For simplicity: auto-resolve where bots bid via shouldBid; human gets prompt
   const detail = $('#event-detail');
-  if (detail) detail.innerHTML =
-    `<div style="margin-top:.8em;font-size:.9em">
-      ${de ? `Dein stärkster Spieler <b>${escapeHTML(bestCard.name)}</b> fällt diese Woche aus!`
-           : `Your best player <b>${escapeHTML(bestCard.name)}</b> is out this week!`}
-    </div>`;
-  appendConeLog(`🩻 Muskelfaserriss · ${player.emoji} ${escapeHTML(player.name)}: ${escapeHTML(bestCard.name)} out`);
-  await sleep(speedMs(2500));
-}
-
-// AC 2 — Trikotsponsor: +15 000 CHF
-async function ac_trikotsponsor(player) {
-  const de = state.lang === 'de';
-  const amount = 15000;
-  player.money += amount; player.totalEarned += amount;
-  animateMoneyChange(player, amount); refreshTopbar();
-  const detail = $('#event-detail');
-  if (detail) detail.innerHTML =
-    `<div style="margin-top:.8em;color:var(--gold);font-size:1.1em">💰 +${fmtMoney(amount)}'</div>`;
-  appendConeLog(`👕 Trikotsponsor · ${player.emoji} ${escapeHTML(player.name)} +${fmtMoney(amount)}'`);
-  toast(`👕 ${de ? 'Neuer Sponsor' : 'New sponsor'}! +${fmtMoney(amount)}'`, 'gold', 2500);
-  await sleep(speedMs(2000));
-}
-
-// AC 3 — Transfergerücht: opponent's weakest team card gets forcedSale flag
-async function ac_transfergeruecht(player) {
-  const de = state.lang === 'de';
-  const opp = await pickOpponent(player);
-  let worstPos = null, worstCard = null;
-  for (const pos of POSITIONS) {
-    const c = opp.team[pos];
-    if (c && !c.disabled && (!worstCard || c.stars < worstCard.stars)) { worstCard = c; worstPos = pos; }
-  }
-  if (!worstCard) {
-    const msg = de ? `${escapeHTML(opp.name)} hat kein Team — keine Auswirkung.`
-                   : `${escapeHTML(opp.name)} has no team — no effect.`;
-    appendConeLog(`📰 Transfergerücht · ${msg}`); return;
-  }
-  worstCard.forcedSale = true;
-  const detail = $('#event-detail');
-  const msg = de
-    ? `<b>${escapeHTML(opp.name)}</b>s günstigster Spieler <b>${escapeHTML(worstCard.name)}</b> muss zum Mindestpreis verkauft werden.`
-    : `<b>${escapeHTML(opp.name)}</b>'s cheapest player <b>${escapeHTML(worstCard.name)}</b> must be sold at minimum price.`;
-  if (detail) detail.innerHTML = `<div style="margin-top:.8em;font-size:.85em">${msg}</div>`;
-  appendConeLog(`📰 Transfergerücht · ${player.emoji} ${escapeHTML(player.name)} → ${escapeHTML(opp.name)}: ${escapeHTML(worstCard.name)}`);
-  await sleep(speedMs(2500));
-}
-
-// AC 4 — Positionstausch: cards of a random position rotate clockwise
-async function ac_positionstausch(player) {
-  const g = state.game;
-  const de = state.lang === 'de';
-  const basePos = ['outside', 'middle', 'setter', 'diagonal', 'libero'];
-  const pickedPos = choice(basePos);
-  const posName = posLabel(pickedPos);
-  const slots = pickedPos === 'outside' ? ['outside', 'outside2']
-              : pickedPos === 'middle'  ? ['middle',  'middle2']
-              : [pickedPos];
-
-  // For each player: highest-star non-disabled card of the chosen position
-  const participants = [];
-  for (const p of g.players) {
-    let best = null, bestSlot = null;
-    for (const s of slots) {
-      const c = p.team[s];
-      if (c && !c.disabled && (!best || c.stars > best.stars)) { best = c; bestSlot = s; }
+  detail.innerHTML = `<div style="margin-top:0.6rem;"><b>${escapeHTML(card.name)}</b> · ${'★'.repeat(card.stars)} · ${T('auction_minbid')}: ${fmtMoney(card.stars*10000)}’</div>`;
+  // simple flow — single round of bids in player order starting with trigger
+  let high = 0, highP = null;
+  const order = state.game.players.slice();
+  // rotate so triggerPlayer is first
+  while (order[0] !== player) order.push(order.shift());
+  const minBid = card.stars * 10000;
+  for (const p of order) {
+    if (p.money < minBid) continue;
+    if (p.isHuman) {
+      const r = await humanBidPrompt(p, card, Math.max(minBid, high+1000));
+      if (r && !r.pass && r.bid > high && r.bid <= p.money) { high = r.bid; highP = p; }
+    } else {
+      const dec = window.VV_BOTS.shouldBid(p, card, high, Math.max(minBid, high+1000), order);
+      if (!dec.pass && dec.bid > high) { high = dec.bid; highP = p; }
     }
-    if (best) participants.push({ p, card: best, fromSlot: bestSlot });
   }
-
-  const logLines = [];
-  for (const p of g.players) {
-    if (!participants.some(e => e.p === p))
-      logLines.push(de ? `${p.emoji} ${escapeHTML(p.name)}: kein ${posName} — übersprungen`
-                       : `${p.emoji} ${escapeHTML(p.name)}: no ${posName} — skipped`);
-  }
-
-  if (participants.length < 2) {
-    const msg = de ? `Nicht genug Spieler auf ${posName} — kein Tausch.`
-                   : `Not enough ${posName} players — no swap.`;
-    const detail = $('#event-detail');
-    if (detail) detail.innerHTML = `<div style="color:var(--silver);margin-top:.8em">${msg}</div>`;
-    appendConeLog(`🔄 Positionstausch · ${msg}`);
-    await sleep(speedMs(1500)); return;
-  }
-
-  // Clockwise rotation: last card → index 0, rest shift right
-  const cards   = participants.map(e => e.card);
-  const rotated = [cards[cards.length - 1], ...cards.slice(0, -1)];
-
-  for (let i = 0; i < participants.length; i++) {
-    const { p, fromSlot } = participants[i];
-    p.team[fromSlot] = rotated[i];
-    const src = participants[(i + participants.length - 1) % participants.length];
-    logLines.push(de
-      ? `${p.emoji} ${escapeHTML(p.name)}: gibt <b>${escapeHTML(cards[i].name)}</b> → erhält <b>${escapeHTML(rotated[i].name)}</b>`
-      : `${p.emoji} ${escapeHTML(p.name)}: gives <b>${escapeHTML(cards[i].name)}</b> → receives <b>${escapeHTML(rotated[i].name)}</b>`);
-  }
-  refreshTeamPanel();
-  if (typeof refreshFloatingPanel === 'function') refreshFloatingPanel();
-
-  const detail = $('#event-detail');
-  if (detail) detail.innerHTML = `
-    <div style="margin-top:.8em;font-size:.82em;text-align:left">
-      <div style="color:var(--gold);margin-bottom:.4em">🔄 ${de ? 'Position' : 'Position'}: <b>${posName}</b></div>
-      ${logLines.map(l => `<div style="margin:.2em 0">${l}</div>`).join('')}
-    </div>`;
-  appendConeLog(`🔄 Positionstausch (${posName}) · ${participants.map(e => escapeHTML(e.card.name)).join(' → ')}`);
-  await sleep(speedMs(3000));
-}
-
-// AC 5 — Talentförderung: draw 3 cards, keep 1
-async function ac_talentfoerderung(player) {
-  const g = state.game;
-  const de = state.lang === 'de';
-  const drawn = [];
-  for (let i = 0; i < 3; i++) { const c = drawAuctionCard(); if (c) drawn.push(c); }
-  if (!drawn.length) {
-    appendConeLog(`🌟 Talentförderung · ${de ? 'Keine Karten verfügbar.' : 'No cards available.'}`);
-    return;
-  }
-  const botIdx = drawn.reduce((bi, c, i, a) => c.stars >= a[bi].stars ? i : bi, 0);
-  let chosen;
-  if (!player.isHuman || state.speed === 'auto') {
-    chosen = drawn[botIdx];
+  if (highP) {
+    highP.money -= high;
+    placeIntoTeamOrBench(highP, card);
+    appendConeLog(`${highP.emoji} ${escapeHTML(highP.name)} → ${escapeHTML(card.name)} (${fmtMoney(high)}’)`);
   } else {
-    chosen = await new Promise(resolve => {
-      const pid = 'ac-talent-' + Date.now();
-      const div = document.createElement('div');
-      div.className = 'modal-popup'; div.id = pid;
-      const cardBtns = drawn.map((c, i) => `
-        <button class="btn btn-secondary" data-idx="${i}"
-          style="display:flex;align-items:center;gap:.6em;margin:.4em auto;width:100%;max-width:310px;padding:.4em .7em;text-align:left">
-          <img src="${c.url}" style="height:54px;border-radius:4px;flex-shrink:0" alt="">
-          <div>
-            <div style="font-weight:700">${escapeHTML(c.name)}</div>
-            <div style="font-size:.78em;color:var(--silver)">${'★'.repeat(c.stars)} · ${posLabel(c.pos)}</div>
-          </div>
-        </button>`).join('');
-      div.innerHTML = `
-        <div class="modal-card" style="max-width:400px">
-          <div class="modal-icon">🌟</div>
-          <div class="modal-h">Talentförderung</div>
-          <div class="modal-p">${de ? `Wähle einen von ${drawn.length} Spielern:` : `Pick one of ${drawn.length} players:`}</div>
-          <div style="margin-top:.6em">${cardBtns}</div>
-        </div>`;
-      document.body.appendChild(div);
-      setTimeout(() => div.classList.add('open'), 10);
-      let done = false;
-      const finish = idx => {
-        if (done) return; done = true;
-        if (document.body.contains(div)) div.remove();
-        resolve(drawn[idx] ?? drawn[botIdx]);
-      };
-      div.querySelectorAll('[data-idx]').forEach(btn =>
-        btn.addEventListener('click', () => finish(parseInt(btn.dataset.idx, 10)))
-      );
-      setTimeout(() => finish(botIdx), 8000);
-    });
+    state.game.auctionDeck.push(card);
+    appendConeLog(T('auction_no_one'));
   }
-  // Return unchosen cards to the bottom of the auction deck
-  if (!Array.isArray(g.auctionDeck)) g.auctionDeck = [];
-  for (const c of drawn) { if (c !== chosen) g.auctionDeck.push(c); }
-
-  placeIntoTeamOrBench(player, chosen);
-  refreshTeamPanel(); refreshTopbar();
-  if (typeof refreshFloatingPanel === 'function') refreshFloatingPanel();
-  const detail = $('#event-detail');
-  if (detail) detail.innerHTML =
-    `<div style="margin-top:.8em;font-size:.88em">
-      <b>${escapeHTML(chosen.name)}</b> ${'★'.repeat(chosen.stars)} — ${de ? 'zu deinem Team hinzugefügt.' : 'added to your team.'}
-    </div>`;
-  appendConeLog(`🌟 Talentförderung · ${player.emoji} ${escapeHTML(player.name)} → ${escapeHTML(chosen.name)}`);
-  await sleep(speedMs(2000));
+  refreshTopbar(); refreshTeamPanel();
 }
 
-// AC 6 — Busunfall: d6 → 1–2: suspend 1 card  3–4: suspend 2 cards  5–6: nothing
-async function ac_busunfall(player) {
-  const de = state.lang === 'de';
-  const detail = $('#event-detail');
-  if (detail) detail.innerHTML = `<div class="dice-area"><div class="dice-num" id="dice-num">—</div></div>`;
-  const roll6 = await performDiceRoll(6);
-
-  let count = 0, resultDesc;
-  if      (roll6 <= 2) { count = 1; resultDesc = de ? `${roll6} → 1 Spieler fällt aus!`    : `${roll6} → 1 player out!`; }
-  else if (roll6 <= 4) { count = 2; resultDesc = de ? `${roll6} → 2 Spieler fallen aus!`   : `${roll6} → 2 players out!`; }
-  else                 {             resultDesc = de ? `${roll6} → Keine Ausfälle! 🍀`      : `${roll6} → No suspensions! 🍀`; }
-
-  const pool = POSITIONS.map(pos => ({ pos, card: player.team[pos] }))
-                        .filter(e => e.card && !e.card.disabled)
-                        .sort(() => Math.random() - 0.5);
-  const suspended = [];
-  for (let i = 0; i < Math.min(count, pool.length); i++) {
-    disablePlayerOnTeam(player, pool[i].pos, de ? 'Busunfall' : 'Bus Accident');
-    suspended.push(pool[i].card);
-  }
-  refreshTeamPanel();
-  if (typeof refreshFloatingPanel === 'function') refreshFloatingPanel();
-
-  const suspStr = suspended.length
-    ? `<div style="margin-top:.4em;color:var(--silver)">${de ? 'Betroffen' : 'Affected'}: ${suspended.map(c => `<b>${escapeHTML(c.name)}</b>`).join(', ')}</div>`
-    : '';
-  if (detail) detail.innerHTML =
-    `<div style="margin-top:.8em;font-size:.88em">🚌 ${resultDesc}${suspStr}</div>`;
-  appendConeLog(`🚌 Busunfall · ${player.emoji} ${escapeHTML(player.name)} · ${resultDesc}${suspended.length ? ' — ' + suspended.map(c => escapeHTML(c.name)).join(', ') : ''}`);
-  await sleep(speedMs(2500));
-}
-
-// AC 7 — Transfersperre: player cannot bid in next auction
-async function ac_transfersperre(player) {
-  const de = state.lang === 'de';
-  player.auctionBanned = true;
-  const msg = de ? 'Du darfst in der nächsten Auktion nicht mitbieten.'
-                 : 'You cannot bid in the next auction.';
-  const detail = $('#event-detail');
-  if (detail) detail.innerHTML = `<div style="margin-top:.8em;color:var(--silver);font-size:.88em">${msg}</div>`;
-  appendConeLog(`🚫 Transfersperre · ${player.emoji} ${escapeHTML(player.name)} gesperrt für nächste Auktion`);
-  toast(`🚫 ${de ? 'Transfersperre' : 'Transfer Ban'} — ${escapeHTML(player.name)}`, 'bad', 2500);
-  await sleep(speedMs(2000));
-}
-
-// AC 8 — Ehemaligentreffen: +5 000 per 1★ card in team
-async function ac_ehemaligentreffen(player) {
-  const de = state.lang === 'de';
-  let count = 0;
-  for (const pos of POSITIONS) {
-    const c = player.team[pos];
-    if (c && !c.disabled && c.stars === 1) count++;
-  }
-  const earned = count * 5000;
-  const detail = $('#event-detail');
-  if (count === 0) {
-    const msg = de ? 'Keine Ehemaligen im Team — keine Ausschüttung.' : 'No 1★ players in team — no payout.';
-    if (detail) detail.innerHTML = `<div style="color:var(--silver);margin-top:.8em">${msg}</div>`;
-    appendConeLog(`🏅 Ehemaligentreffen · ${player.emoji} ${escapeHTML(player.name)} · keine`);
-    await sleep(speedMs(1500)); return;
-  }
-  player.money += earned; player.totalEarned += earned;
-  animateMoneyChange(player, earned); refreshTopbar();
-  const msg = de ? `${count} × 1★-Spieler = +${fmtMoney(earned)}'`
-                 : `${count} × 1★ player = +${fmtMoney(earned)}'`;
-  if (detail) detail.innerHTML =
-    `<div style="margin-top:.8em;color:var(--gold);font-size:1.05em">🏅 +${fmtMoney(earned)}'</div>
-     <div style="color:var(--silver);font-size:.82em;margin-top:.3em">${msg}</div>`;
-  appendConeLog(`🏅 Ehemaligentreffen · ${player.emoji} ${escapeHTML(player.name)} +${fmtMoney(earned)}'`);
-  toast(`🏅 +${fmtMoney(earned)}'`, 'gold', 2000);
-  await sleep(speedMs(2000));
-}
-
-// AC 9 — Leihgeschäft: opponent loans one card for the current week
-async function ac_leihgeschaeft(player) {
-  const g = state.game;
-  const de = state.lang === 'de';
-  const opp = await pickOpponent(player);
-
-  // All non-disabled cards from opponent's team + bench
-  const loanable = [
-    ...POSITIONS.map(pos => ({ source: 'team', slot: pos, card: opp.team[pos] }))
-               .filter(e => e.card && !e.card.disabled),
-    ...(opp.bench || []).filter(c => c && !c.disabled)
-                        .map(c => ({ source: 'bench', slot: null, card: c })),
-  ];
-  if (!loanable.length) {
-    const msg = de ? `${escapeHTML(opp.name)} hat keine verfügbaren Spieler.`
-                   : `${escapeHTML(opp.name)} has no available players.`;
-    appendConeLog(`🤝 Leihgeschäft · ${msg}`);
-    await sleep(speedMs(1500)); return;
-  }
-
-  const botPickIdx = loanable.reduce((bi, e, i, a) => e.card.stars <= a[bi].card.stars ? i : bi, 0);
-  let entry;
-  if (opp.isHuman && state.speed !== 'auto') {
-    // Human opponent picks which card to loan out
-    entry = await new Promise(resolve => {
-      const pid = 'ac-loan-' + Date.now();
-      const div = document.createElement('div');
-      div.className = 'modal-popup'; div.id = pid;
-      const btns = loanable.map((e, i) => `
-        <button class="btn btn-secondary" data-idx="${i}"
-          style="display:flex;align-items:center;gap:.5em;margin:.3em auto;width:100%;max-width:310px;padding:.35em .7em;text-align:left">
-          <img src="${e.card.url}" style="height:48px;border-radius:3px;flex-shrink:0" alt="">
-          <div>
-            <div style="font-weight:700;font-size:.9em">${escapeHTML(e.card.name)}</div>
-            <div style="font-size:.75em;color:var(--silver)">${'★'.repeat(e.card.stars)} · ${posLabel(e.card.pos)}</div>
-          </div>
-        </button>`).join('');
-      div.innerHTML = `
-        <div class="modal-card" style="max-width:400px">
-          <div class="modal-icon">🤝</div>
-          <div class="modal-h">${de ? 'Leihe anbieten' : 'Offer loan'}</div>
-          <div class="modal-p">${de ? `Welchen Spieler leihst du <b>${escapeHTML(player.name)}</b>?`
-                                    : `Which player to loan to <b>${escapeHTML(player.name)}</b>?`}</div>
-          <div style="margin-top:.6em">${btns}</div>
-        </div>`;
-      document.body.appendChild(div);
-      setTimeout(() => div.classList.add('open'), 10);
-      let done = false;
-      const finish = idx => {
-        if (done) return; done = true;
-        if (document.body.contains(div)) div.remove();
-        resolve(loanable[idx] ?? loanable[botPickIdx]);
-      };
-      div.querySelectorAll('[data-idx]').forEach(btn =>
-        btn.addEventListener('click', () => finish(parseInt(btn.dataset.idx, 10)))
-      );
-      setTimeout(() => finish(botPickIdx), 8000);
-    });
-  } else {
-    entry = loanable[botPickIdx];
-  }
-
-  const loanCard = entry.card;
-  // Remove from owner's roster
-  if (entry.source === 'team') opp.team[entry.slot] = null;
-  else opp.bench = (opp.bench || []).filter(c => c !== loanCard);
-
-  // Tag for return and add to drawing player's bench
-  loanCard._loanOwner = opp.id;
-  loanCard._loanSlot  = entry.slot;   // null if from bench
-  loanCard._loanReturn = true;
-  if (!Array.isArray(player.bench)) player.bench = [];
-  player.bench.push(loanCard);
-
-  refreshTeamPanel();
-  if (typeof refreshFloatingPanel === 'function') refreshFloatingPanel();
-  const detail = $('#event-detail');
-  const msg = de ? `<b>${escapeHTML(loanCard.name)}</b> spielt diese Woche für <b>${escapeHTML(player.name)}</b>.`
-                 : `<b>${escapeHTML(loanCard.name)}</b> plays for <b>${escapeHTML(player.name)}</b> this week.`;
-  if (detail) detail.innerHTML = `<div style="margin-top:.8em;font-size:.88em">${msg}</div>`;
-  appendConeLog(`🤝 Leihgeschäft · ${escapeHTML(loanCard.name)}: ${escapeHTML(opp.name)} → ${escapeHTML(player.name)}`);
-  await sleep(speedMs(2500));
-}
-
-// AC 10 — Zuschauerrückgang: all players lose 8 000 CHF
-async function ac_zuschauerruckgang(player) {
-  const g = state.game;
-  const de = state.lang === 'de';
-  const loss = 8000;
-  for (const p of g.players) {
-    const actual = Math.min(p.money, loss);
-    p.money = Math.max(0, p.money - loss);
-    animateMoneyChange(p, -actual);
-  }
-  refreshTopbar();
-  const detail = $('#event-detail');
-  if (detail) detail.innerHTML =
-    `<div style="margin-top:.8em;color:var(--silver)">${de ? `Alle Vereine verlieren ${fmtMoney(loss)}'.` : `All clubs lose ${fmtMoney(loss)}'.`}</div>`;
-  appendConeLog(`📉 Zuschauerrückgang · Alle −${fmtMoney(loss)}'`);
-  toast(`📉 ${de ? 'Zuschauerrückgang' : 'Attendance Drop'} — −${fmtMoney(loss)}'`, 'bad', 2500);
-  await sleep(speedMs(2000));
-}
-
-// Dispatcher — pick one of the 10 cards at random each time
 async function applyActionCard(player) {
-  const CARDS = [
-    ac_muskelfaserriss, ac_trikotsponsor,    ac_transfergeruecht, ac_positionstausch,
-    ac_talentfoerderung, ac_busunfall,       ac_transfersperre,   ac_ehemaligentreffen,
-    ac_leihgeschaeft,   ac_zuschauerruckgang,
-  ];
-  await choice(CARDS)(player);
+  // Surprise — show a popup that says it only exists in the physical game
+  showActionCardPopup();
+  appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🎴 ${T('cone_event_action')}`);
 }
 
 function showActionCardPopup() {
+  const layer = $('#toast-layer');
   const div = document.createElement('div');
   div.className = 'modal-popup';
   div.innerHTML = `
@@ -2804,116 +2099,27 @@ function showActionCardPopup() {
       <button class="btn btn-primary" onclick="this.closest('.modal-popup').remove()">OK</button>
     </div>`;
   document.body.appendChild(div);
-  // Backdrop click closes as well (prevents blocked UI if user misses OK button).
-  div.addEventListener('click', e => { if (e.target === div) div.remove(); });
   setTimeout(() => div.classList.add('open'), 10);
-  // Safety auto-close to avoid hard-stuck overlays during event flow.
-  setTimeout(() => { if (document.body.contains(div)) div.remove(); }, 3500);
 }
 
-// Active VNL nations per week (nation strings match the `nation` field in the ROSTER)
-const VNL_NATIONS_BY_WEEK = {
-  1: ['Argentinien', 'Kanada',      'Brasilien',  'Bulgarien'],
-  2: ['Japan',       'Kuba',        'China',      'Deutschland'],
-  3: ['Frankreich',  'Italien',     'Serbien',    'Iran'],
-  4: ['Slowenien',   'Serbien',     'Russland',   'Niederlande'],
-  5: ['Japan',       'USA',         'Kanada',     'Deutschland'],
-  6: ['Polen',       'Italien',     'Argentinien','Deutschland'],
-};
-
 async function applyVnlEvent(player) {
-  const g = state.game;
-  const de = state.lang === 'de';
-  const week = g.week || 1;
-  const activeNations = VNL_NATIONS_BY_WEEK[week] || [];
-
-  if (!activeNations.length) {
-    const msg = de ? `Keine VNL-Daten für Woche ${week}.` : `No VNL data for week ${week}.`;
-    appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🚩 VNL · <i style="color:var(--silver)">${msg}</i>`);
-    toast(`🚩 VNL — ${msg}`, '', 3000);
-    return;
-  }
-
-  const nationsLabel = activeNations.join(', ');
-  const reason = T('cone_event_vnl');
-
-  // Collect suspensions across ALL players (team slots + bench)
-  const suspensionsByTeam = [];
-
-  for (const p of g.players) {
-    if (!Array.isArray(p.suspended)) p.suspended = [];
-    if (!Array.isArray(p.bench))     p.bench     = [];
-    const hits = [];
-
-    // Team slots
-    for (const pos of POSITIONS) {
-      const card = p.team[pos];
-      if (card && !card.disabled && activeNations.includes(card.nation)) {
-        disablePlayerOnTeam(p, pos, reason);
-        hits.push(card);
-      }
+  // Disable cards that match the player's flag (we don't have flags per card, so simulate ~30% chance per starter)
+  let count = 0;
+  for (const pos of POSITIONS) {
+    const c = player.team[pos];
+    if (c && !c.disabled && !c._isSub && Math.random() < 0.30) {
+      disablePlayerOnTeam(player, pos, T('cone_event_vnl'));
+      count++;
     }
-
-    // Bench cards
-    for (const card of p.bench) {
-      if (card && !card.disabled && activeNations.includes(card.nation)) {
-        card.disabled = true;
-        card.disabledReason = reason;
-        p.suspended.push({ card, pos: null, reason, _fromBench: true });
-        hits.push(card);
-      }
-    }
-
-    if (hits.length) suspensionsByTeam.push({ p, hits });
   }
-
+  appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🚩 ${count} ${state.lang==='de'?'Spieler verfügbar erst nach Liga':'players unavailable until league match'}`);
   refreshTeamPanel();
-  if (typeof refreshFloatingPanel === 'function') refreshFloatingPanel();
-
-  // Log & notify
-  if (!suspensionsByTeam.length) {
-    const msg = de
-      ? `Woche ${week} · Aktive Nationen: ${nationsLabel} — Kein Spieler betroffen.`
-      : `Week ${week} · Active nations: ${nationsLabel} — No players affected.`;
-    appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🚩 VNL · <i style="color:var(--silver)">${msg}</i>`);
-    toast(`🚩 VNL — ${de ? 'Kein Spieler betroffen' : 'No players affected'}`, '', 3000);
-  } else {
-    for (const { p: tp, hits } of suspensionsByTeam) {
-      const names = hits.map(c => escapeHTML(c.name)).join(', ');
-      appendConeLog(`🚩 VNL Wk${week} · ${tp.emoji} ${escapeHTML(tp.name)}: ${names} ${de ? 'gesperrt' : 'suspended'}`);
-    }
-
-    // Show suspension list inside the existing event-detail slot
-    const detail = $('#event-detail');
-    if (detail) {
-      const rows = suspensionsByTeam.map(({ p: tp, hits }) => {
-        const cards = hits.map(c =>
-          `<b>${escapeHTML(c.name)}</b> <span style="color:var(--silver)">(${escapeHTML(c.nation)})</span>`
-        ).join(', ');
-        return `<div style="margin:.25em 0">
-          <span style="color:${tp.color}">${tp.emoji} ${escapeHTML(tp.name)}</span>: ${cards}
-        </div>`;
-      }).join('');
-
-      detail.innerHTML = `
-        <div style="margin-top:.8em;font-size:.82em;text-align:left">
-          <div style="color:var(--gold);margin-bottom:.4em">
-            🌍 ${de ? 'Woche' : 'Week'} ${week} — ${escapeHTML(nationsLabel)}
-          </div>
-          ${rows}
-          <div style="color:var(--silver);margin-top:.5em;font-style:italic">
-            ${de ? 'Gesperrt bis nach dem Liga-Spiel.' : 'Suspended until after the league match.'}
-          </div>
-        </div>`;
-    }
-
-    await sleep(speedMs(3000));
-  }
+  refreshFloatingPanel();
 }
 
 async function applyInjury(player) {
   const detail = $('#event-detail');
-  if (detail) detail.innerHTML = `<div class="dice-area"><div class="dice-num" id="dice-num">—</div></div>`;
+  detail.innerHTML = `<div class="dice-area"><div class="dice-num" id="dice-num">—</div></div>`;
   const v = await performDiceRoll(6);
   const pos = diePositionFor(v);
   const subbed = disablePlayerOnTeam(player, pos, T('cone_event_injury'));
@@ -2932,62 +2138,34 @@ async function applyInjury(player) {
 function disablePlayerOnTeam(player, pos, reason) {
   const card = player.team[pos];
   if (!card) return null;
-
-  if (!Array.isArray(player.suspended)) player.suspended = [];
-  if (!Array.isArray(player.bench)) player.bench = [];
-
-  // If the card was already processed (disabled + in suspended), just update reason and return.
-  // IMPORTANT: only skip if the card is NOT currently in the team slot anymore.
-  if (card.disabled && !card._isSub) {
-    const alreadySuspended = player.suspended.some(e => e.card === card);
-    if (alreadySuspended) {
-      card.disabledReason = reason;
-      return null; // already handled correctly before
-    }
-    // Card is disabled but still in the slot — force-remove it (should not normally happen)
-    console.warn('[VV] disablePlayerOnTeam: disabled card still in slot, forcing removal', pos, card.name);
+  if (card._isSub) {
+    // Already a substitute filling in for someone — disabling the sub too
+    // would defeat the purpose; just flag and bail. (Rare edge case.)
+    card.disabled = true;
+    card.disabledReason = reason;
+    return null;
   }
-
-  // Mark the card as disabled and remove it from the team slot immediately
+  if (card.disabled) {
+    // Already disabled — nothing to do (don't double-suspend).
+    card.disabledReason = reason;
+    return null;
+  }
   card.disabled = true;
   card.disabledReason = reason;
-  player.team[pos] = null;                    // slot is now empty
-  player.suspended.push({ card, pos, reason });
+  if (!Array.isArray(player.suspended)) player.suspended = [];
 
-  // Pool mapping: outside2 accepts 'outside' bench cards, middle2 accepts 'middle'
-  const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
-
-  // 1) Look for a bench card matching the position (exact or pool match)
-  const benchIdx = player.bench.findIndex(b => !b.disabled && (b.pos === pos || b.pos === poolPos));
+  if (!Array.isArray(player.bench)) player.bench = [];
+  const benchIdx = player.bench.findIndex(b => b.pos === pos);
   if (benchIdx >= 0) {
     const sub = player.bench.splice(benchIdx, 1)[0];
     sub._isSub = true;
     sub._subReason = reason;
     player.team[pos] = sub;
+    player.suspended.push({ card, pos, reason });
     return sub;
   }
-
-  // 2) No bench match — emergency buy: 1★ card of the same position for 10 000
-  const cost = 10000;
-  player.money = Math.max(0, player.money - cost);
-  animateMoneyChange(player, -cost);
-  toast(
-    `⚠️ ${state.lang === 'de' ? 'Kein Ersatz auf Bank — Notfallkauf' : 'No bench sub — emergency buy'} (${fmtMoney(cost)})`,
-    'bad', 3000
-  );
-
-  const opts = (ALL_CARDS || []).filter(c => c.stars === 1 && (c.pos === pos || c.pos === poolPos));
-  if (opts.length) {
-    const em = Object.assign({}, choice(opts), {
-      _isSub: true,
-      _subReason: state.lang === 'de' ? 'Notfall-Einwechslung' : 'Emergency sub',
-    });
-    player.team[pos] = em;
-    return em;
-  }
-
-  // Edge case: no 1★ card exists in the pool for this position — slot stays empty
-  toast(`⚠️ ${state.lang === 'de' ? 'Kein 1★-Karte für Position gefunden!' : 'No 1★ card found for position!'}`, 'bad', 4000);
+  // No bench replacement available — disabled card stays in the slot
+  // (legacy ⛔ overlay). Criteria see 0 stars, but at least we don't crash.
   return null;
 }
 
@@ -3000,53 +2178,29 @@ function restoreDisabledCards(afterLeague) {
     //    the temporary sub goes back to the bench.
     while (p.suspended.length) {
       const entry = p.suspended.shift();
-      entry.card.disabled = false;
-      entry.card.disabledReason = null;
-
-      // VNL bench suspension — card was never moved out of bench, just re-enable it
-      if (entry._fromBench) continue;
-
       const cur = p.team[entry.pos];
       if (cur && cur._isSub) {
-        // The sub goes back to bench, the original returns to the team slot
         delete cur._isSub;
         delete cur._subReason;
         p.bench.push(cur);
-        p.team[entry.pos] = entry.card;
-      } else if (!cur) {
-        // Slot is empty (no sub was available) — original returns to team
+        entry.card.disabled = false;
+        entry.card.disabledReason = null;
         p.team[entry.pos] = entry.card;
       } else {
-        // Slot was filled by something else (e.g. market buy) — original goes to bench
+        // Slot was changed in the meantime (e.g. market buy or re-sub);
+        // keep the suspended player on the bench as a safe fallback.
+        entry.card.disabled = false;
+        entry.card.disabledReason = null;
         p.bench.push(entry.card);
       }
     }
-    // Clean up any remaining disabled flags (safety net)
+    // 2) Any remaining disabled cards on team had no sub at the time —
+    //    just clear their flags now.
     for (const pos of POSITIONS) {
       const c = p.team[pos];
       if (c && c.disabled) { c.disabled = false; c.disabledReason = null; }
     }
   }
-
-  // Return loaned cards to their original owners
-  for (const p of g.players) {
-    if (!Array.isArray(p.bench)) continue;
-    const toReturn = p.bench.filter(c => c && c._loanReturn);
-    for (const card of toReturn) {
-      p.bench = p.bench.filter(c => c !== card);
-      const owner = g.players.find(pl => pl.id === card._loanOwner);
-      const origSlot = card._loanSlot;
-      delete card._loanReturn; delete card._loanOwner; delete card._loanSlot;
-      if (!owner) continue;
-      if (!Array.isArray(owner.bench)) owner.bench = [];
-      if (origSlot && !owner.team[origSlot]) {
-        owner.team[origSlot] = card;
-      } else {
-        owner.bench.push(card);
-      }
-    }
-  }
-
   refreshTopbar(); refreshTeamPanel();
   if (typeof refreshFloatingPanel === 'function') refreshFloatingPanel();
 }
@@ -3069,7 +2223,7 @@ async function runCupSemis(ev) {
   const g = state.game;
   const stage = $('#stage');
   stage.innerHTML = `
-    <div class="stage-h">${T('cup_h')} · ${T('week')} ${boardWeekDisplay(g)}</div>
+    <div class="stage-h">${T('cup_h')} · ${T('week')} ${g.week}</div>
     <div class="stage-sub">${T('cup_roll')}</div>
     <div id="cup-rolls" style="margin-top:0.6rem; display:flex; flex-direction:column; gap:0.4rem;"></div>
     <div class="dice-area" style="margin:0 auto;"><div class="dice-num" id="dice-num">—</div></div>`;
@@ -3130,7 +2284,7 @@ async function runCupFinal(ev) {
   winner.totalEarned += ev.prize;
   winner.vp += 2; animateVpChange(winner, 2);
   loser.vp += 1; animateVpChange(loser, 1);
-  logEntry(`<b>${T('week_event_cupfinal')}</b> → ${escapeHTML(winner.name)} +2 VP +${fmtMoney(ev.prize)}' · ${escapeHTML(loser.name)} +1 VP`, 'tournament');
+  logEntry(`<b>${T('week_event_cupfinal')}</b> → ${escapeHTML(winner.name)} +2 VP, +${fmtMoney(ev.prize)}’ · ${escapeHTML(loser.name)} +1 VP`, 'tournament');
   flash('win');
   beep(900, 200);
   refreshTopbar();
@@ -3141,15 +2295,11 @@ async function runCupFinal(ev) {
 // "current best two by team strength" (placeholder until multi-season).
 async function runSuperCup(ev) {
   const g = state.game;
-  if (g.season <= 1) {
-    appendConeLog(`<i style="color:var(--silver)">${state.lang==='de'?'Super Cup — startet ab Saison 2':'Super Cup — starts from Season 2'}</i>`);
-    return;
-  }
   const sorted = g.players.slice().sort((a,b) => teamStrength(b) - teamStrength(a));
   const home = sorted[0]; const away = sorted[1];
   const stage = $('#stage');
   stage.innerHTML = `
-    <div class="stage-h">${T('week_event_supercup')} · ${T('week')} ${boardWeekDisplay(g)}</div>
+    <div class="stage-h">${T('week_event_supercup')} · ${T('week')} ${g.week}</div>
     <div class="stage-sub">${escapeHTML(home.name)} vs ${escapeHTML(away.name)} · ${state.lang==='de'?'(Saison 1: gewählt nach Teamstärke)':'(Season 1: chosen by team strength)'}</div>`;
   const winner = await runMatchClassic(home, away, true);
   winner.money += ev.prize; winner.totalEarned += ev.prize;
@@ -3187,9 +2337,7 @@ function showLockedFeaturePopup(title) {
       div.remove();
       resolve();
     });
-    // Auto-close: fast for auto-speed, 2.5s otherwise (so bots never block)
-    const autoCloseMs = state.speed === 'auto' ? 1200 : speedMs(2500);
-    setTimeout(() => { if (document.body.contains(div)) { div.remove(); resolve(); } }, autoCloseMs);
+    if (state.speed === 'auto') setTimeout(() => { if (document.body.contains(div)) { div.remove(); resolve(); } }, 1200);
   });
 }
 
@@ -3199,12 +2347,10 @@ function showLockedFeaturePopup(title) {
 //  Returns the winning player.
 // ────────────────────────────────────────────────────────────────
 async function runMatchClassic(home, away, isTournament) {
-  // Only swap the board for the human's match — bot vs bot would wrongly call showOpponentBoard(home).
-  const me = state.game.players.find(p => p.isHuman) || state.game.players[0];
-  if (home === me || away === me) {
-    const opp = home === me ? away : home;
-    showOpponentBoard(opp);
-  }
+  // Show the opponent (non-human) in the board panel
+  const me = state.game.players[0];
+  const opp = home === me ? away : home;
+  if (opp !== me) showOpponentBoard(opp);
   const stage = $('#stage');
   const actions = $('#actions');
   // Match state
@@ -3213,17 +2359,12 @@ async function runMatchClassic(home, away, isTournament) {
     homePoints: 0, awayPoints: 0,
     crunchExtra: 0,
     rolls: [], events: [],
-    rotationHome: courtRotationNorm(home.courtRotation),
-    rotationAway: courtRotationNorm(away.courtRotation),
+    rotationHome: 0, rotationAway: 0,
     iRoll: 0, totalRolls: 4,
     ended: false,
   };
-  // Stale pendings from cone/market would make waitFor('serveOnce') resolve instantly each rally.
-  delete _pendingFires['serveOnce'];
-  delete _pendingFires['continueAfterMatch'];
+  state.game._classicMatch = M;
   function paint() {
-    const stage = $('#stage');
-    if (!stage) return;
     stage.innerHTML = `
       <div class="stage-h">${escapeHTML(home.name)} vs ${escapeHTML(away.name)}</div>
       <div class="match-screen">
@@ -3256,67 +2397,40 @@ async function runMatchClassic(home, away, isTournament) {
     $('#rally-feed').scrollTop = $('#rally-feed').scrollHeight;
   }
   function setActionUI() {
-    const total = M.totalRolls + M.crunchExtra;
-    const rollLabel = `${Math.min(M.iRoll + 1, total)}/${total}`;
-    setActionsHtml(`<h3>${T('phase_match')} · ${rollLabel}</h3>${speedToggleHtml()}`);
+    actions.innerHTML = `<h3>${T('phase_match')}</h3>
+      ${speedToggleHtml()}
+      <button id="serve-btn" class="action-btn pulse" data-tip="${T('serve_t')}" onclick="VV.serveOnce()">🏐 ${T('serve')}</button>`;
   }
-  setActionUI(); paint();
-  refreshMatchSidePanels(M);
+  paint(); setActionUI();
 
-  const humanInMatch = (home === me || away === me);
   const totalRolls = () => M.totalRolls + M.crunchExtra;
   while (M.iRoll < totalRolls() && !M.ended) {
-    if (humanInMatch && state.speed !== 'auto') {
-      // Backup trigger: if the action button is obscured, dice-panel can still start the next rally.
-      const dpBtn = document.getElementById('dice-panel-btn');
-      if (dpBtn) {
-        dpBtn.disabled = false;
-        dpBtn.classList.add('pulse');
-        dpBtn.textContent = '🏐 ' + T('serve');
-      }
-      // No autoMs: each criterion waits for your click (15s safety in waitFor still prevents deadlocks).
-      // speedMs(3500) here used to auto-fire — felt like the game "played itself", esp. on fast speed.
-      _expectedAdvance = 'serveOnce';
-      await waitFor('serveOnce', 0);
-      if (dpBtn) {
-        dpBtn.disabled = true;
-        dpBtn.classList.remove('pulse');
-        dpBtn.textContent = '🎲 Würfeln';
-      }
-    } else await sleep(speedMs(1000)); // bot serve delay (shorter than 2s so matches don't drag)
+    if (state.speed !== 'auto') await waitFor('serveOnce', speedMs(state.speed === 'auto' ? 240 : 0));
+    else await sleep(speedMs(220));
     const dice = await performDiceRoll(12);
     M.rolls.push(dice);
     const result = await resolveCriterion(dice, M);
     M.events.push(result);
     if (result.winner === 'home') M.homePoints++;
     else if (result.winner === 'away') M.awayPoints++;
-    // Show the criterion in the topbar log area for 3 seconds
-    showMatchCriterionInTopbar(result, M);
-    // rotation: winning team rotates — persist on players so team panel / next match match the mini court
-    if (result.winner === 'home') {
-      M.rotationHome = (M.rotationHome + 1) % 6;
-      home.courtRotation = M.rotationHome;
-    } else if (result.winner === 'away') {
-      M.rotationAway = (M.rotationAway + 1) % 6;
-      away.courtRotation = M.rotationAway;
-    }
+    // rotation: winning team rotates
+    if (result.winner === 'home') M.rotationHome = (M.rotationHome + 1) % 6;
+    else if (result.winner === 'away') M.rotationAway = (M.rotationAway + 1) % 6;
     M.iRoll++;
     paint(); setActionUI();
     refreshTopbar();
-    refreshMatchSidePanels(M);
     beep(result.winner === 'home' ? 740 : result.winner === 'away' ? 480 : 540, 60);
   }
 
-  // Determine winner; for tournament ties use coin flip, league ties return null (draw)
+  // Determine winner by points; tie → coin flip
   let winner;
-  const tied = M.homePoints === M.awayPoints;
   if (M.homePoints > M.awayPoints) winner = home;
   else if (M.awayPoints > M.homePoints) winner = away;
-  else winner = isTournament ? (Math.random() < 0.5 ? home : away) : null; // draw in league
+  else winner = Math.random() < 0.5 ? home : away;
 
   // Show summary
-  await showMatchSummary(M, winner, { forceAutoContinue: !!isTournament });
-  if (winner) flash(winner === home ? 'win' : 'loss');
+  await showMatchSummary(M, winner);
+  flash(winner === home ? 'win' : 'loss');
   return winner;
 }
 
@@ -3335,53 +2449,36 @@ async function resolveCriterion(dice, M) {
     return (team === 'home'
       ? choice(COMMENTARY[lang].home_score)
       : team === 'away' ? choice(COMMENTARY[lang].away_score)
-      : T('rally_even')
+      : 'Punktgleichstand'
     ).replace('%team%', escapeHTML(team === 'home' ? home.name : away.name))
      .replace('%player%', randomPlayerName(team === 'home' ? home : away));
   }
 
-  const de = lang === 'de';
-  // detail: filled per-case with the numeric comparison shown in the banner
-  let detail = '';
-
   switch (dice) {
-    case 1:  kind='total';  winner = homeStr > awayStr ? 'home' : homeStr < awayStr ? 'away' : 'tie';
-      detail = `${escapeHTML(home.name)} ${homeStr}★ vs ${escapeHTML(away.name)} ${awayStr}★`;
-      break;
-    case 2:  kind='front';  winner = homeFront > awayFront ? 'home' : homeFront < awayFront ? 'away' : 'tie';
-      detail = `${escapeHTML(home.name)} ${homeFront}★ vs ${escapeHTML(away.name)} ${awayFront}★`;
-      break;
-    case 3:  kind='back';   winner = homeBack > awayBack ? 'home' : homeBack < awayBack ? 'away' : 'tie';
-      detail = `${escapeHTML(home.name)} ${Math.round(homeBack*10)/10}★ vs ${escapeHTML(away.name)} ${Math.round(awayBack*10)/10}★`;
-      break;
-    case 4: { kind='dice'; const r1 = roll(12), r2 = roll(12); winner = r1 > r2 ? 'home' : r1 < r2 ? 'away' : 'tie';
-      detail = `${escapeHTML(home.name)} ${de?'würfelt':'rolls'} ${r1} — ${escapeHTML(away.name)} ${de?'würfelt':'rolls'} ${r2}`;
-      break; }
-    case 5:  kind='middle'; { const a = home.team.middle?.stars||0, b = away.team.middle?.stars||0; winner = a > b ? 'home' : a < b ? 'away' : 'tie';
-      detail = `${de?'Mittelblocker':'Middle blocker'}: ${escapeHTML(home.name)} ${a}★ vs ${escapeHTML(away.name)} ${b}★`;
-      break; }
+    case 1:  kind='total';  winner = homeStr > awayStr ? 'home' : homeStr < awayStr ? 'away' : 'tie'; break;
+    case 2:  kind='front';  winner = homeFront > awayFront ? 'home' : homeFront < awayFront ? 'away' : 'tie'; break;
+    case 3:  kind='back';   winner = homeBack > awayBack ? 'home' : homeBack < awayBack ? 'away' : 'tie'; break;
+    case 4: { kind='dice'; const r1 = roll(12), r2 = roll(12); winner = r1 > r2 ? 'home' : r1 < r2 ? 'away' : 'tie'; break; }
+    case 5:  kind='middle'; { const a = home.team.middle?.stars||0, b = away.team.middle?.stars||0; winner = a > b ? 'home' : a < b ? 'away' : 'tie'; break; }
     case 6:  kind='service'; {
+      // Heim hinten-rechts (= diagonal historisch) vs Auswärts-Libero. Falls Libero serviert: Mitte muss ran.
       const homeServer = home.team.diagonal?.stars||0;
       const awayLibero = away.team.libero?.stars||0;
       winner = homeServer > awayLibero ? 'home' : homeServer < awayLibero ? 'away' : 'tie';
-      detail = `${de?'Diagonal':'Diagonal'} ${escapeHTML(home.name)} ${homeServer}★ vs ${de?'Libero':'Libero'} ${escapeHTML(away.name)} ${awayLibero}★`;
       break;
     }
     case 7:  kind='dia_set'; {
       const a = (home.team.diagonal?.stars||0) + (home.team.setter?.stars||0);
       const b = (away.team.diagonal?.stars||0) + (away.team.setter?.stars||0);
-      winner = a > b ? 'home' : a < b ? 'away' : 'tie';
-      detail = `${escapeHTML(home.name)} ${a}★ vs ${escapeHTML(away.name)} ${b}★ (Dia+${de?'Set':'Set'})`;
-      break;
+      winner = a > b ? 'home' : a < b ? 'away' : 'tie'; break;
     }
     case 8:  kind='out_dia'; {
       const a = home.team.outside?.stars||0;
       const b = away.team.diagonal?.stars||0;
-      winner = a > b ? 'home' : a < b ? 'away' : 'tie';
-      detail = `${de?'Außen':'Outside'} ${escapeHTML(home.name)} ${a}★ vs ${de?'Diagonal':'Diagonal'} ${escapeHTML(away.name)} ${b}★`;
-      break;
+      winner = a > b ? 'home' : a < b ? 'away' : 'tie'; break;
     }
     case 9:  kind='block';  {
+      // Block-Überwurf: Auswärts wirft 12er gegen Heim-Block
       const r = roll(12);
       if (r > homeBlock) winner = 'away';
       else if (r < homeBlock) winner = 'home';
@@ -3390,11 +2487,13 @@ async function resolveCriterion(dice, M) {
       break;
     }
     case 10: kind='crunch'; {
+      // Heim erhält +2 zusätzliche Würfe in diesem Spiel
       M.crunchExtra += 2;
-      winner = 'tie';
+      winner = 'tie'; // no point on this roll itself
       break;
     }
     case 11: kind='injury'; {
+      // 12er: 1-6 = Heimspieler, 7-12 = Auswärtsspieler. Position via roll.
       const r = roll(12);
       const team = r <= 6 ? home : away;
       const pos = diePositionFor(((r - 1) % 6) + 1);
@@ -3404,6 +2503,7 @@ async function resolveCriterion(dice, M) {
       break;
     }
     case 12: kind='money'; {
+      // Geld-Regen
       home.money += 5000; away.money += 5000;
       home.totalEarned += 5000; away.totalEarned += 5000;
       winner = 'tie';
@@ -3417,9 +2517,9 @@ async function resolveCriterion(dice, M) {
   else if (kind === 'money')  text = T('money_rain');
   else if (kind === 'block') {
     const r = M._blockRoll, t = M._blockTarget;
-    text = `${de?'Auswärts wirft':'Away rolls'} ${r} vs ${de?'Block':'block'} ${t} → ${winner==='away'?T('block_overshot'):winner==='home'?T('block_holds'):(de?'Unentschieden':'Tie')}`;
+    text = `${state.lang==='de'?'Auswärts wirft':'Away rolls'} ${r} vs ${state.lang==='de'?'Block':'block'} ${t} → ${winner==='away'?T('block_overshot'):winner==='home'?T('block_holds'):'tie'}`;
   }
-  else text = detail;
+  else text = pickComment(winner);
   return { dice, kind, winner, text };
 }
 
@@ -3429,110 +2529,60 @@ function randomPlayerName(p) {
   return top ? top.name.replace('#','') : escapeHTML(p.name);
 }
 
-// Show the resolved match-criterion in the topbar log area for ~3 seconds.
-// Replaces the log overlay with a big colored banner showing dice number,
-// criterion name, who scored and a short reason.
-let _matchCritTimeout = null;
-function showMatchCriterionInTopbar(result, M) {
-  const area = document.querySelector('.topbar-log-area');
-  if (!area) return;
-  const home = M.home, away = M.away;
-  const w = result.winner; // 'home' | 'away' | 'tie'
-  const winnerName = w === 'home' ? escapeHTML(home.name)
-                  : w === 'away' ? escapeHTML(away.name)
-                  : (state.lang === 'de' ? 'Unentschieden' : 'Tie');
-  const cls = w === 'home' ? 'home-win' : w === 'away' ? 'away-win' : 'tie';
-  const dot = w === 'home' ? '🟢' : w === 'away' ? '🔴' : '⚪';
-  let banner = area.querySelector('.match-crit-banner');
-  if (!banner) {
-    banner = document.createElement('div');
-    banner.className = 'match-crit-banner';
-    area.appendChild(banner);
-  }
-  banner.className = 'match-crit-banner ' + cls;
-  banner.innerHTML = `
-    <div class="mcb-row1">
-      <span class="mcb-dice">#${result.dice}</span>
-      <span class="mcb-kind">${T('crit_'+result.kind)}</span>
-      <span class="mcb-score">${dot} ${winnerName}${w!=='tie'?' +1':''}</span>
-    </div>
-    <div class="mcb-row2">${result.text || ''}</div>
-    <div class="mcb-row3">${escapeHTML(home.name)} ${M.homePoints} : ${M.awayPoints} ${escapeHTML(away.name)}</div>`;
-  banner.classList.add('show');
-  if (_matchCritTimeout) clearTimeout(_matchCritTimeout);
-  const humanPlaying = state.game && state.game.players.some(p => p.isHuman);
-  _matchCritTimeout = setTimeout(() => {
-    if (banner) banner.classList.remove('show');
-  }, humanPlaying ? 5000 : 3000);
-}
-
-async function showMatchSummary(M, winner, opts = {}) {
+async function showMatchSummary(M, winner) {
   const stage = $('#stage');
-  if (!stage) return;
+  const lang = state.lang;
   const summary = `${escapeHTML(M.home.name)} ${M.homePoints}:${M.awayPoints} ${escapeHTML(M.away.name)}`;
-  const headLine = winner
-    ? `${winner === M.home ? '🏆 ' : ''}${escapeHTML(winner.name)} ${state.lang==='de'?'gewinnt':'wins'}`
-    : (state.lang==='de' ? '🤝 Unentschieden' : '🤝 Draw');
   stage.innerHTML = `
-    <div class="stage-h">${headLine}</div>
+    <div class="stage-h">${winner === M.home ? '🏆 ' : ''}${escapeHTML(winner.name)} ${state.lang==='de'?'gewinnt':'wins'}</div>
     <div class="stage-sub">${summary}</div>
-    <div style="margin-top:0.5rem; display:flex; gap:0.3rem; flex-wrap:wrap;">
+    <div style="margin-top:1rem; display:flex; gap:0.4rem; flex-wrap:wrap; max-width:640px;">
       ${M.events.map(e => `<span class="crit-pill ${e.winner}">#${e.dice} ${T('crit_'+e.kind)}</span>`).join('')}
+    </div>
+    <div style="margin-top:1rem; text-align:center;">
+      <button class="btn btn-primary" onclick="VV.continueAfterMatch()">${T('next_match')}</button>
     </div>`;
-  const me = state.game ? (state.game.players.find(p => p.isHuman) || state.game.players[0]) : null;
-  const humanInMatch = me && (M.home === me || M.away === me);
-  const forceAutoContinue = !!opts.forceAutoContinue;
-
-  // Bot-vs-bot summaries must never depend on waiter/click flows.
-  if (!humanInMatch) {
-    await sleep(speedMs(1800));
-    restoreBoardPanel();
-    refreshTeamPanel();
-    return;
-  }
-
-  // Auto-continue only when: explicit auto-speed, OR forced (e.g. tournament) but human is NOT playing
-  const shouldAutoContinue = (state.speed === 'auto') || (forceAutoContinue && !humanInMatch);
-  const autoMs = shouldAutoContinue ? speedMs(4500) : 0;
-  _expectedAdvance = 'continueAfterMatch';
-  // Button always in actions panel — never buried in the stage scroll area
-  setActionsHtml(`<h3>${T('phase_match')}</h3>${speedToggleHtml()}`);
-  // Dice-panel button acts as backup "Continue" trigger during match summary
-  const matchDpBtn = document.getElementById('dice-panel-btn');
-  if (humanInMatch && state.speed !== 'auto' && matchDpBtn) {
-    matchDpBtn.disabled = false; matchDpBtn.classList.add('pulse');
-    matchDpBtn.textContent = '▶ ' + T('next_match');
-  }
-  if (shouldAutoContinue) setTimeout(() => fire('continueAfterMatch'), speedMs(2500));
-  await waitFor('continueAfterMatch', autoMs);
-  if (matchDpBtn) { matchDpBtn.disabled = true; matchDpBtn.classList.remove('pulse'); matchDpBtn.textContent = '🎲 Würfeln'; }
+  await waitFor('continueAfterMatch', speedMs(state.speed === 'auto' ? 600 : 0));
   restoreBoardPanel();
-  refreshTeamPanel();
 }
 
 // Mini court diagram (6 positions in a 3×2 grid representing front + back rows)
 function courtMiniHtml(player, rotation) {
-  const rot = courtRotationNorm(rotation);
-  const swapTip = state.lang === 'de'
+  // Slots in serving rotation order:
+  // [0]=back-right (server), [1]=back-middle, [2]=back-left, [3]=front-left, [4]=front-middle, [5]=front-right
+  // Map our 5 positions to 6 court slots loosely:
+  // Front: [outside (left), middle (center), setter (right)]
+  // Back:  [diagonal (left), libero (middle), outside (right)] (outside plays both rows; diagonal is server)
+  const basePositions = ['diagonal', 'libero', 'outside', 'outside', 'middle', 'setter'];
+  const baseLabels = basePositions.map(posShort);
+  const baseColors = basePositions.map(posColor);
+  const r = ((rotation || 0) % 6 + 6) % 6;
+  const order = range(6).map(i => (i + r) % 6);
+
+  // Auto Libero-Swap: When the Middle Blocker rotates into the back row
+  // (slots 0–2), the Libero subs in for them. We display the libero
+  // label/color in that slot and add `is-libero-sub` for a brief
+  // highlight animation so the swap is visible.
+  let liberoSwapSlot = -1;
+  for (let k = 0; k < 3; k++) {
+    if (basePositions[order[k]] === 'middle') { liberoSwapSlot = k; break; }
+  }
+
+  // Tooltip text for the swapped cell
+  const swapTip = (state.lang === 'de'
     ? 'Libero ersetzt MB in der Hinterreihe'
-    : 'Libero subs in for MB in back row';
+    : 'Libero subs in for MB in the back row');
 
   function cell(slotIdx, kInRow, isBackRow) {
-    const raw = courtSlotRawPos(rot, slotIdx);
-    let pos = courtSlotDisplayPos(rot, slotIdx);
-    const isSwap = isBackRow && pos === 'libero' && (raw === 'middle' || raw === 'middle2');
-
-    // Keep distinct colors (outside vs outside2, middle vs middle2) but unify labels
-    // so the court display matches the spec: both OHs = "OH", both MBs in front = "MB"
-    const color = posColor(pos);
-    let labelPos = pos;
-    if (pos === 'outside2') labelPos = 'outside';
-    if (pos === 'middle2')  labelPos = 'middle';
-    const label = posShort(labelPos);
+    const idx = order[slotIdx];
+    const isSwap = isBackRow && (slotIdx === liberoSwapSlot);
+    const label = isSwap ? posShort('libero') : baseLabels[idx];
+    const color = isSwap ? posColor('libero') : baseColors[idx];
     const cls   = isSwap ? 'is-libero-sub' : '';
-    const tip   = isSwap ? `${label} · ${swapTip}` : label;
-    const srv   = isBackRow && kInRow === 2 ? ' 🏐' : '';
-    return `<span class="court-cell ${cls}" style="background:${color}" data-tip="${tip}${srv}">${label}${srv}</span>`;
+    const tipBase = isSwap ? `${label} · ${swapTip}` : label;
+    const ext = (isBackRow && kInRow === 2) ? ' 🏐' : (!isBackRow && kInRow === 2) ? ' ⛳' : '';
+    const labelOut = label + (isBackRow && kInRow === 2 ? ' 🏐' : '');
+    return `<span class="court-cell ${cls}" style="background:${color}" data-tip="${tipBase}${ext}">${labelOut}</span>`;
   }
 
   return `<div class="court-mini">
@@ -3540,39 +2590,30 @@ function courtMiniHtml(player, rotation) {
       ${[3,4,5].map((slot, k) => cell(slot, k, false)).join('')}
     </div>
     <div class="court-row bot">
-      ${[2,1,0].map((slot, k) => cell(slot, k, true)).join('')}
+      ${[0,1,2].map((slot, k) => cell(slot, k, true)).join('')}
     </div>
   </div>`;
 }
 
 async function runLeagueMatch() {
   const g = state.game;
-  setPhase('match');
   // Pair human (home this week) vs strongest bot
-  const me = g.players.find(p => p.isHuman) || g.players[0];
+  const me = g.players[0];
   const opp = g.players.filter(p => p !== me).sort((a,b)=>teamStrength(b)-teamStrength(a))[0];
   const home = me; const away = opp;
   showOpponentBoard(away);
   const winner = await runMatchClassic(home, away, false);
   restoreBoardPanel();
-  refreshTeamPanel();
-  // Award league points and money per rulebook (spec §2.9)
-  if (winner === null) {
-    // Draw: both +5k bank, both +1 LP
-    home.money += 5000; home.totalEarned += 5000; animateMoneyChange(home, 5000);
-    away.money += 5000; away.totalEarned += 5000; animateMoneyChange(away, 5000);
-    home.leaguePoints = leaguePointsVal(home) + 1;
-    away.leaguePoints = leaguePointsVal(away) + 1;
-    logEntry(`🏐 ${T('phase_match')}: 🤝 ${state.lang==='de'?'Unentschieden':'Draw'} — ${escapeHTML(home.name)} & ${escapeHTML(away.name)} je +5'`);
-  } else if (winner === home) {
+  // Award league points and money per rulebook
+  if (winner === home) {
     home.money += 10000; home.totalEarned += 10000; animateMoneyChange(home, 10000);
     if (away.money >= 5000) { away.money -= 5000; animateMoneyChange(away, -5000); home.money += 5000; home.totalEarned += 5000; animateMoneyChange(home, 5000); } else { home.money += away.money; away.money = 0; }
-    home.matchesWon++; home.leaguePoints = leaguePointsVal(home) + 3;
+    home.matchesWon++; home.leaguePoints += 3;
     logEntry(`🏐 ${T('phase_match')}: <b>${escapeHTML(home.name)}</b> +10’ (Bank), +5’ (${escapeHTML(away.name)})`, 'win');
   } else {
     away.money += 10000; away.totalEarned += 10000; animateMoneyChange(away, 10000);
     if (home.money >= 5000) { home.money -= 5000; animateMoneyChange(home, -5000); away.money += 5000; away.totalEarned += 5000; animateMoneyChange(away, 5000); } else { away.money += home.money; home.money = 0; }
-    away.matchesWon++; away.leaguePoints = leaguePointsVal(away) + 3;
+    away.matchesWon++; away.leaguePoints += 3;
     logEntry(`🏐 ${T('phase_match')}: <b>${escapeHTML(away.name)}</b> +10’ (Bank), +5’ (${escapeHTML(home.name)})`, 'loss');
   }
   // Other players: bye → +5'000
@@ -3591,403 +2632,68 @@ async function runLeagueMatch() {
 //  MARKET PHASE  (between weeks)
 // ────────────────────────────────────────────────────────────────
 function regenMarket() {
-  // Market only shows unsold auction cards (from marketPile) + 1-star section (always-available)
-  // No random cards from the full deck — only what actually went through auction and wasn't bought
-  return state.game.marketPile.slice();
-}
-
-// Shared multi-round popup auction used both for weekly market reveal and mid-week transfer events.
-// firstPlayer: if set, they bid first (for the transfer event — the player who triggered it).
-async function runAuctionUI(card, titleLabel, firstPlayer) {
-  const g = state.game;
-  const de = state.lang === 'de';
-  const minBid = (card.stars || 1) * 10000;
-  // Order: firstPlayer goes first, rest follow in player-index order
-  let order = g.players.slice();
-  if (firstPlayer) {
-    while (order[0] !== firstPlayer) order.push(order.shift());
+  // Pull from the auction deck (2-5 stars). 1-star cards have a separate always-available section.
+  const out = [];
+  const deck = state.game.auctionDeck.slice();
+  while (out.length < 8 && deck.length) {
+    out.push(deck.shift());
   }
-  let currentBid = 0, winner = null;
-  const popId = 'live-auction-popup';
-  const renderPopup = (feedLines) => {
-    const feedHtml = feedLines.map(l => `<div style="font-size:0.78rem;color:var(--silver);margin-top:0.2rem;">${l}</div>`).join('');
-    const body = `
-      <div style="display:flex;gap:1rem;align-items:flex-start;margin-bottom:0.8rem;">
-        <div style="width:90px;flex-shrink:0;border-radius:6px;overflow:hidden;border:2px solid var(--gold);">
-          <img src="${card.url}" style="width:100%;display:block;" alt="">
-        </div>
-        <div>
-          <div style="font-weight:700;font-size:1rem;">${escapeHTML(card.name)}</div>
-          <div style="color:var(--silver);font-size:0.78rem;">${'★'.repeat(card.stars || 1)} · ${posLabel(card.pos)}</div>
-          <div style="margin-top:0.5rem;font-size:0.82rem;">${de?'Mindestgebot':'Min. bid'}: <b style="color:var(--gold)">${fmtMoney(minBid)}</b></div>
-          <div class="wa-bid-line" style="font-size:0.82rem;">${de?'Aktuelles Gebot':'Current bid'}: <b style="color:var(--gold)">${currentBid ? fmtMoney(currentBid) : '—'}</b>${winner ? ` <span style="color:var(--silver)">(${escapeHTML(winner.name)})</span>` : ''}</div>
-        </div>
-      </div>
-      <div id="wa-feed" style="max-height:100px;overflow:auto;margin-bottom:0.6rem;">${feedHtml}</div>
-      <div id="wa-input"></div>`;
-    openGamePopup(popId, titleLabel, body);
-  };
-  const feedLines = [];
-  const addFeed = (line) => {
-    feedLines.push(line);
-    const feed = document.getElementById('wa-feed');
-    if (feed) feed.innerHTML = feedLines.map(l => `<div style="font-size:0.78rem;color:var(--silver);margin-top:0.2rem;">${l}</div>`).join('');
-  };
-  renderPopup([]);
-
-  // Multi-round bidding: everyone bids/passes; continues until only one unbid player remains
-  let passes = new Set();
-  let lastBidder = null;
-  // Pre-pass any auctionBanned player so they sit out this entire auction
-  for (const p of order) {
-    if (p.auctionBanned) {
-      passes.add(p.id);
-      addFeed(`🚫 ${p.emoji} ${escapeHTML(p.name)} — ${de ? 'Transfersperre' : 'Transfer ban'}`);
-    }
-  }
-  while (true) {
-    let bidThisRound = false;
-    for (const p of order) {
-      if (passes.has(p.id)) continue;
-      if (lastBidder === p.id && order.filter(x => !passes.has(x.id)).length <= 1) break;
-      const minNext = currentBid > 0 ? currentBid + 1000 : minBid;
-      if (p.money < minNext) { passes.add(p.id); continue; }
-      if (p.isHuman) {
-        renderPopup(feedLines);
-        // Wait for DOM to settle after openGamePopup's requestAnimationFrame
-        await sleep(80);
-        const result = await new Promise(resolve => {
-          let settled = false;
-          const finish = (val) => { if (settled) return; settled = true; resolve(val); };
-          // Close button / backdrop = pass
-          registerPopupClose(popId, () => finish({ pass: true }));
-          const inputDiv = document.getElementById('wa-input');
-          if (!inputDiv) { finish({ pass: true }); return; }
-          const sugg = Math.min(p.money, minNext);
-          inputDiv.innerHTML = `
-            <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-top:0.3rem;">
-              <span style="font-size:0.82rem;">${de?'Dein Gebot':'Your bid'} (min ${fmtMoney(minNext)}):</span>
-              <input type="number" id="wa-bid-inp" min="${minNext}" max="${p.money}" step="1000" value="${sugg}"
-                style="width:110px;padding:0.3rem 0.5rem;background:#111;border:1px solid var(--line);color:#fff;border-radius:4px;font-size:0.88rem;">
-              <button class="btn btn-primary" id="wa-bid-btn">${de?'Bieten':'Bid'}</button>
-              <button class="btn btn-secondary" id="wa-pass-btn">${de?'Passen':'Pass'}</button>
-            </div>`;
-          const go = () => {
-            const v = parseInt(document.getElementById('wa-bid-inp')?.value || '0', 10);
-            if (!Number.isFinite(v) || v < minNext) { toast(de?'Gebot zu niedrig':'Bid too low','bad'); return; }
-            if (v > p.money) { toast(de?'Nicht genug Geld':'Not enough money','bad'); return; }
-            finish({ bid: v });
-          };
-          const bidBtn = document.getElementById('wa-bid-btn');
-          const passBtn = document.getElementById('wa-pass-btn');
-          const inp = document.getElementById('wa-bid-inp');
-          if (!bidBtn) {
-            console.error('[VV] runAuctionUI: wa-bid-btn not found after sleep(80)! inputDiv =', inputDiv);
-            toast('⚠️ Auktions-UI Fehler — auto-pass', 'bad', 2000);
-            finish({ pass: true }); return;
-          }
-          bidBtn.onclick = go;
-          if (inp) { inp.focus(); inp.onkeydown = e => { if (e.key === 'Enter') go(); }; }
-          if (passBtn) passBtn.onclick = () => finish({ pass: true });
-        });
-        if (result.pass) {
-          passes.add(p.id);
-          addFeed(`${p.emoji} ${escapeHTML(p.name)} → ${de?'Passt':'Pass'}`);
-        } else {
-          currentBid = result.bid; winner = p; lastBidder = p.id; bidThisRound = true;
-          addFeed(`<b>${p.emoji} ${escapeHTML(p.name)}</b> → ${fmtMoney(currentBid)}`);
-          beep(820, 50);
-        }
-      } else {
-        await sleep(speedMs(400));
-        const dec = window.VV_BOTS.shouldBid(p, card, currentBid, minNext, order);
-        if (!dec || dec.pass || dec.bid < minNext || dec.bid > p.money) {
-          passes.add(p.id);
-          addFeed(`${p.emoji} ${escapeHTML(p.name)} → ${de?'Passt':'Pass'}`);
-        } else {
-          currentBid = dec.bid; winner = p; lastBidder = p.id; bidThisRound = true;
-          addFeed(`<b>${p.emoji} ${escapeHTML(p.name)}</b> → ${fmtMoney(currentBid)}`);
-          beep(740, 50);
-          // Update the current-bid display in-place (don't rebuild the whole popup)
-          const bidLine = document.querySelector(`#${popId}-body .wa-bid-line`);
-          if (bidLine) bidLine.innerHTML = `${de?'Aktuelles Gebot':'Current bid'}: <b style="color:var(--gold)">${fmtMoney(currentBid)}</b> <span style="color:var(--silver)">(${escapeHTML(winner.name)})</span>`;
-        }
-      }
-      if (order.filter(x => !passes.has(x.id)).length <= 1) break;
-    }
-    const remaining = order.filter(x => !passes.has(x.id));
-    if (!bidThisRound || remaining.length <= 1) break;
-  }
-
-  // Resolve
-  if (winner) {
-    winner.money -= currentBid;
-    animateMoneyChange(winner, -currentBid);
-    placeIntoTeamOrBench(winner, card);
-    addFeed(`<b style="color:var(--gold)">🏆 ${escapeHTML(winner.name)} ${de?'gewinnt':'wins'} "${escapeHTML(card.name)}" ${de?'für':'for'} ${fmtMoney(currentBid)}!</b>`);
-    beep(900, 120);
-  } else {
-    g.marketPile.push(card);
-    addFeed(`<span style="color:var(--silver)">${de?'Niemand geboten — Karte kommt auf den Markt.':'No bids — card goes to market.'}</span>`);
-  }
-  refreshTopbar(); refreshTeamPanel();
-  // Wait for user to manually close the popup (click OK or ✕)
-  await new Promise(resolve => {
-    // Add an OK button to the feed area
-    const feed = document.getElementById('wa-feed');
-    if (feed) {
-      const okBtn = document.createElement('button');
-      okBtn.className = 'btn btn-primary';
-      okBtn.style.cssText = 'margin-top:0.8rem;width:100%;';
-      okBtn.textContent = de ? '✓ OK' : '✓ OK';
-      okBtn.onclick = () => { closeGamePopup(popId); resolve(); };
-      feed.appendChild(okBtn);
-    }
-    registerPopupClose(popId, () => resolve());
-  });
-  await sleep(200);
-}
-
-async function runWeeklyAuction() {
-  const card = drawAuctionCard();
-  if (!card) return;
-  const de = state.lang === 'de';
-  await runAuctionUI(card, `🔖 ${de ? 'Wöchentliche Auktion' : 'Weekly Auction'}`);
-}
-
-// Run forced-sale auctions triggered by the Transfergerücht action card.
-async function runForcedSaleAuctions() {
-  const g = state.game;
-  const de = state.lang === 'de';
-  for (const p of g.players) {
-    // Collect all forcedSale cards from team + bench
-    const forced = [];
-    for (const pos of POSITIONS) {
-      const c = p.team[pos];
-      if (c && c.forcedSale) { forced.push({ source: 'team', slot: pos, card: c }); }
-    }
-    for (const c of (p.bench || [])) {
-      if (c && c.forcedSale) { forced.push({ source: 'bench', slot: null, card: c }); }
-    }
-    for (const entry of forced) {
-      const card = entry.card;
-      card.forcedSale = false;
-      // Remove from owner
-      if (entry.source === 'team') p.team[entry.slot] = null;
-      else p.bench = p.bench.filter(c => c !== card);
-      refreshTeamPanel();
-      toast(`📰 ${de ? 'Pflichtverkauf' : 'Forced Sale'}: ${escapeHTML(card.name)}`, 'bad', 2000);
-      await runAuctionUI(card, `📰 ${de ? 'Pflichtverkauf' : 'Forced Sale'} — ${escapeHTML(card.name)}`);
-    }
-  }
+  // Don't permanently remove from auctionDeck — refresh each week
+  state.game.auctionDeck = state.game.auctionDeck.filter(c => !out.includes(c));
+  // Put back unused at the end so they cycle
+  return out;
 }
 
 async function runMarketPhase() {
   const g = state.game;
-  // Clear ALL stale fires and waiters — a tournament/match in the same week can leave
-  // pendingFires that would instantly resolve the market's waitFor
-  ['coneRollNow','coneContinue','continueAfterMatch','serveOnce','endMarket'].forEach(k => {
-    delete _pendingFires[k];
-    delete _waiters[k];
-  });
-  _expectedAdvance = 'endMarket';
-  // Weekly auction: reveal one card from the deck before opening the market
-  await runWeeklyAuction();
-  // Forced sales from Transfergerücht action card (happen after weekly auction)
-  await runForcedSaleAuctions();
-  // Clear auction bans — they applied to the weekly auction above
-  for (const p of g.players) p.auctionBanned = false;
   g.market = regenMarket();
-  console.log('[VV] runMarketPhase: market cards =', g.market.length, '| marketPile =', g.marketPile.length);
-  const safeRenderMarket = () => {
-    try {
-      renderMarket();
-    } catch (err) {
-      console.error('[VV] renderMarket crashed:', err);
-      setActionsHtml(`<h3>${T('phase_buy')}</h3>${speedToggleHtml()}
-        <button class="action-btn pulse" onclick="VV.endMarket()">${T('finish_buying')}</button>`);
-      toast(`⚠️ Markt-Fehler: ${err.message || err} — Schliessen-Button verfügbar`, 'bad', 5000);
-    }
-  };
-  safeRenderMarket();
-  console.log('[VV] runMarketPhase: popup gerendert, starte Bot-Käufe');
+  renderMarket();
   // Bots act first, then human's turn (to give clear "your turn" feel)
   for (const bot of g.players.filter(p => !p.isHuman)) {
-    try {
-      await sleep(speedMs(200)); // bot market buy thinking delay
-      const pick = window.VV_BOTS.pickMarketBuy(bot, g.market);
-      if (pick) {
-        const cur = bot.team[pick.pos];
-        bot.team[pick.pos] = pick;
-        if (cur) bot.bench.push(cur);
-        bot.money -= pick.price;
-        g.market = g.market.filter(c => c.id !== pick.id);
-        logEntry(fmt(T('bot_buys'), `${bot.emoji} ${escapeHTML(bot.name)}`, T('pos_'+pick.pos), pick.stars, fmtMoney(pick.price)), 'tournament');
-      } else {
-        logEntry(fmt(T('bot_skips'), `${bot.emoji} ${escapeHTML(bot.name)}`));
-      }
-    } catch (err) {
-      console.error('[VV] bot market step crashed:', err);
-      logEntry(`⚠️ ${escapeHTML(bot.name)} ${state.lang==='de'?'Marktfehler — übersprungen':'market error — skipped'}`);
-    }
-    refreshTopbar();
-    safeRenderMarket();
-  }
-  safeRenderMarket();
-  console.log('[VV] runMarketPhase: Bot-Käufe fertig, warte auf endMarket. pendingFires =', JSON.stringify(_pendingFires));
-  const marketAutoCloseMs = state.speed === 'auto' ? speedMs(800) : 0; // 0 = no auto-close; human must click
-  if (marketAutoCloseMs > 0) setTimeout(() => { if (_waiters['endMarket']) endMarket(); }, marketAutoCloseMs);
-  await waitFor('endMarket', marketAutoCloseMs || undefined);
-  console.log('[VV] runMarketPhase: endMarket resolved, Markt geschlossen');
-}
-
-// ────────────────────────────────────────────────────────────────
-//  WEEKEND MATCHES — genau 1 Partie pro Woche:
-//  Mensch vs. ein rotierender Bot (Woche mod 3).
-//  Fallback (ohne exakt 1 Human+3 Bots): erste valide Paarung aus dem Schedule.
-// ────────────────────────────────────────────────────────────────
-const WEEKEND_SCHEDULE_FALLBACK = [
-  [[0, 1], [2, 3]],
-  [[0, 2], [3, 1]],
-  [[0, 3], [1, 2]],
-  [[0, 1], [2, 3]],
-  [[0, 2], [3, 1]],
-  [[0, 3], [1, 2]],
-];
-
-function buildWeekendPairings(g, week) {
-  const humanIdx = g.players.findIndex(p => p.isHuman);
-  const botIdx = g.players.map((p, i) => (p.isHuman ? -1 : i)).filter(i => i >= 0);
-  if (humanIdx >= 0 && botIdx.length >= 1) {
-    // Match 1: human vs rotating bot
-    const r = ((week - 1) % botIdx.length + botIdx.length) % botIdx.length;
-    const oppIdx = botIdx[r];
-    const restBots = botIdx.filter(i => i !== oppIdx);
-    const pairings = [];
-    if (g.players[humanIdx] && g.players[oppIdx]) {
-      pairings.push([g.players[humanIdx], g.players[oppIdx]]);
-    }
-    // Match 2: remaining bots play each other (bot vs bot, human watches)
-    if (restBots.length >= 2 && g.players[restBots[0]] && g.players[restBots[1]]) {
-      pairings.push([g.players[restBots[0]], g.players[restBots[1]]]);
-    }
-    return pairings;
-  }
-  // No human player found -> no weekend fixture in this mode.
-  return [];
-}
-
-async function runWeekendMatches(week) {
-  const g = state.game;
-  // Clear ALL stale fires before weekend — tournament matches earlier in the week
-  // (Cup, CL, etc.) can leave pendingFires that would skip the first waitFor instantly
-  ['coneRollNow','coneContinue','continueAfterMatch','serveOnce','endMarket'].forEach(k => {
-    delete _pendingFires[k];
-    delete _waiters[k];
-  });
-  _expectedAdvance = 'continueAfterMatch';
-  const pairings = buildWeekendPairings(g, week);
-  if (!pairings.length) return;
-
-  for (let mi = 0; mi < pairings.length; mi++) {
-    const [home, away] = pairings[mi];
-    if (!home || !away) continue;
-
-    const isHumanMatch = !!(home.isHuman || away.isHuman);
-    const matchLabel = mi === 0 ? T('weekend_match1') : T('weekend_match2');
-
-    if (isHumanMatch) {
-      const opp = home.isHuman ? away : home;
-      showOpponentBoard(opp);
-    }
-
-    const stage = $('#stage');
-    if (stage) {
-      stage.innerHTML = `
-        <div class="stage-h">🏅 ${T('weekend_match')} · ${T('week')} ${week} · ${matchLabel}</div>
-        <div class="stage-sub">${escapeHTML(home.name)} vs ${escapeHTML(away.name)}</div>`;
-    }
-
-    const winner = await runMatchClassic(home, away, true);
-    if (winner) {
-      winner.money += 3000;
-      winner.totalEarned += 3000;
-      animateMoneyChange(winner, 3000);
-      winner.matchesWon = (winner.matchesWon || 0) + 1;
-      winner.leaguePoints = leaguePointsVal(winner) + 3;
-      const loser = winner === home ? away : home;
-      logEntry(`🏅 ${T('weekend_match')} W${week} ${matchLabel}: <b>${escapeHTML(winner.name)}</b> +3' · +3 LP · ${escapeHTML(loser.name)}`, 'tournament');
+    await sleep(speedMs(450));
+    const pick = window.VV_BOTS.pickMarketBuy(bot, g.market);
+    if (pick) {
+      const cur = bot.team[pick.pos];
+      bot.team[pick.pos] = pick;
+      if (cur) bot.bench.push(cur);
+      bot.money -= pick.price;
+      g.market = g.market.filter(c => c.id !== pick.id);
+      logEntry(fmt(T('bot_buys'), `${bot.emoji} ${escapeHTML(bot.name)}`, T('pos_'+pick.pos), pick.stars, fmtMoney(pick.price)), 'tournament');
     } else {
-      home.leaguePoints = leaguePointsVal(home) + 1;
-      away.leaguePoints = leaguePointsVal(away) + 1;
-      logEntry(`🏅 ${T('weekend_match')} W${week} ${matchLabel}: 🤝 ${escapeHTML(home.name)} — ${escapeHTML(away.name)}`);
+      logEntry(fmt(T('bot_skips'), `${bot.emoji} ${escapeHTML(bot.name)}`));
     }
-
-    // Always restore the map after each fixture — bot–bot used to leave the opp-team board stuck
-    // (first weekend felt broken because match 2 follows your match with no other full refresh).
-    restoreBoardPanel();
-    refreshTeamPanel();
     refreshTopbar();
-    if (checkWin()) return;
+    renderMarket();
   }
-}
-
-function marketBodyHtml(me, weakPos) {
-  const de = state.lang === 'de';
-  const unsoldCards = (state.game.market || []).filter(Boolean); // already filtered unsold auction cards
-  return `
-    <div class="gp-market-info">
-      <span>${T('market_budget')}: <b id="budget-num">${fmtMoney(me.money)}'</b></span>
-      <span>${T('market_team_strength')}: <b>&#9733; ${teamStrength(me)}</b></span>
-      <span>${T('market_suggest')}: <b style="color:var(--gold)">${posLabel(weakPos)}</b></span>
-    </div>
-    <div class="gp-section-h">${de?'1-Stern-Karten (fester Preis)':'1-Star Cards (fixed price)'}</div>
-    <div class="market market-1star">${oneStarMarketHtml(me, weakPos)}</div>
-    ${unsoldCards.length ? `
-      <div class="gp-section-h" style="margin-top:0.8rem;">${de?'Unverkaufte Auktionskarten':'Unsold Auction Cards'} (${unsoldCards.length})</div>
-      <div class="market" id="market-grid">${unsoldCards.map(c => marketCardHtml(c, me, { suggestedPos: weakPos })).join('')}</div>
-    ` : `<div style="color:var(--silver);font-size:0.72rem;margin-top:0.6rem;font-style:italic;">${de?'Noch keine unverkauften Auktionskarten':'No unsold auction cards yet'}</div>`}
-    ${me.bench.filter(Boolean).length ? `<div class="gp-section-h" style="margin-top:0.8rem;">${de?'Meine Bank':'My Bench'}</div><div class="bench-grid">${me.bench.filter(Boolean).map(c => benchCardHtml(c, me)).join('')}</div>` : ''}
-    <div class="gp-footer">
-      <button class="action-btn pulse" onclick="VV.endMarket()">${T('finish_buying')}</button>
-    </div>`;
+  await waitFor('endMarket', speedMs(state.speed === 'auto' ? 600 : 0));
 }
 
 function renderMarket() {
-  if (!state.game) return;
+  const stage = $('#stage'); if (!stage) return;
   const me = state.game.players[0];
-  if (!me) return;
-  // Ensure bench has no nulls (safety after injury/emergency-buy flows)
-  if (Array.isArray(me.bench)) me.bench = me.bench.filter(Boolean);
-  if (!Array.isArray(me.bench)) me.bench = [];
-  if (!Array.isArray(state.game.market)) state.game.market = [];
   const weakPos = weakestPosition(me);
-  const title = state.lang === 'de' ? 'MARKT' : 'MARKET';
-  const body = marketBodyHtml(me, weakPos);
-  const existing = document.getElementById('market-popup');
-  if (existing && existing.classList.contains('open')) {
-    updateGamePopupBody('market-popup', body);
-  } else {
-    registerPopupClose('market-popup', () => { if (_waiters['endMarket']) endMarket(); });
-    openGamePopup('market-popup', title, body);
-  }
-  setActionsHtml(`<h3>${T('phase_buy')}</h3>${speedToggleHtml()}
-    <button class="action-btn pulse" onclick="VV.endMarket()">${T('finish_buying')}</button>`);
-  _setMarketBtnActive(true);
+  stage.innerHTML = `
+    <div class="stage-h">${T('market_h')}</div>
+    <div class="stage-sub">${T('market_budget')}: <b id="budget-num">${fmtMoney(me.money)}</b>’ · ${T('market_team_strength')}: <b>★ ${teamStrength(me)}</b> · ${T('market_suggest')}: <b style="color:var(--gold)">${posLabel(weakPos)}</b></div>
+    <h4 class="h-cond" style="font-size:1rem; letter-spacing:2px; margin-top:1rem; color:var(--silver);">${state.lang==='de'?'Markt — 2★ bis 5★':'Market — 2★ to 5★'}</h4>
+    <div class="market" id="market-grid">${state.game.market.map(c => marketCardHtml(c, me, { suggestedPos: weakPos })).join('')}</div>
+    <h4 class="h-cond" style="font-size:1rem; letter-spacing:2px; margin-top:1.4rem; color:var(--silver);">${state.lang==='de'?'1-Stern-Markt — immer kaufbar':'1-Star Market — always available'}</h4>
+    <div class="market market-1star">${oneStarMarketHtml(me, weakPos)}</div>
+    ${me.bench.length ? `<h4 class="h-cond" style="font-size:1rem; letter-spacing:2px; margin-top:1.4rem; color:var(--silver);">${state.lang==='de'?'Bench / Ersatz':'Bench / Substitutes'}</h4><div class="bench-grid">${me.bench.map(c => benchCardHtml(c, me)).join('')}</div>`:''}`;
+  const actions = $('#actions'); if (!actions) return;
+  actions.innerHTML = `<h3>${T('phase_buy')}</h3>
+    ${speedToggleHtml()}
+    <button class="action-btn pulse" onclick="VV.endMarket()">${T('finish_buying')}</button>`;
 }
 
 function oneStarMarketHtml(me, weakPos) {
   return POSITIONS.map(pos => {
-    const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
-    const c = (ALL_CARDS.filter(x => x.stars === 1 && x.pos === poolPos)[0]) || null;
+    const c = (ALL_CARDS.filter(x => x.stars === 1 && x.pos === pos)[0]) || null;
     if (!c) return '';
     const canAfford = me.money >= 10000;
     const suggested = pos === weakPos;
-    return `<div class="mc ${canAfford?'':'poor'} ${suggested?'suggested':''}" data-tip="1★ ${posLabel(pos)} · 10’000 · ${escapeHTML(cardImageBasename(c))}">
-      <div class="card-thumb">
-        <img class="mc-img" src="${c.url}" alt="" loading="lazy">
-        ${cardNameFileCaptionHtml(c)}
-      </div>
+    return `<div class="mc ${canAfford?'':'poor'} ${suggested?'suggested':''}" data-tip="1★ ${posLabel(pos)} · 10’000">
+      <img class="mc-img" src="${c.url}" alt="" loading="lazy">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <span class="mc-pos" style="background:${posColor(pos)}">${posShort(pos)}</span>
         <span class="mc-stars">★</span>
@@ -3999,13 +2705,9 @@ function oneStarMarketHtml(me, weakPos) {
 }
 
 function benchCardHtml(c, me) {
-  if (!c) return '';
-  const sellPrice = Math.floor((c.stars || 0) * 10000 / 2);
+  const sellPrice = Math.floor(c.stars * 10000 / 2);
   return `<div class="bc">
-    <div class="card-thumb">
-      <img src="${c.url}" alt="" class="bc-img" loading="lazy">
-      ${cardNameFileCaptionHtml(c)}
-    </div>
+    <img src="${c.url}" alt="" class="bc-img" loading="lazy">
     <div class="bc-meta">
       <span class="mc-pos" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
       <span class="mc-stars">${'★'.repeat(c.stars)}</span>
@@ -4017,12 +2719,13 @@ function benchCardHtml(c, me) {
 function buyOneStar(pos) {
   const me = state.game.players[0];
   if (me.money < 10000) { toast(state.lang==='de'?'Zu teuer':'Too expensive', 'bad'); return; }
-  const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
-  const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === poolPos);
+  const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === pos);
   if (!opts.length) return;
   const c = choice(opts);
   const cur = me.team[pos];
-  if (cur) me.bench.push(cur); // always move existing card to bench
+  if (cur && cur.stars >= c.stars) {
+    if (cur) me.bench.push(cur);
+  }
   me.team[pos] = c;
   me.money -= 10000;
   animateMoneyChange(me, -10000);
@@ -4037,10 +2740,6 @@ function sellBenchCard(id) {
   const idx = me.bench.findIndex(c => c.id === id);
   if (idx < 0) return;
   const c = me.bench[idx];
-  if (c.disabled) {
-    toast(state.lang === 'de' ? '⛔ Gesperrt — Verkauf nicht möglich.' : '⛔ Suspended — cannot sell.', 'bad', 2500);
-    return;
-  }
   const price = Math.floor(c.stars * 10000 / 2);
   if (!confirm(state.lang==='de'?`${c.name} für ${fmtMoney(price)}’ verkaufen?`:`Sell ${c.name} for ${fmtMoney(price)}?`)) return;
   me.bench.splice(idx, 1);
@@ -4058,9 +2757,7 @@ function sellStarter(pos) {
   const price = Math.floor(c.stars * 10000 / 2);
   if (!confirm(state.lang==='de'?`${c.name} für ${fmtMoney(price)}’ verkaufen?`:`Sell ${c.name} for ${fmtMoney(price)}?`)) return;
   // Replace from bench if available, else clear
-  // outside2/middle2 slots accept cards of the primary position type
-  const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
-  const replIdx = me.bench.findIndex(b => b.pos === poolPos || b.pos === pos);
+  const replIdx = me.bench.findIndex(b => b.pos === pos);
   if (replIdx >= 0) me.team[pos] = me.bench.splice(replIdx, 1)[0];
   else me.team[pos] = null;
   me.money += price;
@@ -4074,15 +2771,9 @@ function sellStarter(pos) {
 
 function marketCardHtml(c, player, opts) {
   const canAfford = player.money >= c.price;
-  // weakestPosition can return outside2/middle2; cards only have outside/middle — map both directions
-  const _poolPos = { outside2: 'outside', middle2: 'middle' };
-  const _sp = opts && opts.suggestedPos;
-  const suggested = _sp && (c.pos === _sp || c.pos === (_poolPos[_sp] || _sp));
-  return `<div class="mc ${canAfford?'':'poor'} ${suggested?'suggested':''}" data-tip="${escapeHTML(c.name)} · ${escapeHTML(cardImageBasename(c))}">
-    <div class="card-thumb">
-      <img class="mc-img" src="${c.url}" alt="" loading="lazy">
-      ${cardNameFileCaptionHtml(c)}
-    </div>
+  const suggested = opts && opts.suggestedPos === c.pos;
+  return `<div class="mc ${canAfford?'':'poor'} ${suggested?'suggested':''}" data-tip="${escapeHTML(c.name)}">
+    <img class="mc-img" src="${c.url}" alt="" loading="lazy">
     <div style="display:flex; justify-content:space-between; align-items:center;">
       <span class="mc-pos" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
       <span class="mc-stars">${'★'.repeat(c.stars)}</span>
@@ -4104,40 +2795,20 @@ function buyCard(id) {
   if (cur) me.bench.push(cur);
   me.team[c.pos] = c;
   me.money -= c.price;
-  // Remove from both market display list and marketPile
   state.game.market = state.game.market.filter(x => x.id !== c.id);
-  state.game.marketPile = state.game.marketPile.filter(x => x.id !== c.id);
   toast(state.lang==='de' ? `Gekauft: ${c.name}` : `Bought: ${c.name}`, 'good');
   beep(880, 60);
   refreshTopbar(); refreshTeamPanel();
   renderMarket();
 }
 function endMarket() {
-  closeGamePopup('market-popup');
-  _setMarketBtnActive(false);
+  // Return unsold market cards to the auction deck (back of deck)
   const g = state.game;
-  if (g) {
-    // Unsold market cards stay in marketPile for next week
+  if (g && g.market && g.market.length) {
+    for (const c of g.market) g.auctionDeck.push(c);
     g.market = [];
   }
   fire('endMarket');
-}
-function toggleMarketPopup() {
-  const pop = document.getElementById('market-popup');
-  if (pop && pop.classList.contains('open')) {
-    // Close popup silently — don't fire endMarket, phase stays active
-    closeGamePopup('market-popup');
-    _setMarketBtnActive(false);
-  } else {
-    if (state.game) {
-      renderMarket();
-      _setMarketBtnActive(true);
-    }
-  }
-}
-function _setMarketBtnActive(active) {
-  const btn = document.getElementById('market-toggle-btn');
-  if (btn) btn.classList.toggle('active', active);
 }
 function weakestPosition(p) {
   let min = POSITIONS[0], minS = Infinity;
@@ -4155,7 +2826,7 @@ async function runSeasonEnd() {
   // Award season standings
   const ranked = g.players.slice().sort((a,b) => (b.leaguePoints||0) - (a.leaguePoints||0));
   const vpAward = [3, 2, 1, 0];
-  const moneyAward = [50000, 30000, 20000, 0];
+  const moneyAward = [0, 20000, 30000, 50000];
   for (let i = 0; i < ranked.length; i++) {
     const p = ranked[i];
     const _delta_vp = vpAward[i] || 0; p.vp += _delta_vp; if (_delta_vp) animateVpChange(p, _delta_vp);
@@ -4179,7 +2850,6 @@ function checkWin() {
 
 function endGame() {
   const g = state.game;
-  g.over = true; // ensure consistent state regardless of how game ended
   if (!g.winner) g.winner = g.players.slice().sort((a,b) => b.vp - a.vp)[0];
   setView('end');
 }
@@ -4187,11 +2857,8 @@ function endGame() {
 function renderEnd() {
   const app = $('#app');
   const g = state.game;
-  if (!g) { app.innerHTML = `<div class="end-wrap"><h2>Spiel beendet</h2><button class="btn btn-primary" onclick="VV.toMenu()">Menü</button></div>`; return; }
   const ranked = g.players.slice().sort((a,b) => b.vp - a.vp);
-  if (!g.winner) g.winner = ranked[0];
   const winner = g.winner;
-  if (!winner) { app.innerHTML = `<div class="end-wrap"><h2>Spiel beendet</h2><button class="btn btn-primary" onclick="VV.toMenu()">Menü</button></div>`; return; }
   const remark = winner.vp >= 8 ? T('end_remarks_8vp') : T('end_remarks_season');
   app.innerHTML = `
     <div class="end-wrap">
@@ -4226,10 +2893,16 @@ function renderEnd() {
 function playAgain() { initSoloGame(); setView('draft'); }
 function toMenu() { state.game = null; setView('menu'); }
 
-function speedToggleHtml() { return ''; } // speed buttons removed — clicking them during a match caused render() to rebuild the DOM and lose all waitFor listeners
+function speedToggleHtml() {
+  const tags = [{ id:'normal', label:'🐢', t:T('speed_normal') }, { id:'fast', label:'⚡', t:T('speed_fast') }, { id:'auto', label:'🚀', t:T('speed_auto') }];
+  return `<div style="display:flex; gap:0.3rem; margin-bottom:0.4rem;">
+    <span style="font-size:0.65rem; letter-spacing:2px; color:var(--silver); text-transform:uppercase; align-self:center; margin-right:0.3rem;">${T('speed')}</span>
+    ${tags.map(s => `<button class="lang-pill ${state.speed===s.id?'active':''}" data-tip="${s.t}" onclick="VV.setSpeed('${s.id}')">${s.label}</button>`).join('')}
+  </div>`;
+}
 
-function continueAfterMatch() { dicePanel_roll(true, 'continueAfterMatch'); }
-function serveOnce() { dicePanel_roll(true, 'serveOnce'); }
+function continueAfterMatch() { fire('continueAfterMatch'); }
+function serveOnce() { fire('serveOnce'); }
 
 // ────────────────────────────────────────────────────────────────
 //  RENDER DISPATCH
@@ -4253,9 +2926,10 @@ function render() {
 //  ANIMATED MONEY / VP / COUNTERS
 // ────────────────────────────────────────────────────────────────
 function animateMoneyChange(player, delta) {
+  // Add a small floating "+X" or "-X" near the topbar player card
   const topbar = $('#topbar'); if (!topbar) return;
   const idx = state.game.players.indexOf(player);
-  const card = topbar.querySelector(`[data-pidx="${idx}"]`);
+  const card = topbar.children[idx];
   if (!card) return;
   const fl = document.createElement('div');
   fl.className = 'money-float ' + (delta >= 0 ? 'pos' : 'neg');
@@ -4266,7 +2940,7 @@ function animateMoneyChange(player, delta) {
 function animateVpChange(player, delta) {
   const topbar = $('#topbar'); if (!topbar) return;
   const idx = state.game.players.indexOf(player);
-  const card = topbar.querySelector(`[data-pidx="${idx}"]`);
+  const card = topbar.children[idx];
   if (!card) return;
   const fl = document.createElement('div');
   fl.className = 'vp-float';
@@ -4301,7 +2975,48 @@ function ensureFloatingPanel() {
   return fp;
 }
 function refreshFloatingPanel() {
+  // Floating panel is disabled — team management is in the permanent gpanel-team
   const fp = $('#floating-panel'); if (fp) fp.style.display = 'none';
+  return;
+  const fp2 = ensureFloatingPanel();
+  fp2.style.display = '';
+  const me = state.game.players[0];
+  const expanded = fp.classList.contains('expanded');
+  const sellMode = !!state.sellMode;
+  fp.innerHTML = `
+    <div class="fp-head">
+      <div class="fp-title">${state.lang==='de'?'Mein Team':'My Team'} · <span style="color:var(--gold)">★ ${teamStrength(me)}</span></div>
+      <div class="fp-controls">
+        <button class="fp-sell-btn ${sellMode?'on':''}" data-tip="${state.lang==='de'?'Verkaufs-Modus':'Sell mode'}" onclick="event.stopPropagation(); VV.toggleSellMode()">🔴</button>
+      </div>
+    </div>
+    <div class="fp-court">
+      ${POSITIONS.map(pos => {
+        const c = me.team[pos];
+        const dis = c && c.disabled ? 'disabled' : '';
+        const sub = c && c._isSub ? 'is-sub' : '';
+        const subTip = c && c._isSub ? ` · ${T('sub_tooltip')}` : '';
+        const tip = c ? `${escapeHTML(c.name)} · ${c.stars}★${c.disabled?' · '+(c.disabledReason||'-'):''}${subTip}` : posLabel(pos);
+        return `<div class="fp-card pos-${pos} ${dis} ${sub} ${sellMode?'sellable':''}" style="border-color:${posColor(pos)};" data-pos="${pos}" data-tip="${tip}" onclick="event.stopPropagation(); VV.handleFloatingClick('${pos}')">
+          ${c ? `<img src="${c.url}" alt="" loading="lazy"><div class="fp-stars">${'★'.repeat(c.stars)}</div>` : `<div class="fp-empty">?</div>`}
+          <span class="fp-pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
+          ${c && c.disabled?'<div class="fp-dis-overlay">⛔</div>':''}
+          ${c && c._isSub?`<div class="fp-sub-badge">${T('sub_label')}</div>`:''}
+        </div>`;
+      }).join('')}
+    </div>
+    ${expanded ? `<div class="fp-bench">
+      <div class="fp-bench-h">${state.lang==='de'?'Bench / Ersatz':'Bench / Substitutes'} (${me.bench.length})</div>
+      <div class="fp-bench-grid">
+        ${me.bench.map(c => `
+          <div class="fp-card bench ${sellMode?'sellable':''}" data-id="${c.id}" onclick="event.stopPropagation(); VV.handleFloatingBenchClick('${c.id}')">
+            <img src="${c.url}" alt="" loading="lazy">
+            <div class="fp-stars">${'★'.repeat(c.stars)}</div>
+            <span class="fp-pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
+          </div>`).join('') || `<span style="font-size:0.7rem; color:var(--silver);">—</span>`}
+      </div>
+    </div>` : ''}
+    <div class="fp-foot">${state.lang==='de'?'Klick zum Erweitern':'Click to expand'}</div>`;
 }
 function toggleFloatingPanel() {
   const fp = ensureFloatingPanel();
@@ -4366,28 +3081,14 @@ window.VV = {
   startSolo, openMultiplayer, createRoom, showJoinForm,
   draftDraw, draftRedraw, draftPick1, draftFinish,
   rollStartingDice,
-  coneRollNow, coneContinue, dicePanel_roll, skipAll,
+  coneRollNow, coneContinue, dicePanel_roll,
   buyCard, endMarket, buyOneStar, sellBenchCard, sellStarter,
   serveOnce, continueAfterMatch,
   playAgain, toMenu,
-  toggleFloatingPanel, toggleSellMode, toggleLog, toggleMarketPopup,
+  toggleFloatingPanel, toggleSellMode, toggleLog,
   handleFloatingClick, handleFloatingBenchClick,
   exportLog, showFullHistory,
 };
-
-// ────────────────────────────────────────────────────────────────
-//  KEYBOARD SHORTCUTS — Space / Enter advances any pending waiter
-// ────────────────────────────────────────────────────────────────
-document.addEventListener('keydown', e => {
-  if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
-  if (e.key === ' ' || e.key === 'Enter') {
-    if (_waiters['coneContinue'])     { e.preventDefault(); fire('coneContinue');      return; }
-    if (_waiters['continueAfterMatch']){ e.preventDefault(); fire('continueAfterMatch'); return; }
-    if (_waiters['serveOnce'])        { e.preventDefault(); fire('serveOnce');         return; }
-    if (_waiters['coneRollNow'])      { e.preventDefault(); fire('coneRollNow');       return; }
-    if (_waiters['endMarket'])        { e.preventDefault(); fire('endMarket');         return; }
-  }
-});
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
 else boot();

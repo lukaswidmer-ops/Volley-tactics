@@ -4,161 +4,163 @@
    Each card: { id, name, pos, stars, url, fileName, nation }
    Positions: 'outside' | 'middle' | 'setter' | 'diagonal' | 'libero'
 
-   URLs point directly to the real card image files.
-   File naming pattern: cards/<pos>_NN.XStern.png
+   URLs point directly to the real card image files (.png).
+   File naming pattern: <pos>.<NN>.<X>Stern.<Country>.<Name>.png
    =========================================================== */
 
 (function () {
   'use strict';
 
   // ROSTER: [name, position, stars, nation, filename]
-  // Filenames match the actual files in the cards/ folder exactly.
-  // NOTE: diagonal_04 does not exist (skip); diagonal_16 has typo "Sterng" — kept as-is.
+  // Filenames match the actual files in the position subfolders exactly.
+  // NOTE: diagonal.04 does not exist (skipped).
+  // Sorted by: position alphabetically, then stars ascending, then number ascending.
+  // Position mapping: files named "middel.*" → 'middle'; files named "passeur.*" → 'setter'.
   const ROSTER = [
 
-    // --- OUTSIDE HITTERS (red) — 29 cards ----------------------------
-    // 1-star (7)
-    ['Carlos Ramos',            'outside',  1, 'CU', 'outside_01.1Stern.png'],
-    ['Lukas Berger',            'outside',  1, 'AT', 'outside_02.1Stern.png'],
-    ['Dmitry Volkov',           'outside',  1, 'RU', 'outside_03.1Stern.png'],
-    ['Marek Beer',              'outside',  1, 'CZ', 'outside_04.1Stern.png'],
-    ['Adrien Rouzier',          'outside',  1, 'FR', 'outside_05.1Stern.png'],
-    ['Sven Hoffmann',           'outside',  1, 'DE', 'outside_06.1Stern.png'],
-    ['Jiri Sramek',             'outside',  1, 'CZ', 'outside_07.1Stern.png'],
-    // 2-star (5)
-    ['Oleh Plotnytskyi',        'outside',  2, 'UA', 'outside_08.2Stern.png'],
-    ['Kamil Semeniuk',          'outside',  2, 'PL', 'outside_09.2Stern.png'],
-    ['Yacine Louati',           'outside',  2, 'FR', 'outside_10.2Stern.png'],
-    ['Trevor Clevenot',         'outside',  2, 'FR', 'outside_11.2Stern.png'],
-    ['Petar Krsmanovic',        'outside',  2, 'RS', 'outside_12.2Stern.png'],
-    // 3-star (8)
-    ['Stefan Chrtiansky',       'outside',  3, 'SK', 'outside_13.3Stern.png'],
-    ['Tomas Kooy',              'outside',  3, 'NL', 'outside_14.3Stern.png'],
-    ['Tine Urnaut',             'outside',  3, 'SI', 'outside_15.3Stern.png'],
-    ['Klemen Cebulj',           'outside',  3, 'SI', 'outside_16.3Stern.png'],
-    ['Mikhail Karpov',          'outside',  3, 'RU', 'outside_17.3Stern.png'],
-    ['Alexei Verbov',           'outside',  3, 'RU', 'outside_18.3Stern.png'],
-    ['Ivan Zenit',              'outside',  3, 'HR', 'outside_19.3Stern.png'],
-    ['Marco Bari',              'outside',  3, 'IT', 'outside_20.3Stern.png'],
-    // 4-star (5)
-    ['Yuji Nishida',            'outside',  4, 'JP', 'outside_21.4Stern.png'],
-    ['Ricardo Lucarelli',       'outside',  4, 'BR', 'outside_22.4Stern.png'],
-    ['Aaron Russell',           'outside',  4, 'US', 'outside_23.4Stern.png'],
-    ['Tom Haack',               'outside',  4, 'DE', 'outside_24.4Stern.png'],
-    ['Matt Anderson',           'outside',  4, 'US', 'outside_25.4Stern.png'],
-    // 5-star (4)
-    ['Earvin Ngapeth',          'outside',  5, 'FR', 'outside_26.5Stern.png'],
-    ['Wilfredo Leon',           'outside',  5, 'PL', 'outside_27.5Stern.png'],
-    ['Yuki Ishikawa',           'outside',  5, 'JP', 'outside_28.5Stern.png'],
-    ['Luka Vukovic',            'outside',  5, 'RS', 'outside_29.5Stern.png'],
-
-    // --- MIDDLE BLOCKERS (green) — 25 cards --------------------------
-    // 1-star (7)
-    ['Erik Schöll',             'middle',   1, 'AT', 'middle_01.1Stern.png'],
-    ['Sam Deroo',               'middle',   1, 'BE', 'middle_02.1Stern.png'],
-    ['Pawel Maslowski',         'middle',   1, 'PL', 'middle_03.1Stern.png'],
-    ['Tobias Krick',            'middle',   1, 'DE', 'middle_04.1Stern.png'],
-    ['Filip Sestan',            'middle',   1, 'HR', 'middle_05.1Stern.png'],
-    ['Anton Brehme',            'middle',   1, 'DE', 'middle_06.1Stern.png'],
-    ['Niko Zuber',              'middle',   1, 'CH', 'middle_07.1Stern.png'],
+    // --- DIAGONAL / OPPOSITE (dark blue) — 18 cards ------------------
+    // 1-star (5 — no diagonal.04)
+    ['KevinNyffenegger',        'diagonal', 1, 'Schweiz',      'diagonal.01.1Stern.Schweiz.KevinNyffenegger.png'],
+    ['SimonFluri',              'diagonal', 1, 'Schweiz',      'diagonal.02.1Stern.Schweiz.SimonFluri.png'],
+    ['JesseOdermatt',           'diagonal', 1, 'Schweiz',      'diagonal.03.1Stern.Schweiz.JesseOdermatt.png'],
+    ['FelixGruss',              'diagonal', 1, 'Schweiz',      'diagonal.05.1Stern.Schweiz.FelixGruss.png'],
+    ['AdamWitzig',              'diagonal', 1, 'Schweiz',      'diagonal.06.1Stern.Schweiz.AdamWitzig.png'],
     // 2-star (4)
-    ['Jakub Kochanowski',       'middle',   2, 'PL', 'middle_08.2Stern.png'],
-    ['Karol Klos',              'middle',   2, 'PL', 'middle_09.2Stern.png'],
-    ['Mateusz Bieniek',         'middle',   2, 'PL', 'middle_10.2Stern.png'],
-    ['Ali Ramazani',            'middle',   2, 'IR', 'middle_11.2Stern.png'],
+    ['NinoCaduff',              'diagonal', 2, 'Schweiz',      'diagonal.07.2Stern.Schweiz.NinoCaduff.png'],
+    ['NicoFuchs',               'diagonal', 2, 'Schweiz',      'diagonal.08.2Stern.Schweiz.NicoFuchs.png'],
+    ['YuriTomin',               'diagonal', 2, 'Ukraine',      'diagonal.09.2Stern.Ukraine.YuriTomin.png'],
+    ['ColeKetrzynski',          'diagonal', 2, 'Kanada',       'diagonal.10.2Stern.Kanada.ColeKetrzynski.png'],
+    // 3-star (3)
+    ['EtienneSchalch',          'diagonal', 3, 'Schweiz',      'diagonal.11.3Stern.Schweiz.EtienneSchalch.png'],
+    ['MahelaIndeewara',         'diagonal', 3, 'SriLanka',     'diagonal.12.3Stern.SriLanka.MahelaIndeewara.png'],
+    ['PabloDenis',              'diagonal', 3, 'Argentinien',  'diagonal.13.3Stern.Argentinien.PabloDenis.png'],
+    // 4-star (3)
+    ['GeorgGrozer',             'diagonal', 4, 'Deutschland',  'diagonal.14.4Stern.Deutschland.GeorgGrozer.png'],
+    ['DmitriyMuserskiy',        'diagonal', 4, 'Russland',     'diagonal.15.4Stern.Russland.DmitriyMuserskiy.png'],
+    ['FerreReggers',            'diagonal', 4, 'Belgien',      'diagonal.16.4Stern.Belgien.FerreReggers.png'],
+    // 5-star (3)
+    ['YujiNishida',             'diagonal', 5, 'Japan',        'diagonal.17.5Stern.Japan.YujiNishida.png'],
+    ['NimirAbdel',              'diagonal', 5, 'Niederlande',  'diagonal.18.5Stern.Niederlande.NimirAbdel.png'],
+    ['DarlanSouza',             'diagonal', 5, 'Brasilien',    'diagonal.19.5Stern.Brasilien.DarlanSouza.png'],
+
+    // --- LIBERO (yellow) — 18 cards ----------------------------------
+    // 1-star (5)
+    ['LinoKrucker',             'libero',   1, 'Schweiz',      'libero.01.1Stern.Schweiz.LinoKrucker.png'],
+    ['FlorianSchulthess',       'libero',   1, 'Schweiz',      'libero.02.1Stern.Schweiz.FlorianSchulthess.png'],
+    ['PascalMuller',            'libero',   1, 'Schweiz',      'libero.03.1Stern.Schweiz.PascalMuller.png'],
+    ['RobinFah',                'libero',   1, 'Schweiz',      'libero.04.1Stern.Schweiz.RobinFah.png'],
+    ['HansruediGrob',           'libero',   1, 'Schweiz',      'libero.05.1Stern.Schweiz.HansruediGrob.png'],
+    // 2-star (4)
+    ['AdiMoon',                 'libero',   2, 'Schweiz',      'libero.06.2Stern.Schweiz.AdiMoon.png'],
+    ['MarvinSteiner',           'libero',   2, 'Schweiz',      'libero.07.2Stern.Schweiz.MarvinSteiner.png'],
+    ['LeandroDiem',             'libero',   2, 'Schweiz',      'libero.08.2Stern.Schweiz.LeandroDiem.png'],
+    ['LouisKrummacher',         'libero',   2, 'Schweiz',      'libero.09.2Stern.Schweiz.LouisKrummacher.png'],
+    // 3-star (3)
+    ['RamonDiem',               'libero',   3, 'Schweiz',      'libero.10.3Stern.Schweiz.RamonDiem.png'],
+    ['JaniKovacic',             'libero',   3, 'Serbien',      'libero.11.3Stern.Serbien.JaniKovacic.png'],
+    ['ArmanSalehi',             'libero',   3, 'Iran',         'libero.12.3Stern.Iran.ArmanSalehi.png'],
+    // 4-star (3)
+    ['JeniaGrebennikov',        'libero',   4, 'Frankreich',   'libero.13.4Stern.Frankreich.JeniaGrebennikov.png'],
+    ['FabioBalaso',             'libero',   4, 'Italien',      'libero.14.4Stern.Italien.FabioBalaso.png'],
+    ['JulianZenger',            'libero',   4, 'Deutschland',  'libero.15.4Stern.Deutschland.JulianZenger.png'],
+    // 5-star (3)
+    ['PawelZatorski',           'libero',   5, 'Polen',        'libero.16.5Stern.Polen.PawelZatorski.png'],
+    ['TomohiroYamamoto',        'libero',   5, 'Japan',        'libero.17.5Stern.Japan.TomohiroYamamoto.png'],
+    ['ErikShoji',               'libero',   5, 'USA',          'libero.18.5Stern.USA.ErikShoji.png'],
+
+    // --- MIDDLE BLOCKER (green) — 25 cards ---------------------------
+    // 1-star (7)
+    ['PhilippWidmer',           'middle',   1, 'Schweiz',      'middel.01.1Stern.Schweiz.PhilippWidmer.png'],
+    ['HannesBirker',            'middle',   1, 'Schweiz',      'middel.02.1Stern.Schweiz.HannesBirker.png'],
+    ['FabianNussbaumer',        'middle',   1, 'Schweiz',      'middel.03.1Stern.Schweiz.FabianNussbaumer.png'],
+    ['JulianLuterbach',         'middle',   1, 'Schweiz',      'middel.04.1Stern.Schweiz.JulianLuterbach.png'],
+    ['SamuelFrei',              'middle',   1, 'Schweiz',      'middel.05.1Stern.Schweiz.SamuelFrei.png'],
+    ['JoelDurr',                'middle',   1, 'Schweiz',      'middel.06.1Stern.Schweiz.JoelDurr.png'],
+    ['JustinStaub',             'middle',   1, 'Schweiz',      'middel.07.1Stern.Schweiz.JustinStaub.png'],
+    // 2-star (4)
+    ['RomianRuegg',             'middle',   2, 'Schweiz',      'middel.08.2Stern.Schweiz.RomianRuegg.png'],
+    ['DanielOsoko',             'middle',   2, 'Schweiz',      'middel.09.2Stern.Schweiz.DanielOsoko.png'],
+    ['JoelHauck',               'middle',   2, 'Schweiz',      'middel.10.2Stern.Schweiz.JoelHauck.png'],
+    ['AlexanderLengweiler',     'middle',   2, 'Schweiz',      'middel.11.2Stern.Schweiz.AlexanderLengweiler.png'],
     // 3-star (5)
-    ['Marko Podrascanin',       'middle',   3, 'RS', 'middle_12.3Stern.png'],
-    ['Max Holt',                'middle',   3, 'US', 'middle_13.3Stern.png'],
-    ['Roberto Russo',           'middle',   3, 'IT', 'middle_14.3Stern.png'],
-    ['Dmytro Pashytskyy',       'middle',   3, 'UA', 'middle_15.3Stern.png'],
-    ['Andrei Jekov',            'middle',   3, 'BG', 'middle_16.3Stern.png'],
+    ['NoeMatthey',              'middle',   3, 'Schweiz',      'middel.12.3Stern.Schweiz.NoeMatthey.png'],
+    ['TobyEzeonu',              'middle',   3, 'USA',          'middel.13.3Stern.USA.TobyEzeonu.png'],
+    ['SeyedMousavi',            'middle',   3, 'Iran',         'middel.14.3Stern.Iran.SeyedMousavi.png'],
+    ['MiaoRuantong',            'middle',   3, 'China',        'middel.15.3Stern.China.MiaoRuantong.png'],
+    ['JanzKrzic',               'middle',   3, 'Serbien',      'middel.16.3Stern.Serbien.JanzKrzic.png'],
     // 4-star (5)
-    ['Lucas Saatkamp',          'middle',   4, 'BR', 'middle_17.4Stern.png'],
-    ['Srecko Lisinac',          'middle',   4, 'RS', 'middle_18.4Stern.png'],
-    ['Ante Nizic',              'middle',   4, 'HR', 'middle_19.4Stern.png'],
-    ['Gyorgy Grozer',           'middle',   4, 'DE', 'middle_20.4Stern.png'],
-    ['Tomas Kotrc',             'middle',   4, 'CZ', 'middle_21.4Stern.png'],
+    ['MousseGueye',             'middle',   4, 'Frankreich',   'middel.17.4Stern.Frankreich.MousseGueye.png'],
+    ['LucaTauletta',            'middle',   4, 'Italien',      'middel.18.4Stern.Italien.LucaTauletta.png'],
+    ['AkihiroYamauchi',         'middle',   4, 'Japan',        'middel.19.4Stern.Japan.AkihiroYamauchi.png'],
+    ['DmytroTeryomenko',        'middle',   4, 'Ukraine',      'middel.20.4Stern.Ukraine.DmytroTeryomenko.png'],
+    ['ShaneHoldaway',           'middle',   4, 'USA',          'middel.21.4Stern.USA.ShaneHoldaway.png'],
     // 5-star (4)
-    ['Robertlandy Simon',       'middle',   5, 'CU', 'middle_22.5Stern.png'],
-    ['Nimir Abdel-Aziz',        'middle',   5, 'NL', 'middle_23.5Stern.png'],
-    ['Simone Anzani',           'middle',   5, 'IT', 'middle_24.5Stern.png'],
-    ['Uroš Kovačević',          'middle',   5, 'RS', 'middle_25.5Stern.png'],
+    ['AgustinLoser',            'middle',   5, 'Argentinien',  'middel.22.5Stern.Argentinien.AgustinLoser.png'],
+    ['MarkoPodrascanin',        'middle',   5, 'Kroatien',     'middel.23.5Stern.Kroatien.MarkoPodrascanin.png'],
+    ['RobertlandySimon',        'middle',   5, 'Kuba',         'middel.24.5Stern.Kuba.RobertlandySimon.png'],
+    ['TobiasKrick',             'middle',   5, 'Deutschland',  'middel.25.5Stern.Deutschland.TobiasKrick.png'],
 
-    // --- SETTERS (light blue) — 19 cards -----------------------------
+    // --- OUTSIDE HITTER (red) — 29 cards -----------------------------
+    // 1-star (7)
+    ['LukasWidmer',             'outside',  1, 'Schweiz',      'outside.01.1Stern.Schweiz.LukasWidmer.png'],
+    ['RaffaelNussbaumer',       'outside',  1, 'Schweiz',      'outside.02.1Stern.Schweiz.RaffaelNussbaumer.png'],
+    ['MishaKovtum',             'outside',  1, 'Ukraine',      'outside.03.1Stern.Ukraine.MishaKovtum.png'],
+    ['LevinSutter',             'outside',  1, 'Schweiz',      'outside.04.1Stern.Schweiz.LevinSutter.png'],
+    ['AndrinMatz',              'outside',  1, 'Schweiz',      'outside.05.1Stern.Schweiz.AndrinMatz.png'],
+    ['AidAndrej',               'outside',  1, 'Schweiz',      'outside.06.1Stern.Schweiz.AidAndrej.png'],
+    ['SegoMakyta',              'outside',  1, 'Schweiz',      'outside.07.1Stern.Schweiz.SegoMakyta.png'],
+    // 2-star (5)
+    ['RaffaelZingg',            'outside',  2, 'Schweiz',      'outside.08.2Stern.Schweiz.RaffaelZingg.png'],
+    ['PascalRofeler',           'outside',  2, 'Schweiz',      'outside.09.2Stern.Schweiz.PascalRofeler.png'],
+    ['RomanBruhwiler',          'outside',  2, 'Schweiz',      'outside.10.2Stern.Schweiz.RomanBruhwiler.png'],
+    ['TinkoSchnegg',            'outside',  2, 'Schweiz',      'outside.11.2Stern.Schweiz.TinkoSchnegg.png'],
+    ['AndrinBroder',            'outside',  2, 'Liechtenstein','outside.12.2Stern.Liechtenstein.AndrinBroder.png'],
+    // 3-star (8)
+    ['LucianoPalonsky',         'outside',  3, 'Argentinien',  'outside.13.3Stern.Argentinien.LucianoPalonsky.png'],
+    ['CyrilKolb',               'outside',  3, 'Schweiz',      'outside.14.3Stern.Schweiz.CyrilKolb.png'],
+    ['MortezaSharifi',          'outside',  3, 'Iran',         'outside.15.3Stern.Iran.MortezaSharifi.png'],
+    ['YuyuYuantai',             'outside',  3, 'China',        'outside.16.3Stern.China.YuyuYuantai.png'],
+    ['DmytroYanchuk',           'outside',  3, 'Ukraine',      'outside.17.3Stern.Ukraine.DmytroYanchuk.png'],
+    ['TomKoops',                'outside',  3, 'Niederlande',  'outside.18.3Stern.Niederlande.TomKoops.png'],
+    ['JesseElser',              'outside',  3, 'Kanada',       'outside.19.3Stern.Kanada.JesseElser.png'],
+    ['LarsMigge',               'outside',  3, 'Schweiz',      'outside.20.3Stern.Schweiz.LarsMigge.png'],
+    // 4-star (5)
+    ['MiguelLopez',             'outside',  4, 'Kuba',         'outside.21.4Stern.Kuba.MiguelLopez.png'],
+    ['KamilSemeniuk',           'outside',  4, 'Polen',        'outside.22.4Stern.Polen.KamilSemeniuk.png'],
+    ['MattiaBottolo',           'outside',  4, 'Italien',      'outside.23.4Stern.Italien.MattiaBottolo.png'],
+    ['ZhangBinglong',           'outside',  4, 'China',        'outside.24.4Stern.China.ZhangBinglong.png'],
+    ['EthanChamplin',           'outside',  4, 'USA',          'outside.25.4Stern.USA.EthanChamplin.png'],
+    // 5-star (4)
+    ['YukiIshikawa',            'outside',  5, 'Bulgarien',    'outside.26.5Stern.Bulgarien.YukiIshikawa.png'],
+    ['WilfredoLeon',            'outside',  5, 'Bulgarien',    'outside.27.5Stern.Bulgarien.WilfredoLeon.png'],
+    ['AlexNikolov',             'outside',  5, 'Bulgarien',    'outside.28.5Stern.Bulgarien.AlexNikolov.png'],
+    ['TJDeFalco',               'outside',  5, 'USA',          'outside.29.5Stern.USA.TJDeFalco.png'],
+
+    // --- SETTER / PASSEUR (light blue) — 19 cards --------------------
     // 1-star (5)
-    ['Konstantin Bakun',        'setter',   1, 'RU', 'setter_01.1Stern.png'],
-    ['Roland Heyer',            'setter',   1, 'CH', 'setter_02.1Stern.png'],
-    ['Marius Wlazly',           'setter',   1, 'PL', 'setter_03.1Stern.png'],
-    ['Tomas Rousseaux',         'setter',   1, 'BE', 'setter_04.1Stern.png'],
-    ['Jonas Weber',             'setter',   1, 'DE', 'setter_05.1Stern.png'],
+    ['GioelKuhn',               'setter',   1, 'Schweiz',      'passeur.01.1Stern.Schweiz.GioelKuhn.png'],
+    ['FanfanErni',              'setter',   1, 'Schweiz',      'passeur.02.1Stern.Schweiz.FanfanErni.png'],
+    ['PanhjaMorm',              'setter',   1, 'Schweiz',      'passeur.03.1Stern.Schweiz.PanhjaMorm.png'],
+    ['RaphaelRiege',            'setter',   1, 'Schweiz',      'passeur.04.1Stern.Schweiz.RaphaelRiege.png'],
+    ['EricFerreira',            'setter',   1, 'Schweiz',      'passeur.05.1Stern.Schweiz.EricFerreira.png'],
     // 2-star (4)
-    ['Dragan Travica',          'setter',   2, 'IT', 'setter_06.2Stern.png'],
-    ['Pierre Pujol',            'setter',   2, 'FR', 'setter_07.2Stern.png'],
-    ['Marcin Janusz',           'setter',   2, 'PL', 'setter_08.2Stern.png'],
-    ['Lukas Kampa',             'setter',   2, 'DE', 'setter_09.2Stern.png'],
+    ['AtakanYilmaz',            'setter',   2, 'Schweiz',      'passeur.06.2Stern.Schweiz.AtakanYilmaz.png'],
+    ['LucaWeber',               'setter',   2, 'Schweiz',      'passeur.07.2Stern.Schweiz.LucaWeber.png'],
+    ['PascalFrischmuth',        'setter',   2, 'Schweiz',      'passeur.08.2Stern.Schweiz.PascalFrischmuth.png'],
+    ['LucaIneichen',            'setter',   2, 'Schweiz',      'passeur.09.2Stern.Schweiz.LucaIneichen.png'],
     // 3-star (4)
-    ['Igor Kolakovic',          'setter',   3, 'RS', 'setter_10.3Stern.png'],
-    ['Antoine Brizard',         'setter',   3, 'FR', 'setter_11.3Stern.png'],
-    ['Salvador Hidalgo',        'setter',   3, 'AR', 'setter_12.3Stern.png'],
-    ['Paulo Brant',             'setter',   3, 'BR', 'setter_13.3Stern.png'],
+    ['FabriceEgger',            'setter',   3, 'Schweiz',      'passeur.10.3Stern.Schweiz.FabriceEgger.png'],
+    ['ArshiaBehnezhad',         'setter',   3, 'Iran',         'passeur.11.3Stern.Iran.ArshiaBehnezhad.png'],
+    ['YuYaochen',               'setter',   3, 'China',        'passeur.12.3Stern.China.YuYaochen.png'],
+    ['DimaFilippov',            'setter',   3, 'Griechenland', 'passeur.13.3Stern.Griechenland.DimaFilippov.png'],
     // 4-star (3)
-    ['Micah Christenson',       'setter',   4, 'US', 'setter_14.4Stern.png'],
-    ['Fabio De Cecco',          'setter',   4, 'IT', 'setter_15.4Stern.png'],
-    ['Benjamin Toniutti',       'setter',   4, 'FR', 'setter_16.4Stern.png'],
+    ['MattiaBoninfante',        'setter',   4, 'Italien',      'passeur.14.4Stern.Italien.MattiaBoninfante.png'],
+    ['LucianoDeCecco',          'setter',   4, 'Argentinien',  'passeur.15.4Stern.Argentinien.LucianoDeCecco.png'],
+    ['JohannesTille',           'setter',   4, 'Deutschland',  'passeur.16.4Stern.Deutschland.JohannesTille.png'],
     // 5-star (3)
-    ['Bruno Rezende',           'setter',   5, 'BR', 'setter_17.5Stern.png'],
-    ['Nikola Grbic',            'setter',   5, 'RS', 'setter_18.5Stern.png'],
-    ['Sergey Grankin',          'setter',   5, 'RU', 'setter_19.5Stern.png'],
-
-    // --- DIAGONALS / OPPOSITES (dark blue) — 18 cards ----------------
-    // 1-star (5 — diagonal_04 does not exist, sequence: 01,02,03,05,06)
-    ['Kasper Kraemer',          'diagonal', 1, 'DK', 'diagonal_01.1Stern.png'],
-    ['Niels Klapwijk',          'diagonal', 1, 'NL', 'diagonal_02.1Stern.png'],
-    ['Jure Okrosa',             'diagonal', 1, 'SI', 'diagonal_03.1Stern.png'],
-    ['Andrija Geric',           'diagonal', 1, 'RS', 'diagonal_05.1Stern.png'],
-    ['Lukas Maase',             'diagonal', 1, 'DE', 'diagonal_06.1Stern.png'],
-    // 2-star (4)
-    ['Maxwell Holt',            'diagonal', 2, 'US', 'diagonal_07.2Stern.png'],
-    ['Pavel Pankov',            'diagonal', 2, 'RU', 'diagonal_08.2Stern.png'],
-    ['Felix Fischer',           'diagonal', 2, 'DE', 'diagonal_09.2Stern.png'],
-    ['Damiano Catania',         'diagonal', 2, 'IT', 'diagonal_10.2Stern.png'],
-    // 3-star (3)
-    ['Adrian Aciobanitei',      'diagonal', 3, 'RO', 'diagonal_11.3Stern.png'],
-    ['Aleksandar Atanasijevic', 'diagonal', 3, 'RS', 'diagonal_12.3Stern.png'],
-    ['Renee Teppan',            'diagonal', 3, 'EE', 'diagonal_13.3Stern.png'],
-    // 4-star (3 — diagonal_16 filename has typo "Sterng", kept exactly as-is)
-    ['Tsvetan Sokolov',         'diagonal', 4, 'BG', 'diagonal_14.4Stern.png'],
-    ['Georg Grozer',            'diagonal', 4, 'DE', 'diagonal_15.4Stern.png'],
-    ['Luca Vettori',            'diagonal', 4, 'IT', 'diagonal_16.4Sterng.png'],
-    // 5-star (3)
-    ['Ivan Zaytsev',            'diagonal', 5, 'IT', 'diagonal_17.5Stern.png'],
-    ['Bartosz Kurek',           'diagonal', 5, 'PL', 'diagonal_18.5Stern.png'],
-    ['Yoandy Leal',             'diagonal', 5, 'BR', 'diagonal_19.5Stern.png'],
-
-    // --- LIBEROS (yellow) — 18 cards ---------------------------------
-    // 1-star (5)
-    ['Ferdinand Tille',         'libero',   1, 'DE', 'libero_01.1Stern.png'],
-    ['Markus Steuerwald',       'libero',   1, 'DE', 'libero_02.1Stern.png'],
-    ['Tomas Hudacek',           'libero',   1, 'SK', 'libero_03.1Stern.png'],
-    ['Yevhen Konovalov',        'libero',   1, 'UA', 'libero_04.1Stern.png'],
-    ['Ola Holm',                'libero',   1, 'NO', 'libero_05.1Stern.png'],
-    // 2-star (4)
-    ['Petar Petric',            'libero',   2, 'BA', 'libero_06.2Stern.png'],
-    ['Salvador Saenz',          'libero',   2, 'CU', 'libero_07.2Stern.png'],
-    ['Jose Massa',              'libero',   2, 'AR', 'libero_08.2Stern.png'],
-    ['Dustin Watten',           'libero',   2, 'US', 'libero_09.2Stern.png'],
-    // 3-star (3)
-    ['Damir Petric',            'libero',   3, 'HR', 'libero_10.3Stern.png'],
-    ['Massimo Colaci',          'libero',   3, 'IT', 'libero_11.3Stern.png'],
-    ['Pawel Zatorski',          'libero',   3, 'PL', 'libero_12.3Stern.png'],
-    // 4-star (3)
-    ['Erik Shoji',              'libero',   4, 'US', 'libero_13.4Stern.png'],
-    ['Sergio Santos',           'libero',   4, 'BR', 'libero_14.4Stern.png'],
-    ['Alexei Verbitsky',        'libero',   4, 'RU', 'libero_15.4Stern.png'],
-    // 5-star (3)
-    ['Jenia Grebennikov',       'libero',   5, 'FR', 'libero_16.5Stern.png'],
-    ['Leonardo',                'libero',   5, 'BR', 'libero_17.5Stern.png'],
-    ['Kai Stern',               'libero',   5, 'DE', 'libero_18.5Stern.png'],
+    ['SimoneGiannelli',         'setter',   5, 'Italien',      'passeur.17.5Stern.Italien.SimoneGiannelli.png'],
+    ['SimoneNikolov',           'setter',   5, 'Bulgarien',    'passeur.18.5Stern.Bulgarien.SimoneNikolov.png'],
+    ['MicahChristenson',        'setter',   5, 'USA',          'passeur.19.5Stern.USA.MicahChristenson.png'],
 
   ];
 
@@ -177,14 +179,13 @@
     let id = 1;
     for (const row of ROSTER) {
       const [name, pos, stars, nation, file] = row;
-      const fileName = file.replace(/\.png$/, '.jpg');
       out.push({
         id:       'c' + (id++),
         name:     name,
         pos:      pos,
         stars:    stars,
-        url:      (POS_FOLDER[pos] || 'cards') + '/' + fileName,
-        fileName: fileName,
+        url:      (POS_FOLDER[pos] || 'cards') + '/' + file,
+        fileName: file,
         nation:   nation
       });
     }
