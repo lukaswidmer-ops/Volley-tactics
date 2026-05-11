@@ -13,7 +13,8 @@
 // ── Game constants — named values used throughout game.js ─────────────────
 const STARTING_GOLD      = 80000;  // money each player begins with
 const WEEKS_PER_SEASON   = 6;      // total weeks per season
-const EVENT_POPUP_MS     = 8000;   // auto-close delay for action-card popups
+const EVENT_POPUP_MS     = 8000;   // auto-close delay for action-card popups (human turn)
+const BOT_POPUP_MS       = 5000;   // auto-close delay when a bot triggers the popup
 const SPONSOR_BONUS      = 15000;  // Trikotsponsor cash grant
 const AUDIENCE_LOSS      = 8000;   // Zuschauerrückgang deduction per player
 const VETERAN_BONUS      = 5000;   // Ehemaligentreffen bonus per 1-star card
@@ -1737,7 +1738,7 @@ function playerCardHtml(p, idx, withBars) {
   const g = state.game;
   const isYou = p.isHuman;
   const isActive = idx === (g && g.activeIdx);
-  return `<div class="player-card ${isActive?'active':''} ${isYou?'you':''}" data-pidx="${idx}" style="border-left:3px solid ${p.color};">
+  return `<div class="player-card ${isActive?'active':''} ${isYou?'you':''}" data-pidx="${idx}" data-player-id="${p.id}" style="border-left:3px solid ${p.color};">
     <div class="pc-name"><span class="pc-emoji">${p.emoji}</span>${escapeHTML(p.name)}</div>
     <div class="pc-stats">
       <div>${T('money')}</div><b>${fmtMoney(p.money)}</b>
@@ -1752,7 +1753,7 @@ function playerCardHtml(p, idx, withBars) {
 function playerYouHtml(p, g) {
   const isActive = g && g.players[g.activeIdx] === p;
   const str = teamStrength(p);
-  return `<div class="you-card ${isActive?'active':''}" data-pidx="0" style="border-left:4px solid ${p.color};">
+  return `<div class="you-card ${isActive?'active':''}" data-pidx="0" data-player-id="${p.id}" style="border-left:4px solid ${p.color};">
     <div class="yc-label">${state.lang==='de'?'DU':'YOU'}</div>
     <div class="yc-name">${p.emoji} ${escapeHTML(p.name)}</div>
     <div class="yc-stats">
@@ -1896,6 +1897,7 @@ function teamPanelHtml(p, opts) {
     const click = readOnly ? '' : `onclick="VV.handleFloatingClick('${pos}')"`;
     return `<div class="slot vb-team-slot ${dis} ${sub} ${sellMode?'sellable':''} ${isSwapTarget?'card-swap-target':''}" 
       data-tip="${escapeHTML(card.name)} · ${card.stars}★${card.disabled?' · '+(card.disabledReason||''):''}${sub?' · '+T('sub_tooltip'):''}"
+      data-card-id="${card.id}"
       ${click}>
       <span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
       <img src="${card.url}" alt="">
@@ -1911,6 +1913,7 @@ function teamPanelHtml(p, opts) {
     const benchCls = (!readOnly && !c.disabled && !sellMode) ? 'card-bench' : '';
     return `<div class="slot vb-bench-slot ${benchCls} ${isSelected ? 'card-selected' : ''} ${sellMode?'sellable':''}" 
       data-tip="${escapeHTML(c.name)} · ${c.stars}★ · ${posLabel(c.pos)}${c.disabled?' · ⛔':''}"
+      data-card-id="${c.id}"
       ${click}>
       <span class="pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
       <img src="${c.url}" alt="">
@@ -2055,9 +2058,11 @@ function refreshBoard() {
 }
 function refreshTeamPanel() {
   const tp = $('#team-panel'); if (!tp || !state.game) return;
-  tp.innerHTML = teamPanelHtml(state.game.players[0]);
+  const _human = state.game.players[0];
+  tp.dataset.playerId = _human.id; // for showActionPopup highlights
+  tp.innerHTML = teamPanelHtml(_human);
   const sl = $('#team-strength-label');
-  if (sl) sl.textContent = '★ ' + teamStrength(state.game.players[0]);
+  if (sl) sl.textContent = '★ ' + teamStrength(_human);
 }
 /** During a match, keep human team panel + opponent board in sync with courtRotation */
 function refreshMatchSidePanels(M) {
@@ -2121,6 +2126,8 @@ async function runSeason() {
     // For each week: simulate cone advancement until cone reaches day 8 (league match)
     // Strict < so the loop exits the moment coneDay hits the league-match boundary (day 8, 16, 24…)
     const targetEndOfWeek = g.week * 8;
+    // Week-start overview popup (Step 5): shows suspended players before first dice roll
+    await showWeekStartSummary(g);
     while (g.coneDay < targetEndOfWeek && !g.over) {
       try {
         const active = g.players[g.activeIdx];
@@ -2447,6 +2454,81 @@ function humanBidPopup(p, card, minNext) {
 // ────────────────────────────────────────────────────────────────
 
 // Show a modal popup that resolves when OK is clicked or auto-closes.
+/**
+ * Universal blocking action popup with optional card/player highlights.
+ * Apply state changes BEFORE calling. Resolves on OK click or timeout.
+ *
+ * @param {object}   opts
+ * @param {string}   opts.title             - Header (may include emoji)
+ * @param {string}   opts.description       - Body; literal \n becomes <br>
+ * @param {object[]} [opts.affectedCards]   - Cards highlighted red (suspended etc.)
+ * @param {object[]} [opts.positiveCards]   - Cards highlighted green (gained etc.)
+ * @param {object[]} [opts.affectedPlayers] - Player panels to glow
+ * @param {number|null} [opts.autoMs] - Auto-close ms; null = no auto-close (OK only)
+ */
+function showActionPopup({ title, description, affectedCards = [], positiveCards = [], affectedPlayers = [], autoMs = EVENT_POPUP_MS }) {
+  return new Promise(resolve => {
+    const me = state.game ? state.game.players[0] : null;
+    const cleanups = [];
+
+    const hlCards = (cards, cls) => {
+      for (const card of cards) {
+        document.querySelectorAll('[data-card-id="' + card.id + '"]').forEach(el => {
+          el.classList.add(cls);
+          cleanups.push(() => el.classList.remove(cls));
+        });
+      }
+    };
+    hlCards(affectedCards, 'card-highlight-affected');
+    hlCards(positiveCards, 'card-highlight-positive');
+
+    for (const p of affectedPlayers) {
+      const cls = (p === me) ? 'team-highlight-own' : 'team-highlight-opponent';
+      document.querySelectorAll('[data-player-id="' + p.id + '"]').forEach(el => {
+        el.classList.add(cls);
+        cleanups.push(() => el.classList.remove(cls));
+      });
+    }
+
+    const hasCountdown = autoMs != null;
+    const pid = 'upop-' + Date.now();
+    const div = document.createElement('div');
+    div.className = 'modal-popup';
+    div.innerHTML = `
+      <div class="modal-card action-upop">
+        <div class="action-upop-title">${title}</div>
+        <hr class="action-upop-divider">
+        <div class="action-upop-desc">${description.replace(/\n/g, '<br>')}</div>
+        <div class="action-upop-footer">
+          <button class="btn btn-primary" id="${pid}-ok">OK</button>
+          ${hasCountdown ? `<div class="action-upop-track"><div class="action-upop-bar" id="${pid}-bar"></div></div>` : ''}
+        </div>
+      </div>`;
+    document.body.appendChild(div);
+    setTimeout(() => div.classList.add('open'), 10);
+
+    if (hasCountdown) {
+      const bar = document.getElementById(pid + '-bar');
+      if (bar) requestAnimationFrame(() => requestAnimationFrame(() => {
+        bar.style.transition = 'width ' + autoMs + 'ms linear';
+        bar.style.width = '0%';
+      }));
+    }
+
+    let done = false;
+    const finish = () => {
+      if (done) return; done = true;
+      if (document.body.contains(div)) div.remove();
+      for (const fn of cleanups) { try { fn(); } catch (_) {} }
+      resolve();
+    };
+    const okBtn = document.getElementById(pid + '-ok');
+    if (okBtn) okBtn.addEventListener('click', finish);
+    div.addEventListener('click', e => { if (e.target === div) finish(); });
+    if (hasCountdown) setTimeout(finish, autoMs);
+  });
+}
+
 function showActionPopupAsync(icon, title, bodyHtml, autoMs = EVENT_POPUP_MS) {
   return new Promise(resolve => {
     const pid = 'ac-pop-' + Date.now();
@@ -2523,19 +2605,22 @@ async function ac_muskelfaserriss(player) {
   if (!bestCard) {
     const msg = de ? 'Kein Spieler im Team — keine Auswirkung.' : 'No player in team — no effect.';
     appendConeLog(`🩻 Muskelfaserriss · ${player.emoji} ${escapeHTML(player.name)} · ${msg}`);
+    await showActionPopup({ title: '🏥 Muskelfaserriss', description: `${player.emoji} ${escapeHTML(player.name)}\n${msg}`, affectedPlayers: [player], autoMs: player.isHuman ? EVENT_POPUP_MS : BOT_POPUP_MS });
     return;
   }
   disablePlayerOnTeam(player, bestPos, de ? 'Muskelfaserriss' : 'Muscle Tear');
   refreshTeamPanel();
   if (typeof refreshFloatingPanel === 'function') refreshFloatingPanel();
-  const detail = $('#event-detail');
-  if (detail) detail.innerHTML =
-    `<div style="margin-top:.8em;font-size:.9em">
-      ${de ? `Dein stärkster Spieler <b>${escapeHTML(bestCard.name)}</b> fällt diese Woche aus!`
-           : `Your best player <b>${escapeHTML(bestCard.name)}</b> is out this week!`}
-    </div>`;
   appendConeLog(`🩻 Muskelfaserriss · ${player.emoji} ${escapeHTML(player.name)}: ${escapeHTML(bestCard.name)} out`);
-  await sleep(speedMs(2500));
+  await showActionPopup({
+    title: '🏥 Muskelfaserriss',
+    description: de
+      ? `${player.emoji} <b>${escapeHTML(player.name)}</b> zieht Muskelfaserriss!\n${escapeHTML(bestCard.name)} (${posLabel(bestPos)} ${'★'.repeat(bestCard.stars)}) fällt diese Woche aus.`
+      : `${player.emoji} <b>${escapeHTML(player.name)}</b> draws Muscle Tear!\n${escapeHTML(bestCard.name)} (${posLabel(bestPos)} ${'★'.repeat(bestCard.stars)}) is out this week.`,
+    affectedCards: [bestCard],
+    affectedPlayers: [player],
+    autoMs: player.isHuman ? EVENT_POPUP_MS : BOT_POPUP_MS,
+  });
 }
 
 // AC 2 — Trikotsponsor: +15 000 CHF
@@ -2544,12 +2629,15 @@ async function ac_trikotsponsor(player) {
   const amount = SPONSOR_BONUS;
   player.money += amount; player.totalEarned += amount;
   animateMoneyChange(player, amount); refreshTopbar();
-  const detail = $('#event-detail');
-  if (detail) detail.innerHTML =
-    `<div style="margin-top:.8em;color:var(--gold);font-size:1.1em">💰 +${fmtMoney(amount)}'</div>`;
   appendConeLog(`👕 Trikotsponsor · ${player.emoji} ${escapeHTML(player.name)} +${fmtMoney(amount)}'`);
-  toast(`👕 ${de ? 'Neuer Sponsor' : 'New sponsor'}! +${fmtMoney(amount)}'`, 'gold', 2500);
-  await sleep(speedMs(2000));
+  await showActionPopup({
+    title: '💰 Trikotsponsor',
+    description: de
+      ? `${player.emoji} <b>${escapeHTML(player.name)}</b> erhält einen neuen Trikotsponsor!\n+${fmtMoney(amount)}' sofort ausgezahlt.`
+      : `${player.emoji} <b>${escapeHTML(player.name)}</b> receives a new shirt sponsor!\n+${fmtMoney(amount)}' paid immediately.`,
+    affectedPlayers: [player],
+    autoMs: player.isHuman ? EVENT_POPUP_MS : BOT_POPUP_MS,
+  });
 }
 
 // AC 3 — Transfergerücht: opponent's weakest team card gets forcedSale flag
@@ -2561,16 +2649,21 @@ async function ac_transfergeruecht(player) {
   if (!worstCard) {
     const msg = de ? `${escapeHTML(opp.name)} hat kein Team — keine Auswirkung.`
                    : `${escapeHTML(opp.name)} has no team — no effect.`;
-    appendConeLog(`📰 Transfergerücht · ${msg}`); return;
+    appendConeLog(`🕵️ Transfergerücht · ${msg}`);
+    await showActionPopup({ title: '🕵️ Transfergerücht', description: msg, affectedPlayers: [opp], autoMs: player.isHuman ? EVENT_POPUP_MS : BOT_POPUP_MS });
+    return;
   }
   worstCard.forcedSale = true;
-  const detail = $('#event-detail');
-  const msg = de
-    ? `<b>${escapeHTML(opp.name)}</b>s günstigster Spieler <b>${escapeHTML(worstCard.name)}</b> muss zum Mindestpreis verkauft werden.`
-    : `<b>${escapeHTML(opp.name)}</b>'s cheapest player <b>${escapeHTML(worstCard.name)}</b> must be sold at minimum price.`;
-  if (detail) detail.innerHTML = `<div style="margin-top:.8em;font-size:.85em">${msg}</div>`;
-  appendConeLog(`📰 Transfergerücht · ${player.emoji} ${escapeHTML(player.name)} → ${escapeHTML(opp.name)}: ${escapeHTML(worstCard.name)}`);
-  await sleep(speedMs(2500));
+  appendConeLog(`🕵️ Transfergerücht · ${player.emoji} ${escapeHTML(player.name)} → ${escapeHTML(opp.name)}: ${escapeHTML(worstCard.name)}`);
+  await showActionPopup({
+    title: '🕵️ Transfergerücht',
+    description: de
+      ? `${player.emoji} <b>${escapeHTML(player.name)}</b> streut Transfergerüchte über ${opp.emoji} <b>${escapeHTML(opp.name)}</b>!\n${escapeHTML(worstCard.name)} (${posLabel(worstPos)} ${'★'.repeat(worstCard.stars)}) muss in der nächsten Auktion\nzum Mindestpreis angeboten werden.`
+      : `${player.emoji} <b>${escapeHTML(player.name)}</b> starts a transfer rumour!\n${opp.emoji} <b>${escapeHTML(opp.name)}</b>: ${escapeHTML(worstCard.name)} (${'★'.repeat(worstCard.stars)}) must be sold at minimum price.`,
+    affectedCards: [worstCard],
+    affectedPlayers: [player, opp],
+    autoMs: player.isHuman ? EVENT_POPUP_MS : BOT_POPUP_MS,
+  });
 }
 
 // AC 4 — Positionstausch: cards of a random position rotate clockwise
@@ -2605,10 +2698,9 @@ async function ac_positionstausch(player) {
   if (participants.length < 2) {
     const msg = de ? `Nicht genug Spieler auf ${posName} — kein Tausch.`
                    : `Not enough ${posName} players — no swap.`;
-    const detail = $('#event-detail');
-    if (detail) detail.innerHTML = `<div style="color:var(--silver);margin-top:.8em">${msg}</div>`;
     appendConeLog(`🔄 Positionstausch · ${msg}`);
-    await sleep(speedMs(1500)); return;
+    await showActionPopup({ title: '🔄 Positionstausch — ' + posName, description: msg, autoMs: player.isHuman ? EVENT_POPUP_MS : BOT_POPUP_MS });
+    return;
   }
 
   // Clockwise rotation: last card → index 0, rest shift right
@@ -2618,22 +2710,22 @@ async function ac_positionstausch(player) {
   for (let i = 0; i < participants.length; i++) {
     const { p, fromSlot } = participants[i];
     p.team[fromSlot] = rotated[i];
-    const src = participants[(i + participants.length - 1) % participants.length];
     logLines.push(de
-      ? `${p.emoji} ${escapeHTML(p.name)}: gibt <b>${escapeHTML(cards[i].name)}</b> → erhält <b>${escapeHTML(rotated[i].name)}</b>`
-      : `${p.emoji} ${escapeHTML(p.name)}: gives <b>${escapeHTML(cards[i].name)}</b> → receives <b>${escapeHTML(rotated[i].name)}</b>`);
+      ? `${p.emoji} ${escapeHTML(p.name)}: gibt <b>${escapeHTML(cards[i].name)}</b> (★${cards[i].stars}) → ${participants[(i + 1) % participants.length].p.emoji} ${escapeHTML(participants[(i + 1) % participants.length].p.name)}`
+      : `${p.emoji} ${escapeHTML(p.name)}: gives <b>${escapeHTML(cards[i].name)}</b> (★${cards[i].stars}) → ${participants[(i + 1) % participants.length].p.emoji} ${escapeHTML(participants[(i + 1) % participants.length].p.name)}`);
   }
   refreshTeamPanel();
   if (typeof refreshFloatingPanel === 'function') refreshFloatingPanel();
 
-  const detail = $('#event-detail');
-  if (detail) detail.innerHTML = `
-    <div style="margin-top:.8em;font-size:.82em;text-align:left">
-      <div style="color:var(--gold);margin-bottom:.4em">🔄 ${de ? 'Position' : 'Position'}: <b>${posName}</b></div>
-      ${logLines.map(l => `<div style="margin:.2em 0">${l}</div>`).join('')}
-    </div>`;
   appendConeLog(`🔄 Positionstausch (${posName}) · ${participants.map(e => escapeHTML(e.card.name)).join(' → ')}`);
-  await sleep(speedMs(3000));
+  await showActionPopup({
+    title: '🔄 Positionstausch — ' + posName,
+    description: logLines.join('\n'),
+    affectedCards: participants.map(e => e.card),
+    positiveCards: rotated,
+    affectedPlayers: participants.map(e => e.p),
+    autoMs: player.isHuman ? EVENT_POPUP_MS : BOT_POPUP_MS,
+  });
 }
 
 // AC 5 — Talentförderung: draw 3 cards, keep 1
@@ -2643,7 +2735,7 @@ async function ac_talentfoerderung(player) {
   const drawn = [];
   for (let i = 0; i < 3; i++) { const c = drawAuctionCard(); if (c) drawn.push(c); }
   if (!drawn.length) {
-    appendConeLog(`🌟 Talentförderung · ${de ? 'Keine Karten verfügbar.' : 'No cards available.'}`);
+    appendConeLog(`🎓 Talentförderung · ${de ? 'Keine Karten verfügbar.' : 'No cards available.'}`);
     return;
   }
   const botIdx = drawn.reduce((bi, c, i, a) => c.stars >= a[bi].stars ? i : bi, 0);
@@ -2666,7 +2758,7 @@ async function ac_talentfoerderung(player) {
         </button>`).join('');
       div.innerHTML = `
         <div class="modal-card" style="max-width:400px">
-          <div class="modal-icon">🌟</div>
+          <div class="modal-icon">🎓</div>
           <div class="modal-h">Talentförderung</div>
           <div class="modal-p">${de ? `Wähle einen von ${drawn.length} Spielern:` : `Pick one of ${drawn.length} players:`}</div>
           <div style="margin-top:.6em">${cardBtns}</div>
@@ -2690,22 +2782,24 @@ async function ac_talentfoerderung(player) {
   for (const c of drawn) { if (c !== chosen) g.auctionDeck.push(c); }
 
   placeIntoTeamOrBench(player, chosen);
+  autoSelectLineup(player);
   refreshTeamPanel(); refreshTopbar();
   if (typeof refreshFloatingPanel === 'function') refreshFloatingPanel();
-  const detail = $('#event-detail');
-  if (detail) detail.innerHTML =
-    `<div style="margin-top:.8em;font-size:.88em">
-      <b>${escapeHTML(chosen.name)}</b> ${'★'.repeat(chosen.stars)} — ${de ? 'zu deinem Team hinzugefügt.' : 'added to your team.'}
-    </div>`;
-  appendConeLog(`🌟 Talentförderung · ${player.emoji} ${escapeHTML(player.name)} → ${escapeHTML(chosen.name)}`);
-  await sleep(speedMs(2000));
+  appendConeLog(`🎓 Talentförderung · ${player.emoji} ${escapeHTML(player.name)} → ${escapeHTML(chosen.name)}`);
+  await showActionPopup({
+    title: '🎓 Talentförderung',
+    description: de
+      ? `${player.emoji} <b>${escapeHTML(player.name)}</b> wählt ein Talent!\nGewählt: <b>${escapeHTML(chosen.name)}</b> (${posLabel(chosen.pos)} ★${chosen.stars})\nZwei Spieler zurück in den Stapel.`
+      : `${player.emoji} <b>${escapeHTML(player.name)}</b> draws Talent Development!\nChosen: <b>${escapeHTML(chosen.name)}</b> (${posLabel(chosen.pos)} ★${chosen.stars})\nTwo players returned to the deck.`,
+    positiveCards: [chosen],
+    affectedPlayers: [player],
+    autoMs: player.isHuman ? EVENT_POPUP_MS : BOT_POPUP_MS,
+  });
 }
 
 // AC 6 — Busunfall: d6 → 1–2: suspend 1 card  3–4: suspend 2 cards  5–6: nothing
 async function ac_busunfall(player) {
   const de = state.lang === 'de';
-  const detail = $('#event-detail');
-  if (detail) detail.innerHTML = `<div class="dice-area"><div class="dice-num" id="dice-num">—</div></div>`;
   const roll6 = await performDiceRoll(6);
 
   let count = 0, resultDesc;
@@ -2724,54 +2818,70 @@ async function ac_busunfall(player) {
   refreshTeamPanel();
   if (typeof refreshFloatingPanel === 'function') refreshFloatingPanel();
 
-  const suspStr = suspended.length
-    ? `<div style="margin-top:.4em;color:var(--silver)">${de ? 'Betroffen' : 'Affected'}: ${suspended.map(c => `<b>${escapeHTML(c.name)}</b>`).join(', ')}</div>`
-    : '';
-  if (detail) detail.innerHTML =
-    `<div style="margin-top:.8em;font-size:.88em">🚌 ${resultDesc}${suspStr}</div>`;
   appendConeLog(`🚌 Busunfall · ${player.emoji} ${escapeHTML(player.name)} · ${resultDesc}${suspended.length ? ' — ' + suspended.map(c => escapeHTML(c.name)).join(', ') : ''}`);
-  await sleep(speedMs(2500));
+  const suspNames = suspended.map(c => `<b>${escapeHTML(c.name)}</b> (${posLabel(c.pos)} ★${c.stars})`).join(de ? ' und ' : ' and ');
+  const busDesc = de
+    ? suspended.length === 0
+      ? `${player.emoji} <b>${escapeHTML(player.name)}</b> erleidet einen Busunfall!\nWürfelergebnis: ${resultDesc} — Zum Glück passiert nichts!`
+      : `${player.emoji} <b>${escapeHTML(player.name)}</b> erleidet einen Busunfall!\nWürfelergebnis: ${resultDesc}\n${suspNames} ${suspended.length > 1 ? 'fallen' : 'fällt'} diese Woche aus.`
+    : suspended.length === 0
+      ? `${player.emoji} <b>${escapeHTML(player.name)}</b> has a bus accident!\nDie: ${resultDesc} — Luckily nothing happens!`
+      : `${player.emoji} <b>${escapeHTML(player.name)}</b> has a bus accident!\nDie: ${resultDesc}\n${suspNames} ${suspended.length > 1 ? 'are' : 'is'} out this week.`;
+  await showActionPopup({
+    title: '🚌 Busunfall',
+    description: busDesc,
+    affectedCards: suspended,
+    affectedPlayers: [player],
+    autoMs: player.isHuman ? EVENT_POPUP_MS : BOT_POPUP_MS,
+  });
 }
 
 // AC 7 — Transfersperre: player cannot bid in next auction
 async function ac_transfersperre(player) {
   const de = state.lang === 'de';
   player.auctionBanned = true;
-  const msg = de ? 'Du darfst in der nächsten Auktion nicht mitbieten.'
-                 : 'You cannot bid in the next auction.';
-  const detail = $('#event-detail');
-  if (detail) detail.innerHTML = `<div style="margin-top:.8em;color:var(--silver);font-size:.88em">${msg}</div>`;
-  appendConeLog(`🚫 Transfersperre · ${player.emoji} ${escapeHTML(player.name)} gesperrt für nächste Auktion`);
-  toast(`🚫 ${de ? 'Transfersperre' : 'Transfer Ban'} — ${escapeHTML(player.name)}`, 'bad', 2500);
-  await sleep(speedMs(2000));
+  appendConeLog(`⚖️ Transfersperre · ${player.emoji} ${escapeHTML(player.name)} gesperrt für nächste Auktion`);
+  await showActionPopup({
+    title: '⚖️ Transfersperre',
+    description: de
+      ? `${player.emoji} <b>${escapeHTML(player.name)}</b> erhält eine Transfersperre!\nDarf in der nächsten Auktion nicht mitbieten.`
+      : `${player.emoji} <b>${escapeHTML(player.name)}</b> receives a transfer ban!\nCannot place bids in the next auction.`,
+    affectedPlayers: [player],
+    autoMs: player.isHuman ? EVENT_POPUP_MS : BOT_POPUP_MS,
+  });
 }
 
 // AC 8 — Ehemaligentreffen: +5 000 per 1★ card in team
 async function ac_ehemaligentreffen(player) {
   const de = state.lang === 'de';
-  let count = 0;
-  for (const pos of POSITIONS) {
-    const c = player.team[pos];
-    if (c && !c.disabled && c.stars === 1) count++;
-  }
+  const oneStarCards = POSITIONS.map(pos => player.team[pos]).filter(c => c && !c.disabled && c.stars === 1);
+  const count = oneStarCards.length;
   const earned = count * VETERAN_BONUS;
-  const detail = $('#event-detail');
   if (count === 0) {
-    const msg = de ? 'Keine Ehemaligen im Team — keine Ausschüttung.' : 'No 1★ players in team — no payout.';
-    if (detail) detail.innerHTML = `<div style="color:var(--silver);margin-top:.8em">${msg}</div>`;
-    appendConeLog(`🏅 Ehemaligentreffen · ${player.emoji} ${escapeHTML(player.name)} · keine`);
-    await sleep(speedMs(1500)); return;
+    appendConeLog(`🏆 Ehemaligentreffen · ${player.emoji} ${escapeHTML(player.name)} · keine`);
+    await showActionPopup({
+      title: '🏆 Ehemaligentreffen',
+      description: de
+        ? `${player.emoji} <b>${escapeHTML(player.name)}</b> besucht das Ehemaligentreffen!\nKeine 1-Stern-Spieler im Team — keine Ausschüttung.`
+        : `${player.emoji} <b>${escapeHTML(player.name)}</b> attends the alumni gathering!\nNo 1★ players in team — no payout.`,
+      affectedPlayers: [player],
+      autoMs: player.isHuman ? EVENT_POPUP_MS : BOT_POPUP_MS,
+    });
+    return;
   }
   player.money += earned; player.totalEarned += earned;
   animateMoneyChange(player, earned); refreshTopbar();
-  const msg = de ? `${count} × 1★-Spieler = +${fmtMoney(earned)}'`
-                 : `${count} × 1★ player = +${fmtMoney(earned)}'`;
-  if (detail) detail.innerHTML =
-    `<div style="margin-top:.8em;color:var(--gold);font-size:1.05em">🏅 +${fmtMoney(earned)}'</div>
-     <div style="color:var(--silver);font-size:.82em;margin-top:.3em">${msg}</div>`;
-  appendConeLog(`🏅 Ehemaligentreffen · ${player.emoji} ${escapeHTML(player.name)} +${fmtMoney(earned)}'`);
-  toast(`🏅 +${fmtMoney(earned)}'`, 'gold', 2000);
-  await sleep(speedMs(2000));
+  const cardList = oneStarCards.map(c => `${escapeHTML(c.name)} (★1)`).join(', ');
+  appendConeLog(`🏆 Ehemaligentreffen · ${player.emoji} ${escapeHTML(player.name)} +${fmtMoney(earned)}'`);
+  await showActionPopup({
+    title: '🏆 Ehemaligentreffen',
+    description: de
+      ? `${player.emoji} <b>${escapeHTML(player.name)}</b> hat ${count} Ehemalige im Kader!\n${cardList}\n<b>+${fmtMoney(earned)}'</b> ausgezahlt.`
+      : `${player.emoji} <b>${escapeHTML(player.name)}</b> has ${count} alumni in the squad!\n${cardList}\n<b>+${fmtMoney(earned)}'</b> paid out.`,
+    positiveCards: oneStarCards,
+    affectedPlayers: [player],
+    autoMs: player.isHuman ? EVENT_POPUP_MS : BOT_POPUP_MS,
+  });
 }
 
 // AC 9 — Leihgeschäft: opponent loans one card for the current week
@@ -2790,7 +2900,7 @@ async function ac_leihgeschaeft(player) {
   if (!loanable.length) {
     const msg = de ? `${escapeHTML(opp.name)} hat keine verfügbaren Spieler.`
                    : `${escapeHTML(opp.name)} has no available players.`;
-    appendConeLog(`🤝 Leihgeschäft · ${msg}`);
+    appendConeLog(`🔄 Leihgeschäft · ${msg}`);
     await sleep(speedMs(1500)); return;
   }
 
@@ -2852,12 +2962,17 @@ async function ac_leihgeschaeft(player) {
 
   refreshTeamPanel();
   if (typeof refreshFloatingPanel === 'function') refreshFloatingPanel();
-  const detail = $('#event-detail');
-  const msg = de ? `<b>${escapeHTML(loanCard.name)}</b> spielt diese Woche für <b>${escapeHTML(player.name)}</b>.`
-                 : `<b>${escapeHTML(loanCard.name)}</b> plays for <b>${escapeHTML(player.name)}</b> this week.`;
-  if (detail) detail.innerHTML = `<div style="margin-top:.8em;font-size:.88em">${msg}</div>`;
-  appendConeLog(`🤝 Leihgeschäft · ${escapeHTML(loanCard.name)}: ${escapeHTML(opp.name)} → ${escapeHTML(player.name)}`);
-  await sleep(speedMs(2500));
+  appendConeLog(`🔄 Leihgeschäft · ${escapeHTML(loanCard.name)}: ${escapeHTML(opp.name)} → ${escapeHTML(player.name)}`);
+  await showActionPopup({
+    title: '🔄 Leihgeschäft',
+    description: de
+      ? `${player.emoji} <b>${escapeHTML(player.name)}</b> leiht sich <b>${escapeHTML(loanCard.name)}</b> (${posLabel(loanCard.pos)} ★${loanCard.stars})\nvon ${opp.emoji} <b>${escapeHTML(opp.name)}</b> für diese Woche.\nRückgabe automatisch zu Beginn der nächsten Woche.`
+      : `${player.emoji} <b>${escapeHTML(player.name)}</b> borrows <b>${escapeHTML(loanCard.name)}</b> (${posLabel(loanCard.pos)} ★${loanCard.stars})\nfrom ${opp.emoji} <b>${escapeHTML(opp.name)}</b> for this week.\nAutomatic return at the start of next week.`,
+    positiveCards: [loanCard],
+    affectedCards: [],
+    affectedPlayers: [player, opp],
+    autoMs: player.isHuman ? EVENT_POPUP_MS : BOT_POPUP_MS,
+  });
 }
 
 // AC 10 — Zuschauerrückgang: all players lose 8 000 CHF
@@ -2871,12 +2986,16 @@ async function ac_zuschauerruckgang(player) {
     animateMoneyChange(p, -actual);
   }
   refreshTopbar();
-  const detail = $('#event-detail');
-  if (detail) detail.innerHTML =
-    `<div style="margin-top:.8em;color:var(--silver)">${de ? `Alle Vereine verlieren ${fmtMoney(loss)}'.` : `All clubs lose ${fmtMoney(loss)}'.`}</div>`;
   appendConeLog(`📉 Zuschauerrückgang · Alle −${fmtMoney(loss)}'`);
-  toast(`📉 ${de ? 'Zuschauerrückgang' : 'Attendance Drop'} — −${fmtMoney(loss)}'`, 'bad', 2500);
-  await sleep(speedMs(2000));
+  const balanceLines = g.players.map(p => `${p.emoji} <b>${escapeHTML(p.name)}</b>: ${fmtMoney(p.money)}'`).join('\n');
+  await showActionPopup({
+    title: '📉 Zuschauerrückgang',
+    description: de
+      ? `Schlechte Saison für alle Vereine!\nJedes Team verliert <b>${fmtMoney(loss)}'</b>.\n\n${balanceLines}`
+      : `Bad season for all clubs!\nEvery team loses <b>${fmtMoney(loss)}'</b>.\n\n${balanceLines}`,
+    affectedPlayers: g.players ? [...g.players] : [],
+    autoMs: player.isHuman ? EVENT_POPUP_MS : BOT_POPUP_MS,
+  });
 }
 
 // Dispatcher — pick one of the 10 cards at random each time
@@ -2970,43 +3089,98 @@ async function applyVnlEvent(player) {
   if (typeof refreshFloatingPanel === 'function') refreshFloatingPanel();
 
   // Log & notify
+  const vnlTitle = de ? `🌍 Länderspiel — Woche ${week}` : `🌍 International Match — Week ${week}`;
+  const nationsHeader = de
+    ? `Aktive Nationen diese Woche: <b>${escapeHTML(nationsLabel)}</b>`
+    : `Active nations this week: <b>${escapeHTML(nationsLabel)}</b>`;
+
   if (!suspensionsByTeam.length) {
-    const msg = de
-      ? `Woche ${week} · Aktive Nationen: ${nationsLabel} — Kein Spieler betroffen.`
-      : `Week ${week} · Active nations: ${nationsLabel} — No players affected.`;
-    appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🚩 VNL · <i style="color:var(--silver)">${msg}</i>`);
-    toast(`🚩 VNL — ${de ? 'Kein Spieler betroffen' : 'No players affected'}`, '', 3000);
+    appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🌍 VNL Wk${week} · keine Spieler betroffen`);
+    await showActionPopup({
+      title: vnlTitle,
+      description: nationsHeader + '\n\n' + (de ? 'Keine Spieler betroffen.' : 'No players affected.'),
+      autoMs: player.isHuman ? EVENT_POPUP_MS : BOT_POPUP_MS,
+    });
   } else {
+    const allHitCards   = suspensionsByTeam.flatMap(({ hits }) => hits);
+    const allHitPlayers = suspensionsByTeam.map(({ p }) => p);
     for (const { p: tp, hits } of suspensionsByTeam) {
-      const names = hits.map(c => escapeHTML(c.name)).join(', ');
-      appendConeLog(`🚩 VNL Wk${week} · ${tp.emoji} ${escapeHTML(tp.name)}: ${names} ${de ? 'gesperrt' : 'suspended'}`);
+      appendConeLog(`🌍 VNL Wk${week} · ${tp.emoji} ${escapeHTML(tp.name)}: ${hits.map(c => escapeHTML(c.name)).join(', ')} ${de ? 'gesperrt' : 'suspended'}`);
+    }
+    const vnlRows = suspensionsByTeam.map(({ p: tp, hits }) =>
+      `${tp.emoji} <b>${escapeHTML(tp.name)}</b>: ${hits.map(c => `${escapeHTML(c.name)} (${escapeHTML(c.nation)} ${posLabel(c.pos)} ★${c.stars})`).join(', ')}`
+    ).join('\n');
+    await showActionPopup({
+      title: vnlTitle,
+      description: nationsHeader + '\n\n' + (de ? 'Gesperrte Spieler:\n' : 'Suspended players:\n') + vnlRows,
+      affectedCards: allHitCards,
+      affectedPlayers: allHitPlayers,
+      autoMs: player.isHuman ? EVENT_POPUP_MS : BOT_POPUP_MS,
+    });
+  }
+}
+
+// ─── Week-start summary popup (Step 5) ───────────────────────────────────────
+// Shows all suspended players and expiring loans at the start of each week.
+// No countdown — only an OK button. autoMs = null means "wait for OK click".
+async function showWeekStartSummary(g) {
+  try {
+    const de = state.lang === 'de';
+    const week = g.week || 1;
+    const title = de ? `📋 Woche ${week} — Kaderübersicht` : `📋 Week ${week} — Squad Overview`;
+
+    const affectedCards   = [];
+    const affectedPlayers = [];
+    const teamLines = [];
+
+    for (const p of g.players) {
+      const lines = [];
+
+      // Suspended team-slot cards
+      for (const pos of POSITIONS) {
+        const c = p.team[pos];
+        if (c && c.disabled) {
+          lines.push(`⛔ <b>${escapeHTML(c.name)}</b> (${posLabel(pos)} ★${c.stars}) — ${de ? 'gesperrt' : 'suspended'}`);
+          affectedCards.push(c);
+        }
+      }
+
+      // Suspended bench cards
+      for (const c of (p.bench || [])) {
+        if (c && c.disabled) {
+          lines.push(`⛔ <b>${escapeHTML(c.name)}</b> (${posLabel(c.pos)} ★${c.stars}) — ${de ? 'gesperrt (Bank)' : 'suspended (bench)'}`);
+          affectedCards.push(c);
+        }
+      }
+
+      // Expiring loan cards this week
+      for (const pos of POSITIONS) {
+        const c = p.team[pos];
+        if (c && c._loanReturn === week) {
+          lines.push(`🔄 <b>${escapeHTML(c.name)}</b> (${posLabel(pos)} ★${c.stars}) — ${de ? 'Leihe läuft ab' : 'loan expires'}`);
+          if (!affectedCards.includes(c)) affectedCards.push(c);
+        }
+      }
+
+      if (lines.length) {
+        teamLines.push(`${p.emoji} <b>${escapeHTML(p.name)}</b>:\n${lines.join('\n')}`);
+        affectedPlayers.push(p);
+      }
     }
 
-    // Show suspension list inside the existing event-detail slot
-    const detail = $('#event-detail');
-    if (detail) {
-      const rows = suspensionsByTeam.map(({ p: tp, hits }) => {
-        const cards = hits.map(c =>
-          `<b>${escapeHTML(c.name)}</b> <span style="color:var(--silver)">(${escapeHTML(c.nation)})</span>`
-        ).join(', ');
-        return `<div style="margin:.25em 0">
-          <span style="color:${tp.color}">${tp.emoji} ${escapeHTML(tp.name)}</span>: ${cards}
-        </div>`;
-      }).join('');
+    const description = teamLines.length
+      ? teamLines.join('\n\n')
+      : (de ? 'Alle Spieler einsatzbereit. Viel Erfolg!' : 'All players available. Good luck!');
 
-      detail.innerHTML = `
-        <div style="margin-top:.8em;font-size:.82em;text-align:left">
-          <div style="color:var(--gold);margin-bottom:.4em">
-            🌍 ${de ? 'Woche' : 'Week'} ${week} — ${escapeHTML(nationsLabel)}
-          </div>
-          ${rows}
-          <div style="color:var(--silver);margin-top:.5em;font-style:italic">
-            ${de ? 'Gesperrt bis nach dem Liga-Spiel.' : 'Suspended until after the league match.'}
-          </div>
-        </div>`;
-    }
-
-    await sleep(speedMs(3000));
+    await showActionPopup({
+      title,
+      description,
+      affectedCards,
+      affectedPlayers,
+      autoMs: null,  // no countdown — human must click OK
+    });
+  } catch (err) {
+    console.error('[VV] showWeekStartSummary crashed:', err);
   }
 }
 

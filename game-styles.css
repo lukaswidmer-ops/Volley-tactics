@@ -991,6 +991,90 @@ button, a, input, select { font-family:inherit; }
 .modal-card .btn { width:100%; }
 @keyframes cs-fade { from{opacity:0} to{opacity:1} }
 
+/* ─── Universal action popup (showActionPopup) ─── */
+.action-upop { max-width: 520px; text-align: left; }
+.action-upop-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 900;
+  font-size: 1.6rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  background: linear-gradient(90deg, var(--red), var(--gold));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 0;
+}
+.action-upop-divider {
+  border: none;
+  border-top: 1px solid rgba(232,67,23,0.3);
+  margin: 0.65rem 0;
+}
+.action-upop-desc {
+  color: var(--silver);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin-bottom: 1.2rem;
+}
+.action-upop-desc b { color: #fff; }
+.action-upop-desc i { color: rgba(255,255,255,0.45); }
+.action-upop-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+.action-upop-footer .btn { flex-shrink: 0; min-width: 72px; }
+.action-upop-track {
+  flex: 1;
+  height: 4px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.action-upop-bar {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, var(--red), var(--gold));
+  border-radius: 2px;
+}
+
+/* ─── Card & player highlight classes for showActionPopup ─── */
+.card-highlight-affected {
+  outline: 3px solid #FF4444;
+  box-shadow: 0 0 12px #FF4444aa;
+  animation: pulse-red 1s infinite alternate;
+  z-index: 2;
+  position: relative;
+}
+.card-highlight-positive {
+  outline: 3px solid #44FF88;
+  box-shadow: 0 0 12px #44FF88aa;
+  animation: pulse-green 1s infinite alternate;
+  z-index: 2;
+  position: relative;
+}
+.team-highlight-own {
+  outline: 3px solid #FFD700 !important;
+  box-shadow: 0 0 16px #FFD700aa !important;
+  animation: pulse-gold 1s infinite alternate;
+}
+.team-highlight-opponent {
+  outline: 3px solid #FF4444 !important;
+  box-shadow: 0 0 16px #FF4444aa !important;
+  animation: pulse-red 1s infinite alternate;
+}
+@keyframes pulse-red {
+  from { box-shadow: 0 0 8px  #FF4444aa; }
+  to   { box-shadow: 0 0 20px #FF4444ff; }
+}
+@keyframes pulse-gold {
+  from { box-shadow: 0 0 8px  #FFD700aa; }
+  to   { box-shadow: 0 0 20px #FFD700ff; }
+}
+@keyframes pulse-green {
+  from { box-shadow: 0 0 8px  #44FF88aa; }
+  to   { box-shadow: 0 0 20px #44FF88ff; }
+}
+
 /* ─── Disabled card overlay ─── */
 .slot.disabled { filter:grayscale(0.7) brightness(0.55); }
 .slot .dis-overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:1.6rem; pointer-events:none; z-index:5; }
