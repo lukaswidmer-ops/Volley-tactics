@@ -415,16 +415,51 @@ function onRoomUpdate(room) {
   // Track host promotion if current host went stale.
   maybePromoteHost(room);
 
-  // Refresh the lobby UI when we're in lobby view
+  const meta = room.meta || {};
   const view = ($('#app') || {}).dataset && $('#app').dataset.view;
-  if (view === 'mp_lobby') {
-    paintLobby(room);
-  } else if (view === 'game') {
-    // Non-host viewer: re-render from gameState snapshot if we are not the host
-    if (!session.isHost && room.gameState) {
-      applyRemoteGameState(room.gameState);
+
+  // Auto-transition non-hosts into spectator mode once the host clicks "Start".
+  if (meta.status === 'running' && !session.gameLaunched) {
+    session.gameLaunched = true;
+    if (!session.isHost && window.VV && typeof window.VV.startMultiplayer === 'function') {
+      const lobbyPlayers = Object.entries(room.players || {})
+        .map(([id, p]) => ({ id, ...p }));
+      window.VV.startMultiplayer({
+        roomCode:      session.roomCode,
+        hostId:        meta.hostId,
+        localPlayerId: session.playerId,
+        players:       lobbyPlayers,
+      });
     }
   }
+
+  // Refresh the lobby UI when we're in lobby view
+  if (view === 'mp_lobby') {
+    paintLobby(room);
+  }
+
+  // Spectators: mirror the host's game state whenever it changes.
+  if (!session.isHost && room.gameState) {
+    applyRemoteGameState(room.gameState);
+  }
+}
+
+function paintViewerWaiting() {
+  const app = $('#app');
+  if (!app) return;
+  setAppView('mp_viewer');
+  app.innerHTML = `
+    <div class="menu-wrap">
+      <div class="menu-card" style="text-align:center;">
+        <div class="menu-title"><span class="accent">${esc(DE('Spiel läuft', 'Game running'))}</span></div>
+        <div class="menu-sub">${esc(DE('Warte auf erste Daten vom Host…', 'Waiting for first snapshot from host…'))}</div>
+        <div class="splash-spinner" style="margin:1.5rem auto;"></div>
+        <button class="btn btn-secondary" data-vvmp-leave>${esc(DE('Lobby verlassen', 'Leave lobby'))}</button>
+      </div>
+    </div>`;
+  document.querySelectorAll('[data-vvmp-leave]').forEach(b => {
+    b.addEventListener('click', () => leaveRoom());
+  });
 }
 
 function maybePromoteHost(room) {
@@ -789,6 +824,7 @@ function installBridge() {
     generateRoomCode, createRoom, joinRoom, leaveRoom,
     syncState, submitInput, listenForInput, setCurrentTurn,
     pauseSelf, resumeSelf, handleDisconnect,
+    paintViewerWaiting,
     get roomCode() { return session.roomCode; },
     get playerId() { return session.playerId; },
     get isHost()   { return session.isHost; },

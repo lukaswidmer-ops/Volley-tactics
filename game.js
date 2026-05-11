@@ -1292,24 +1292,105 @@ function startMultiplayer(opts) {
     localPlayerId: opts.localPlayerId,
     players:       opts.players.slice(),
   };
-  // Bridge note: full state-sync wiring (host writes state after every mutation;
-  // non-host viewers apply remote snapshots) is layered on top of the existing
-  // engine. The host currently runs the local engine and pushes snapshots via
-  // window.VV_MP.syncState(state.game); non-host clients reach this code path
-  // via window.VV.applyRemoteState().
-  toast(state.lang === 'de' ? 'Multiplayer-Modus aktiv.' : 'Multiplayer mode active.', 'good', 2200);
+  const isHost = (opts.hostId === opts.localPlayerId);
+  state.mpRoom.isHost = isHost;
+
+  if (isHost) {
+    // Host runs the engine locally. Build a 4-seat roster from the lobby
+    // and kick off the existing draft → auction → season pipeline.
+    initMultiplayerGame(opts);
+    setView('draft');
+    // Push state to Firebase periodically so spectators stay in sync.
+    if (state.mpSyncTimer) clearInterval(state.mpSyncTimer);
+    state.mpSyncTimer = setInterval(() => {
+      try { if (window.VV_MP && state.game) window.VV_MP.syncState(state.game); }
+      catch (_) {}
+    }, 1500);
+    toast(state.lang === 'de' ? 'Spiel gestartet — du bist Host.' : 'Game started — you are host.', 'good', 2200);
+  } else {
+    // Non-host: spectator mode. Wait for host's snapshot.
+    state.game = null;
+    setView('mp_viewer');
+    try {
+      if (window.VV_MP && typeof window.VV_MP.paintViewerWaiting === 'function') {
+        window.VV_MP.paintViewerWaiting();
+      }
+    } catch (_) {}
+    toast(state.lang === 'de' ? 'Zuschauer-Modus — Host spielt' : 'Spectator — host plays', '', 2800);
+  }
 }
 
 function applyRemoteState(remote) {
   if (!MULTIPLAYER) return;
   if (!remote) return;
-  // Non-host viewer: adopt the host's snapshot wholesale.
+  // Non-host viewer: adopt the host's snapshot wholesale and switch to
+  // the live board the first time real data arrives.
   try {
+    const hadGame = !!state.game;
     state.game = remote;
-    render();
+    if (!hadGame || state.view === 'mp_viewer') {
+      setView('game');
+    } else if (state.view === 'game') {
+      render();
+    }
   } catch (e) {
     console.warn('[VV] applyRemoteState failed:', e);
   }
+}
+
+// Build a 4-player roster from the lobby data and seed state.game with the
+// same shape solo uses. Local player goes to slot 0 so existing UI code
+// that reads `g.players[0]` keeps working.
+function initMultiplayerGame(opts) {
+  ALL_CARDS = buildGameCardPool();
+  try { if (typeof window !== 'undefined') window.VV_CARDS_DB = ALL_CARDS; } catch (_) {}
+
+  const seats = (opts.players || []).slice()
+    .sort((a, b) => (a.slotIndex || 0) - (b.slotIndex || 0));
+  const localId = opts.localPlayerId;
+  const localSeat = seats.find(s => s && s.id === localId);
+  const otherSeats = seats.filter(s => s && s.id !== localId);
+  const ordered = [localSeat, ...otherSeats].filter(Boolean);
+
+  const personas = (window.VV_BOTS && window.VV_BOTS.pickPersonas)
+    ? window.VV_BOTS.pickPersonas(4)
+    : [{color:'#facc15',emoji:'🟡',personality:'balanced',biasPos:'outside'}];
+  while (personas.length < ordered.length) personas.push(personas[0]);
+
+  const players = ordered.map((s, i) => {
+    const persona = personas[i] || personas[0];
+    const isLocal = (s.id === localId);
+    // For this MVP: only the local player is human-on-this-device.
+    // Remote humans are driven by bot AI locally on the host until the
+    // per-turn input bridge is wired through every decision point.
+    const isHuman = isLocal;
+    const name = s.name || ('P' + (i + 1));
+    const p = makePlayer(name, persona.color, persona.emoji, isHuman, persona.personality, persona.biasPos);
+    p.mpId = s.id;
+    p.mpIsBot = !!s.isBot;
+    return p;
+  });
+
+  state.game = {
+    players,
+    activeIdx: 0,
+    week: 0,
+    phase: 'draft',
+    log: [],
+    market: [],
+    marketPile: [],
+    auctionDeck: [],
+    _draftDeck: [],
+    coneDay: 1,
+    over: false, winner: null,
+    leagueMatchesPlayed: 0,
+    season: 1,
+  };
+  state.game._draftDeck = ALL_CARDS
+    .filter(c => c.stars >= 2 && c.stars <= 4)
+    .slice()
+    .sort(() => Math.random() - 0.5);
+  state.game.auctionDeck = [];
 }
 
 
@@ -5005,6 +5086,7 @@ function render() {
     case 'mp_submenu':  renderMpSubmenu(); break;
     case 'mp_join':     /* painted by multiplayer.js */ break;
     case 'mp_lobby':    /* painted by multiplayer.js */ break;
+    case 'mp_viewer':   /* painted by multiplayer.js */ break;
     case 'draft':       renderDraft(); break;
     case 'auction':     renderAuction(); break;
     case 'starting':    renderStarting(); break;
