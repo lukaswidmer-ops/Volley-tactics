@@ -541,14 +541,105 @@ function cardNameFileCaptionHtml(card) {
 // Dice roll utilities
 function roll(n) { return 1 + Math.floor(Math.random()*n); }
 
-// Build flat card pool — delegates to cards.js (window.VV_CARDS_DB)
-function buildAllCards() {
-  const db = (typeof window !== 'undefined' && Array.isArray(window.VV_CARDS_DB))
-    ? window.VV_CARDS_DB : [];
-  if (!db.length) console.error('[VV] VV_CARDS_DB ist leer – cards.js nicht geladen?');
+// Single game card pool: clone roster from cards.js once per game and attach prices.
+function buildGameCardPool() {
+  let db = [];
+  try {
+    if (typeof window !== 'undefined' && typeof window.vvBuildRosterCards === 'function') {
+      db = window.vvBuildRosterCards() || [];
+    }
+  } catch (err) {
+    console.error('[VV] buildGameCardPool roster read failed:', err);
+  }
+  if (!Array.isArray(db) || !db.length) console.error('[VV] Kartenliste leer – cards.js nicht geladen?');
   return db.map(c => Object.assign({}, c, { price: cardBasePrice(c) }));
 }
 let ALL_CARDS = [];
+
+/** Remove this card reference from shared piles (not from player rosters). */
+function removeCardFromPools(card) {
+  try {
+    if (!card || !state.game) return;
+    const g = state.game;
+    g.auctionDeck = (g.auctionDeck || []).filter(c => c !== card);
+    g._draftDeck = (g._draftDeck || []).filter(c => c !== card);
+    g.market = (g.market || []).filter(c => c !== card);
+    g.marketPile = (g.marketPile || []).filter(c => c !== card);
+  } catch (err) {
+    console.error('[VV] removeCardFromPools:', err);
+  }
+}
+
+/** Evict one duplicate instance from pools / all rosters (keeps earlier occurrence elsewhere). */
+function stripDuplicateCardInstance(card) {
+  try {
+    if (!card || !state.game) return;
+    const g = state.game;
+    removeCardFromPools(card);
+    for (const p of g.players) {
+      for (const pos of POSITIONS) {
+        if (p.team[pos] === card) p.team[pos] = null;
+      }
+      p.bench = (p.bench || []).filter(c => c !== card);
+      p.suspended = (p.suspended || []).filter(e => !e || e.card !== card);
+    }
+  } catch (err) {
+    console.error('[VV] stripDuplicateCardInstance:', err);
+  }
+}
+
+function assertNoDuplicates() {
+  try {
+    const g = state.game;
+    if (!g || !Array.isArray(g.players)) return;
+    const firstById = new Map();
+    const collect = [];
+    const push = (c) => { if (c && c.id) collect.push(c); };
+    for (const p of g.players) {
+      for (const pos of POSITIONS) push(p.team[pos]);
+      for (const c of (p.bench || [])) push(c);
+      for (const e of (p.suspended || [])) if (e && e.card) push(e.card);
+    }
+    for (const c of (g.marketPile || [])) push(c);
+    for (const c of (g.auctionDeck || [])) push(c);
+    for (const c of (g._draftDeck || [])) push(c);
+    for (const card of collect) {
+      if (firstById.has(card.id) && firstById.get(card.id) !== card) {
+        console.error('[VV] DUPLICATE CARD:', card.id, card.name);
+        stripDuplicateCardInstance(card);
+      } else if (!firstById.has(card.id)) {
+        firstById.set(card.id, card);
+      }
+    }
+  } catch (err) {
+    console.error('[VV] assertNoDuplicates:', err);
+  }
+}
+
+function rebuildAuctionDeckAfterDraft() {
+  try {
+    const g = state.game;
+    if (!g || !Array.isArray(ALL_CARDS)) return;
+    const owned = ownedCardIds();
+    g.auctionDeck = ALL_CARDS.filter(c => c && Number(c.stars) >= 2 && !owned.has(c.id))
+      .slice()
+      .sort(() => Math.random() - 0.5);
+    g._draftDeck = [];
+  } catch (err) {
+    console.error('[VV] rebuildAuctionDeckAfterDraft:', err);
+  }
+}
+
+function pickUnowned1Star(poolPos) {
+  try {
+    const owned = ownedCardIds();
+    const opts = (ALL_CARDS || []).filter(c => c && c.stars === 1 && c.pos === poolPos && !owned.has(c.id));
+    return opts.length ? choice(opts) : null;
+  } catch (err) {
+    console.error('[VV] pickUnowned1Star:', err);
+    return null;
+  }
+}
 
 
 // ── Card-lookup helpers ────────────────────────────────────────────────────
@@ -575,13 +666,20 @@ function autoSelectLineup(player) {
       else if (c) keptBench.push(c);
     }
     player.bench = keptBench;
-    // Sort: highest stars first
     avail.sort((a, b) => b.stars - a.stars);
-    // Re-assign: primary slot, secondary slot, then bench
+    // Same physical card must never occupy primary + secondary (e.g. outside + outside2)
+    const uniq = [];
+    const seenId = new Set();
+    for (const c of avail) {
+      if (c && c.id && !seenId.has(c.id)) {
+        seenId.add(c.id);
+        uniq.push(c);
+      }
+    }
     let i = 0;
-    if (i < avail.length) player.team[pos] = avail[i++];
-    if (sec && i < avail.length) player.team[sec] = avail[i++];
-    while (i < avail.length) player.bench.push(avail[i++]);
+    if (i < uniq.length) player.team[pos] = uniq[i++];
+    if (sec && i < uniq.length) player.team[sec] = uniq[i++];
+    while (i < uniq.length) player.bench.push(uniq[i++]);
   }
 }
 
@@ -1053,7 +1151,7 @@ function startConfetti(durationMs = 8000) {
 function boot() {
   state.speed = 'normal';
   localStorage.setItem('vv_speed', 'normal');
-  ALL_CARDS = buildAllCards();
+  // ALL_CARDS is built once when a game starts (initSoloGame), not here — avoids two masters.
   const stBtn = $('#sound-toggle');
   if (stBtn) {
     stBtn.hidden = false;
@@ -1185,7 +1283,10 @@ function makePlayer(name, color, emoji, isHuman, personality, biasPos) {
 }
 
 function initSoloGame() {
-  ALL_CARDS = buildAllCards();
+  ALL_CARDS = buildGameCardPool();
+  try {
+    if (typeof window !== 'undefined') window.VV_CARDS_DB = ALL_CARDS;
+  } catch (_) {}
   const human = makePlayer(state.playerName, '#facc15', '🟡', true, 'balanced', 'outside');
   const bots = window.VV_BOTS.pickPersonas(3);
   const bot1 = makePlayer('Bot ' + bots[0].name, bots[0].color, bots[0].emoji, false, bots[0].personality, bots[0].biasPos);
@@ -1199,17 +1300,19 @@ function initSoloGame() {
     log: [],
     market: [],
     marketPile: [],    // unsold auction cards — appear on the market for direct purchase
-    auctionDeck: [],   // shuffled 2-5 star cards for in-game auctions/transfers
+    auctionDeck: [],   // filled after draft — all unowned 2–5★ (same object refs as ALL_CARDS)
+    _draftDeck: [],    // draft only: 2–4★ unowned during blind draft (never overlap auctionDeck)
     coneDay: 1,        // black cone position on the timeline (day 1 → 50)
     over: false, winner: null,
     leagueMatchesPlayed: 0,
     season: 1,
   };
-  // Build auction deck: fresh copies of all 2-5★ cards, shuffled
-  state.game.auctionDeck = ALL_CARDS
-    .filter(c => c.stars >= 2)
-    .map(c => Object.assign({}, c))   // fresh copy per card — no shared references
+  // Draft draws only from _draftDeck; auction deck is built in rebuildAuctionDeckAfterDraft()
+  state.game._draftDeck = ALL_CARDS
+    .filter(c => c.stars >= 2 && c.stars <= 4)
+    .slice()
     .sort(() => Math.random() - 0.5);
+  state.game.auctionDeck = [];
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -1362,23 +1465,23 @@ function draftHandHtml(p) {
 }
 
 function deckPoolForStars(stars) {
-  // Pool of 2-4 stars from auctionDeck-like pool. The blind draft draws from a simulated deck
-  // that includes ALL cards of that star count (so the human and bots all share the same source pool).
   const g = state.game;
-  if (!g._draftDeck) {
-    // Build a master draft deck from all 2-4 star cards (1-star are picked, not drawn)
-    g._draftDeck = ALL_CARDS.filter(c => c.stars >= 2 && c.stars <= 4).slice().sort(()=>Math.random()-0.5);
+  if (!Array.isArray(g._draftDeck) || g._draftDeck.length === 0) {
+    const owned = ownedCardIds();
+    g._draftDeck = ALL_CARDS.filter(c => c.stars >= 2 && c.stars <= 4 && !owned.has(c.id))
+      .slice()
+      .sort(() => Math.random() - 0.5);
   }
   const idx = g._draftDeck.findIndex(c => c.stars === stars);
   if (idx < 0) return null;
-  const card = g._draftDeck.splice(idx, 1)[0];
-  return card;
+  return g._draftDeck.splice(idx, 1)[0];
 }
 
 // Maps primary positions to their secondary slot (two-OH / two-MB rule)
 const POS_SECONDARY = { outside: 'outside2', middle: 'middle2' };
 
 function placeIntoTeamOrBench(p, card) {
+  removeCardFromPools(card);
   const primary = card.pos;
   const secondary = POS_SECONDARY[primary];
 
@@ -1471,6 +1574,7 @@ function draftResetAll() {
       p.bench = [];
     }
     g._draftDeck.sort(() => Math.random() - 0.5);
+    assertNoDuplicates();
   } catch (err) {
     console.error('[VV] draftResetAll crashed:', err);
   }
@@ -1524,7 +1628,9 @@ function draftRedraw() {
   const me = state.game.players[0];
   // Return all current draft cards to the deck and start over
   const all = [...Object.values(me.team).filter(Boolean), ...me.bench];
-  for (const c of all) state.game._draftDeck.push(c);
+  for (const c of all) {
+    if (c && c.stars >= 2 && c.stars <= 4) state.game._draftDeck.push(c);
+  }
   state.game._draftDeck.sort(()=>Math.random()-0.5);
   me.team = { outside:null, outside2:null, middle:null, middle2:null, setter:null, diagonal:null, libero:null };
   me.bench = [];
@@ -1537,9 +1643,8 @@ async function draftPick1(pos) {
   if (counts[1] >= 3) { toast(T('draft_pick_limit'), 'bad'); return; }
   // outside2/middle2 share the same card pool as outside/middle
   const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
-  const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === poolPos);
-  if (!opts.length) { toast(T('no_card_for_pos')||'No card', 'bad'); return; }
-  const c = choice(opts);
+  const c = pickUnowned1Star(poolPos);
+  if (!c) { toast(T('no_card_for_pos')||'No card', 'bad'); return; }
   // Force placement into the correct target slot
   if (!me.team[pos]) {
     me.team[pos] = c;
@@ -1562,6 +1667,8 @@ function draftFinish() {
   ensureFiveStarter(g.players[0]);
   // Optimize lineup for all players after draft
   for (const p of g.players) autoSelectLineup(p);
+  rebuildAuctionDeckAfterDraft();
+  assertNoDuplicates();
   state.game.phase = 'auction';
   setView('auction');
 }
@@ -1582,9 +1689,8 @@ function autoDraftBot(bot) {
     const empties = POSITIONS.filter(p => !bot.team[p]);
     let pos = empties.length ? choice(empties) : (bot.biasPos || choice(POSITIONS));
     const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
-    const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === poolPos);
-    if (opts.length) {
-      const c = choice(opts);
+    const c = pickUnowned1Star(poolPos);
+    if (c) {
       if (!bot.team[pos]) bot.team[pos] = c; else placeIntoTeamOrBench(bot, c);
     }
   }
@@ -1606,8 +1712,8 @@ function ensureFiveStarter(p) {
   for (const pos of POSITIONS) {
     if (!p.team[pos]) {
       const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
-      const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === poolPos);
-      if (opts.length) p.team[pos] = choice(opts);
+      const c = pickUnowned1Star(poolPos);
+      if (c) p.team[pos] = c;
     }
   }
 }
@@ -1650,8 +1756,11 @@ async function runOpeningAuction() {
   // Safety net: if the deck got short/corrupt, rebuild enough auction cards so setup never soft-locks.
   if (cards.length < 6) {
     const missing = 6 - cards.length;
+    const owned = ownedCardIds();
+    const inOpening = new Set(cards.map(c => c && c.id).filter(Boolean));
     const refill = ALL_CARDS
-      .filter(c => c && Number(c.stars) >= 2)
+      .filter(c => c && Number(c.stars) >= 2 && !owned.has(c.id) && !inOpening.has(c.id))
+      .slice()
       .sort(() => Math.random() - 0.5)
       .slice(0, missing);
     cards = cards.concat(refill);
@@ -1668,6 +1777,7 @@ async function runOpeningAuction() {
     refreshTopbar();
     await sleep(speedMs(400));
   }
+  assertNoDuplicates();
 }
 
 async function runAuctionForCard(card, idx, total) {
@@ -1774,6 +1884,7 @@ async function runAuctionForCard(card, idx, total) {
     refreshTopbar();
   }
   await sleep(speedMs(800));
+  assertNoDuplicates();
   hideTeamSidebar();
 }
 
@@ -2651,8 +2762,7 @@ function drawAuctionCard() {
   }
   const card = g.auctionDeck.shift();
   if (!card) return null;
-  // Return a fresh copy so placing it doesn't mutate the ALL_CARDS template
-  return Object.assign({}, card);
+  return card;
 }
 
 async function applyTransfer(player) {
@@ -3108,6 +3218,7 @@ async function ac_talentfoerderung(player) {
     affectedPlayers: [player],
     autoMs: player.isHuman ? EVENT_POPUP_MS : BOT_POPUP_MS,
   });
+  assertNoDuplicates();
 }
 
 // AC 6 — Busunfall: d6 → 1–2: suspend 1 card  3–4: suspend 2 cards  5–6: nothing
@@ -3290,6 +3401,7 @@ async function ac_leihgeschaeft(player) {
 
   // Tag for return and add to drawing player's bench
   loanCard._loanOwner = opp.id;
+  loanCard.loanedFrom = opp.id;
   loanCard._loanSlot  = entry.slot;   // null if from bench
   loanCard._loanReturn = true;
   if (!Array.isArray(player.bench)) player.bench = [];
@@ -3310,6 +3422,7 @@ async function ac_leihgeschaeft(player) {
     affectedPlayers: [player, opp],
     autoMs: player.isHuman ? EVENT_POPUP_MS : BOT_POPUP_MS,
   });
+  assertNoDuplicates();
 }
 
 // AC 10 — Zuschauerrückgang: all players lose 8 000 CHF
@@ -3583,14 +3696,13 @@ function disablePlayerOnTeam(player, pos, reason) {
     'bad', 3000
   );
 
-  const opts = (ALL_CARDS || []).filter(c => c.stars === 1 && (c.pos === pos || c.pos === poolPos));
-  if (opts.length) {
-    const em = Object.assign({}, choice(opts), {
-      _isSub: true,
-      _subReason: state.lang === 'de' ? 'Notfall-Einwechslung' : 'Emergency sub',
-    });
-    player.team[pos] = em;
-    return em;
+  const pick = pickUnowned1Star(poolPos) || pickUnowned1Star(pos);
+  if (pick) {
+    removeCardFromPools(pick);
+    pick._isSub = true;
+    pick._subReason = state.lang === 'de' ? 'Notfall-Einwechslung' : 'Emergency sub';
+    player.team[pos] = pick;
+    return pick;
   }
 
   // Edge case: no 1★ card exists in the pool for this position — slot stays empty
@@ -3643,7 +3755,7 @@ function restoreDisabledCards(afterLeague) {
       p.bench = p.bench.filter(c => c !== card);
       const owner = g.players.find(pl => pl.id === card._loanOwner);
       const origSlot = card._loanSlot;
-      delete card._loanReturn; delete card._loanOwner; delete card._loanSlot;
+      delete card._loanReturn; delete card._loanOwner; delete card._loanSlot; delete card.loanedFrom;
       if (!owner) continue;
       if (!Array.isArray(owner.bench)) owner.bench = [];
       if (origSlot && !owner.team[origSlot]) {
@@ -3660,6 +3772,7 @@ function restoreDisabledCards(afterLeague) {
   state.selectedBenchCard = null;
   refreshTopbar(); refreshTeamPanel();
   if (typeof refreshFloatingPanel === 'function') refreshFloatingPanel();
+  assertNoDuplicates();
 }
 
 
@@ -4373,6 +4486,7 @@ async function runAuctionUI(card, titleLabel, firstPlayer) {
     registerPopupClose(popId, () => resolve());
   });
   await sleep(200);
+  assertNoDuplicates();
   hideTeamSidebar();
 }
 
@@ -4408,6 +4522,7 @@ async function runForcedSaleAuctions() {
       await runAuctionUI(card, `📰 ${de ? 'Pflichtverkauf' : 'Forced Sale'} — ${escapeHTML(card.name)}`);
     }
   }
+  assertNoDuplicates();
 }
 
 async function runMarketPhase() {
@@ -4443,12 +4558,14 @@ async function runMarketPhase() {
       await sleep(speedMs(200)); // bot market buy thinking delay
       const pick = window.VV_BOTS.pickMarketBuy(bot, g.market);
       if (pick) {
+        removeCardFromPools(pick);
         const cur = bot.team[pick.pos];
         bot.team[pick.pos] = pick;
         if (cur) bot.bench.push(cur);
         autoSelectLineup(bot);
         bot.money -= pick.price;
         g.market = g.market.filter(c => c.id !== pick.id);
+        g.marketPile = (g.marketPile || []).filter(c => c.id !== pick.id);
         logEntry(fmt(T('bot_buys'), `${bot.emoji} ${escapeHTML(bot.name)}`, T('pos_'+pick.pos), pick.stars, fmtMoney(pick.price)), 'tournament');
       } else {
         logEntry(fmt(T('bot_skips'), `${bot.emoji} ${escapeHTML(bot.name)}`));
@@ -4461,6 +4578,7 @@ async function runMarketPhase() {
     safeRenderMarket();
   }
   safeRenderMarket();
+  assertNoDuplicates();
   const marketAutoCloseMs = state.speed === 'auto' ? speedMs(800) : 0; // 0 = no auto-close; human must click
   if (marketAutoCloseMs > 0) setTimeout(() => { if (_waiters['endMarket']) endMarket(); }, marketAutoCloseMs);
   await waitFor('endMarket', marketAutoCloseMs || undefined);
@@ -4603,7 +4721,8 @@ function renderMarket() {
 function oneStarMarketHtml(me, weakPos) {
   return POSITIONS.map(pos => {
     const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
-    const c = (ALL_CARDS.filter(x => x.stars === 1 && x.pos === poolPos)[0]) || null;
+    const owned = ownedCardIds();
+    const c = (ALL_CARDS || []).find(x => x && x.stars === 1 && x.pos === poolPos && !owned.has(x.id)) || null;
     if (!c) return '';
     const canAfford = me.money >= PRICE_PER_STAR;
     const suggested = pos === weakPos;
@@ -4642,9 +4761,9 @@ function buyOneStar(pos) {
   const me = state.game.players[0];
   if (me.money < PRICE_PER_STAR) { toast(state.lang==='de'?'Zu teuer':'Too expensive', 'bad'); return; }
   const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
-  const opts = ALL_CARDS.filter(c => c.stars === 1 && c.pos === poolPos);
-  if (!opts.length) return;
-  const c = choice(opts);
+  const c = pickUnowned1Star(poolPos);
+  if (!c) return;
+  removeCardFromPools(c);
   const cur = me.team[pos];
   if (cur) me.bench.push(cur); // always move existing card to bench
   me.team[pos] = c;
@@ -4655,6 +4774,7 @@ function buyOneStar(pos) {
   beep(880, 60);
   refreshTopbar(); refreshTeamPanel(); renderMarket(); refreshFloatingPanel();
   logEntry(`💰 ${state.lang==='de'?'Gekauft':'Bought'}: ${c.name} (1★) -${fmtMoney(PRICE_PER_STAR)}'`, 'win');
+  assertNoDuplicates();
 }
 
 function sellBenchCard(id) {
@@ -4715,10 +4835,12 @@ function marketCardHtml(c, player, opts) {
 }
 
 function buyCard(id) {
-  const c = ALL_CARDS.find(x => x.id === id);
-  const me = state.game.players[0];
+  const g = state.game;
+  const c = (g.market || []).find(x => x.id === id) || (g.marketPile || []).find(x => x.id === id);
+  const me = g.players[0];
   if (!c) return;
   if (me.money < c.price) { toast(state.lang==='de'?'Zu teuer':'Too expensive', 'bad'); return; }
+  removeCardFromPools(c);
   const cur = me.team[c.pos];
   if (cur && cur.stars >= c.stars) {
     if (!confirm(state.lang==='de'?'Aktuelle Karte ist gleichstark oder stärker — trotzdem kaufen?':'Current card has equal or higher stars — buy anyway?')) return;
@@ -4734,6 +4856,7 @@ function buyCard(id) {
   beep(880, 60);
   refreshTopbar(); refreshTeamPanel();
   renderMarket();
+  assertNoDuplicates();
 }
 function endMarket() {
   closeGamePopup('market-popup');

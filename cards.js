@@ -194,8 +194,11 @@
 
   // Expose for game.js (loaded later as a separate <script>).
   if (typeof window !== 'undefined') {
-    window.buildAllCards  = buildAllCards;
-    window.VV_CARDS_DB    = buildAllCards();   // snapshot for console debugging
+    window.buildAllCards = buildAllCards;
+    // Roster factory (same fn); game.js must call this, not redefine global buildAllCards.
+    window.vvBuildRosterCards = buildAllCards;
+    // Do not materialise a second full card list — game.js builds ALL_CARDS once per game.
+    window.VV_CARDS_DB = null;
   }
   // Node test-harness compatibility.
   if (typeof module !== 'undefined' && module.exports) {

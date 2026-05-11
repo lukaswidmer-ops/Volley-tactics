@@ -857,7 +857,7 @@ const counterEl = document.getElementById('gal-counter');
 let gal = { idx: 0, total: 0 };
 
 function openGallery(pos) {
-  if (typeof window.VV_CARDS_DB === 'undefined') {
+  if (typeof window.vvBuildRosterCards !== 'function') {
     alert('cards.js nicht geladen!');
     return;
   }
@@ -870,7 +870,7 @@ function openGallery(pos) {
   };
   const info  = posInfo[pos];
   if (!info) return;
-  const cards = window.VV_CARDS_DB.filter(c => c.pos === pos);
+  const cards = (window.vvBuildRosterCards() || []).filter(c => c.pos === pos);
   if (!cards.length) return;
 
   gal.idx   = 0;
