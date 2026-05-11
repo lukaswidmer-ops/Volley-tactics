@@ -7,6 +7,14 @@
 'use strict';
 
 // ============================================================
+// MULTIPLAYER FLAG
+// Owned by multiplayer.js. Defaults to false so all solo logic
+// runs unchanged. Any new MP-specific branch must be guarded by
+// `if (MULTIPLAYER)` or `if (!MULTIPLAYER)` — never mixed in.
+// ============================================================
+let MULTIPLAYER = false;
+
+// ============================================================
 // 1. CONSTANTS & CONFIGURATION
 //    i18n strings, colour tokens, commentary, board layout
 // ============================================================
@@ -1255,8 +1263,54 @@ function renderMpSubmenu() {
       </div>
     </div>`;
 }
-function createRoom() { toast(T('mp_unavailable'), 'bad', 4000); }
-function showJoinForm() { toast(T('mp_unavailable'), 'bad', 4000); }
+function createRoom() {
+  if (MULTIPLAYER || (window.VV_MP && typeof window.VV_MP.createRoom === 'function')) {
+    return window.VV_MP.createRoom();
+  }
+  toast(T('mp_unavailable'), 'bad', 4000);
+}
+function showJoinForm() {
+  if (MULTIPLAYER || (window.VV_MP && typeof window.VV_MP.showJoinForm === 'function')) {
+    return window.VV_MP.showJoinForm();
+  }
+  // multiplayer.js installs its showJoinForm onto window.VV directly,
+  // but if loaded late we still fall back to the toast.
+  if (window.VV && window.VV.showJoinForm && window.VV.showJoinForm !== showJoinForm) {
+    return window.VV.showJoinForm();
+  }
+  toast(T('mp_unavailable'), 'bad', 4000);
+}
+
+// ── Multiplayer hand-off (called by multiplayer.js when host starts game) ──
+function startMultiplayer(opts) {
+  if (!opts || !Array.isArray(opts.players)) return;
+  MULTIPLAYER = true;
+  state.mode = 'mp';
+  state.mpRoom = {
+    roomCode:      opts.roomCode,
+    hostId:        opts.hostId,
+    localPlayerId: opts.localPlayerId,
+    players:       opts.players.slice(),
+  };
+  // Bridge note: full state-sync wiring (host writes state after every mutation;
+  // non-host viewers apply remote snapshots) is layered on top of the existing
+  // engine. The host currently runs the local engine and pushes snapshots via
+  // window.VV_MP.syncState(state.game); non-host clients reach this code path
+  // via window.VV.applyRemoteState().
+  toast(state.lang === 'de' ? 'Multiplayer-Modus aktiv.' : 'Multiplayer mode active.', 'good', 2200);
+}
+
+function applyRemoteState(remote) {
+  if (!MULTIPLAYER) return;
+  if (!remote) return;
+  // Non-host viewer: adopt the host's snapshot wholesale.
+  try {
+    state.game = remote;
+    render();
+  } catch (e) {
+    console.warn('[VV] applyRemoteState failed:', e);
+  }
+}
 
 
 // ────────────────────────────────────────────────────────────────
@@ -4949,6 +5003,8 @@ function render() {
     case 'intro':       renderIntro(); break;
     case 'menu':        renderMenu(); break;
     case 'mp_submenu':  renderMpSubmenu(); break;
+    case 'mp_join':     /* painted by multiplayer.js */ break;
+    case 'mp_lobby':    /* painted by multiplayer.js */ break;
     case 'draft':       renderDraft(); break;
     case 'auction':     renderAuction(); break;
     case 'starting':    renderStarting(); break;
@@ -5130,6 +5186,9 @@ window.VV = {
   toggleFloatingPanel, toggleSellMode, toggleLog, toggleMarketPopup,
   handleFloatingClick, handleFloatingBenchClick,
   exportLog, showFullHistory,
+  // ── Multiplayer interop (used by multiplayer.js) ──
+  state, toast,
+  startMultiplayer, applyRemoteState,
 };
 
 // ────────────────────────────────────────────────────────────────
