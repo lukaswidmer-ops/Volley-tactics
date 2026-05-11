@@ -73,6 +73,13 @@
    The host runs the existing engine locally. Once a real multiplayer
    match begins, syncState() pushes the host's state to Firebase
    and non-host clients re-render from the snapshot.
+
+   Idle-TTL cleanup (15 min):
+   • Every meaningful write (createRoom, heartbeat, syncState,
+     submitInput, addBot, removePlayer) updates `meta.lastActivity`.
+   • A best-effort sweep on every page load + every 5 min deletes
+     rooms whose freshest signal (lastActivity / createdAt /
+     newest human heartbeat) is older than IDLE_TTL_MS.
    ================================================================ */
 
 import {
@@ -82,11 +89,12 @@ import {
 // ---------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------
-const ROOM_TTL_MS         = 30 * 60 * 1000;   // 30 min
+const IDLE_TTL_MS         = 15 * 60 * 1000;   // idle TTL — auto-delete rooms idle > 15 min
 const HEARTBEAT_MS        = 15 * 1000;        // lastSeen ping
 const DISCONNECT_AFTER_MS = 20 * 1000;        // host promotion / bot takeover
 const PAUSE_MAX_MS        = 60 * 1000;        // 60 s
 const FINISHED_CLEANUP_MS = 5 * 60 * 1000;    // 5 min after finish
+const SWEEP_INTERVAL_MS   = 5 * 60 * 1000;    // local stale-room sweep cadence
 const ROOM_CODE_CHARS     = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I
 const MAX_HUMANS_PER_ROOM = 4;
 
@@ -179,14 +187,62 @@ async function generateUniqueRoomCode() {
     const code = generateRoomCode();
     const snap = await get(ref(db, 'rooms/' + code));
     if (!snap.exists()) return code;
-    // Opportunistic cleanup: if the existing room is expired, evict it.
-    const meta = snap.val() && snap.val().meta;
-    if (meta && typeof meta.expiresAt === 'number' && meta.expiresAt < Date.now()) {
+    // Opportunistic cleanup: if the existing room is idle-expired, evict it.
+    if (isRoomStale(snap.val())) {
       try { await remove(ref(db, 'rooms/' + code)); } catch (_) {}
       return code;
     }
   }
   throw new Error(DE('Konnte keinen freien Raum-Code finden.', 'Could not allocate a free room code.'));
+}
+
+// ---------------------------------------------------------------
+// Idle-TTL helpers
+// ---------------------------------------------------------------
+function roomLastActivity(room) {
+  const meta = (room && room.meta) || {};
+  const lastA   = typeof meta.lastActivity === 'number' ? meta.lastActivity : 0;
+  const created = typeof meta.createdAt    === 'number' ? meta.createdAt    : 0;
+  // Freshest human heartbeat counts as "alive" even if meta.lastActivity is stale.
+  let lastSeen = 0;
+  const players = (room && room.players) || {};
+  for (const p of Object.values(players)) {
+    if (p && !p.isBot && typeof p.lastSeen === 'number' && p.lastSeen > lastSeen) {
+      lastSeen = p.lastSeen;
+    }
+  }
+  return Math.max(lastA, created, lastSeen);
+}
+function isRoomStale(room) {
+  return (Date.now() - roomLastActivity(room)) > IDLE_TTL_MS;
+}
+
+// Best-effort scan of /rooms; deletes any room idle for longer than IDLE_TTL_MS.
+// Requires ".read": true at /rooms in DB rules (database.rules.json already has it).
+async function sweepStaleRooms() {
+  try {
+    const snap = await get(ref(db, 'rooms'));
+    if (!snap.exists()) return;
+    const rooms = snap.val() || {};
+    const removals = [];
+    for (const [code, room] of Object.entries(rooms)) {
+      if (!room) continue;
+      if (isRoomStale(room)) {
+        removals.push(remove(ref(db, 'rooms/' + code)).catch(() => {}));
+      }
+    }
+    if (removals.length) await Promise.all(removals);
+  } catch (err) {
+    console.warn('[VV_MP] sweep skipped:', err && err.message);
+  }
+}
+
+// Refresh meta.lastActivity on the current room (best-effort).
+async function bumpRoomActivity() {
+  if (!session.roomCode) return;
+  try {
+    await update(ref(db, `rooms/${session.roomCode}/meta`), { lastActivity: Date.now() });
+  } catch (_) { /* swallow */ }
 }
 
 // ---------------------------------------------------------------
@@ -204,8 +260,8 @@ async function createRoom() {
     const now = Date.now();
     const roomData = {
       meta: {
-        createdAt: now,
-        expiresAt: now + ROOM_TTL_MS,
+        createdAt:    now,
+        lastActivity: now,
         hostId:    session.playerId,
         status:    'lobby',
       },
@@ -292,7 +348,9 @@ async function joinRoom(code, name) {
     }
     const room = snap.val();
     const meta = room.meta || {};
-    if (typeof meta.expiresAt === 'number' && meta.expiresAt < Date.now()) {
+    if (isRoomStale(room)) {
+      // Stale room: evict so the same code can be reused.
+      try { await remove(ref(db, 'rooms/' + code)); } catch (_) {}
       showToast(DE('Raumcode abgelaufen.', 'Room code expired.'), 'bad'); return;
     }
     const players = room.players || {};
@@ -373,8 +431,13 @@ function startHeartbeat() {
   stopHeartbeat();
   const ping = () => {
     if (!session.roomCode || !session.playerId) return;
-    update(ref(db, `rooms/${session.roomCode}/players/${session.playerId}`), {
-      lastSeen: Date.now(), isConnected: true
+    const now = Date.now();
+    // Atomic multi-path update: own lastSeen + room-level lastActivity, so
+    // the idle-TTL sweep sees an active human and won't drop the room.
+    update(ref(db, `rooms/${session.roomCode}`), {
+      [`players/${session.playerId}/lastSeen`]:    now,
+      [`players/${session.playerId}/isConnected`]: true,
+      'meta/lastActivity':                          now,
     }).catch(err => console.warn('[VV_MP] heartbeat failed:', err));
   };
   ping();
@@ -820,12 +883,14 @@ async function addBotToSlot(slotIdx) {
     pauseUntil: null,
     slotIndex: slotIdx,
   }));
+  bumpRoomActivity();
 }
 
 async function removePlayer(playerId) {
   if (!session.isHost || !session.roomCode) return;
   if (playerId === session.playerId) return;
   await fb('removePlayer', () => remove(ref(db, `rooms/${session.roomCode}/players/${playerId}`)));
+  bumpRoomActivity();
 }
 
 async function leaveRoom(silent) {
@@ -946,9 +1011,13 @@ async function flushGameStateSyncNow(force) {
   } catch (_) { return; }
   if (!force && json === _lastSyncedJson) return;
   try {
-    await set(ref(db, `rooms/${session.roomCode}/gameState`), safe);
+    const ts = Date.now();
+    await update(ref(db, `rooms/${session.roomCode}`), {
+      gameState:           safe,
+      'meta/lastActivity': ts,
+    });
     _lastSyncedJson = json;
-    _lastSyncWriteAt = Date.now();
+    _lastSyncWriteAt = ts;
   } catch (err) {
     console.warn('[VV_MP] syncState failed:', err);
   }
@@ -965,9 +1034,13 @@ async function syncState(gameState) {
     const safe = JSON.parse(JSON.stringify(gameState || null));
     const json = JSON.stringify(safe);
     if (json === _lastSyncedJson) return;
-    await set(ref(db, `rooms/${session.roomCode}/gameState`), safe);
+    const ts = Date.now();
+    await update(ref(db, `rooms/${session.roomCode}`), {
+      gameState:           safe,
+      'meta/lastActivity': ts,
+    });
     _lastSyncedJson = json;
-    _lastSyncWriteAt = Date.now();
+    _lastSyncWriteAt = ts;
   } catch (err) {
     console.warn('[VV_MP] syncState failed:', err);
   }
@@ -988,9 +1061,10 @@ function applyRemoteGameState(remote) {
 // ---------------------------------------------------------------
 async function submitInput(payload) {
   if (!session.roomCode || !session.playerId) return;
-  await fb('submitInput', () => set(ref(db, `rooms/${session.roomCode}/inputs/${session.playerId}`), {
-    at: Date.now(),
-    payload,
+  const now = Date.now();
+  await fb('submitInput', () => update(ref(db, `rooms/${session.roomCode}`), {
+    [`inputs/${session.playerId}`]: { at: now, payload },
+    'meta/lastActivity':            now,
   }));
 }
 
@@ -1101,3 +1175,8 @@ function installBridge() {
 
 installBridge();
 ensurePlayerId();
+
+// Opportunistic stale-room cleanup: on load + every 5 min while the page
+// stays open. Auto-deletes any room idle for more than IDLE_TTL_MS (15 min).
+sweepStaleRooms();
+setInterval(sweepStaleRooms, SWEEP_INTERVAL_MS);
