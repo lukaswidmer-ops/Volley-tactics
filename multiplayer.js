@@ -480,9 +480,11 @@ function onRoomUpdate(room) {
   maybePromoteHost(room);
 
   const meta = room.meta || {};
-  const view = ($('#app') || {}).dataset && $('#app').dataset.view;
 
   // Auto-transition non-hosts into spectator mode once the host clicks "Start".
+  // This MUST run before we read the current view, since startMultiplayer
+  // switches the app data-view to 'mp_viewer'. Reading the view afterwards
+  // ensures we don't accidentally repaint the lobby over the spectator UI.
   if (meta.status === 'running' && !session.gameLaunched) {
     session.gameLaunched = true;
     if (!session.isHost && window.VV && typeof window.VV.startMultiplayer === 'function') {
@@ -497,7 +499,10 @@ function onRoomUpdate(room) {
     }
   }
 
-  // Refresh the lobby UI when we're in lobby view
+  // Re-read the view AFTER any possible transition above so we don't repaint
+  // the lobby on top of mp_viewer / game when the non-host just moved on.
+  const view = ($('#app') || {}).dataset && $('#app').dataset.view;
+
   if (view === 'mp_lobby') {
     paintLobby(room);
   }
