@@ -1,11 +1,14 @@
 /* ─────────────────────────────────────────────────────────
    VOLLEY VENDETTA – Game UI styles
    ───────────────────────────────────────────────────────── */
+
+/* === RESET & BASE === */
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
 :root {
   --red:#e84317; --orange:#f97316; --gold:#f59e0b;
   --dark:#080808; --dark2:#111; --dark3:#1a1a1a; --dark4:#222;
   --silver:#b0b0b0; --line:rgba(255,255,255,0.08);
+  /* === POSITION COLOUR TOKENS === */
   --c-out:#e84317; --c-mid:#16a34a; --c-set:#0ea5e9; --c-dia:#4f46e5; --c-lib:#ca8a04;
   --good:#22c55e; --bad:#ef4444; --warn:#fbbf24;
   --shadow:0 10px 30px rgba(0,0,0,0.5);
@@ -32,6 +35,7 @@ button { font-family:inherit; cursor:pointer; }
 *:focus-visible { outline:2px solid rgba(232,67,23,0.5); outline-offset:2px; }
 .h-cond { font-family:'Barlow Condensed',sans-serif; font-weight:900; letter-spacing:2px; text-transform:uppercase; }
 
+/* === LAYOUT: SPLASH / MENU / INTRO === */
 /* ── Splash ── */
 .splash { min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1.6rem; padding:2rem;
   background:radial-gradient(ellipse at center, rgba(232,67,23,0.10) 0%, transparent 60%); }
@@ -127,6 +131,7 @@ button { font-family:inherit; cursor:pointer; }
 .lobby-player.host .pmeta { color:var(--gold); }
 @keyframes pulse { 0%,100%{transform:scale(1); opacity:1} 50%{transform:scale(1.4); opacity:0.6} }
 
+/* === LAYOUT: 5-ZONE GRID === */
 /* ── Game layout — 5-zone fixed viewport ── */
 .game {
   height: calc(100vh - 48px);
@@ -240,6 +245,7 @@ button { font-family:inherit; cursor:pointer; }
   padding: 0.5rem;
 }
 
+/* === PLAYER PANELS === */
 /* Team panel */
 .gpanel-team {
   display: flex;
@@ -375,6 +381,7 @@ button { font-family:inherit; cursor:pointer; }
 .ws-num { font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:0.62rem; }
 .ws-ev { font-size:0.62rem; color:var(--silver); text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex-shrink:0; }
 
+/* === OPPONENT DISPLAY === */
 /* Opponent board view (replaces board-panel content during match) */
 .opp-panel { width:100%; height:100%; display:flex; flex-direction:column; gap:0.3rem; padding:0.4rem; animation:fadeIn 0.3s ease-out; overflow-y:auto; }
 .opp-panel-header { display:flex; flex-direction:column; align-items:center; gap:0.1rem; padding-bottom:0.3rem; border-bottom:1px solid var(--line); }
@@ -535,6 +542,12 @@ button { font-family:inherit; cursor:pointer; }
 }
 .vb-bench-slot:hover { transform: translateY(-2px); opacity: 1; }
 .vb-bench-slot.sellable:hover { box-shadow: 0 0 0 2px var(--red); }
+
+/* Manual bench-to-field swap interaction */
+.card-bench           { cursor: pointer; opacity: 0.75; }
+.card-bench:hover     { opacity: 1; outline: 2px solid #ffffff44; }
+.card-selected        { outline: 2px solid #FFD700; box-shadow: 0 0 8px #FFD700; opacity: 1; }
+.card-swap-target     { outline: 2px dashed rgba(0, 255, 136, 0.55); cursor: pointer; }
 .vb-out-label {
   margin-top: 0.55rem;
   color: rgba(239, 68, 68, 0.9);
@@ -551,6 +564,7 @@ button { font-family:inherit; cursor:pointer; }
   font-size: 1rem;
 }
 
+/* === DICE & ANIMATIONS === */
 /* Dice panel */
 .dice-panel {
   display: flex;
@@ -573,6 +587,7 @@ button { font-family:inherit; cursor:pointer; }
 .skip-btn { margin-top:0.4rem; width:100%; padding:0.3rem; background:transparent; border:1px solid rgba(255,255,255,0.1); border-radius:3px; color:rgba(255,255,255,0.35); font-size:0.75rem; cursor:pointer; transition:color 0.2s, border-color 0.2s; }
 .skip-btn:hover { color:rgba(255,255,255,0.7); border-color:rgba(255,255,255,0.3); }
 
+/* === CARDS === */
 /* Team / slot styles */
 .team-strength { color:var(--gold); font-weight:800; letter-spacing:1.5px; }
 .slot { aspect-ratio:55/80; border:1px solid var(--line); border-radius:3px; background:rgba(255,255,255,0.02); position:relative; display:flex; align-items:center; justify-content:center; overflow:hidden; }
@@ -635,6 +650,7 @@ button { font-family:inherit; cursor:pointer; }
 .turn-timer { width:100%; height:3px; background:rgba(255,255,255,0.08); border-radius:1px; overflow:hidden; margin-top:0.5rem; }
 .turn-timer-fill { height:100%; background:linear-gradient(90deg,var(--good),var(--warn),var(--bad)); transition:width 0.95s linear; transform-origin:left; }
 
+/* === MARKET MODAL === */
 /* Market */
 .market { display:grid; grid-template-columns:repeat(auto-fill, minmax(100px, 1fr)); gap:0.45rem; padding:0.4rem 0; }
 .mc { position:relative; background:rgba(255,255,255,0.03); border:1px solid var(--line); border-radius:4px; overflow:hidden; padding:0.35rem; transition:transform 0.15s, border-color 0.15s, box-shadow 0.15s; }
@@ -690,6 +706,7 @@ button { font-family:inherit; cursor:pointer; }
 }
 [data-tip]:hover::after { opacity:1; transform:translateX(-50%) translateY(0); }
 
+/* === UTILITY === */
 /* Toast */
 .toast-layer { position:fixed; bottom:1rem; left:50%; transform:translateX(-50%); display:flex; flex-direction:column; gap:0.5rem; z-index:200; pointer-events:none; }
 .toast { padding:0.75rem 1.2rem; background:#161617; border:1px solid var(--line); border-left:3px solid var(--orange); color:#fff; font-size:0.88rem; border-radius:3px; box-shadow:var(--shadow); animation:toastIn 0.3s ease-out; pointer-events:auto; max-width:90vw; }
@@ -742,6 +759,7 @@ button { font-family:inherit; cursor:pointer; }
 /* Focus order */
 button, a, input, select { font-family:inherit; }
 
+/* === BOARD === */
 /* ─── Board (week timeline with cone) ─── */
 .board-row { padding:0.6rem 1rem; display:flex; justify-content:center; }
 .board { display:block; width:100%; max-width:720px; background:transparent; border:none; padding:0; }
@@ -914,6 +932,7 @@ button, a, input, select { font-family:inherit; }
 /* ─── Cone log ─── */
 .cone-log-line { padding:1px 0; font-size:0.72rem; animation:slideIn 0.25s ease-out; }
 
+/* === EVENT POPUP === */
 /* ─── Event card (in stage) ─── */
 .event-card { margin-top:0.3rem; padding:0.4rem 0.55rem; border:1px solid var(--line); border-radius:4px; background:rgba(232,67,23,0.06); display:flex; flex-direction:column; gap:0.2rem; }
 .event-icon { font-size:1.4rem; line-height:1; }

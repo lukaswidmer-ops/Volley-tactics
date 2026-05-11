@@ -6,9 +6,24 @@
 (function () {
 'use strict';
 
-// ────────────────────────────────────────────────────────────────
-//  i18n
-// ────────────────────────────────────────────────────────────────
+// ============================================================
+// 1. CONSTANTS & CONFIGURATION
+//    i18n strings, colour tokens, commentary, board layout
+// ============================================================
+// ── Game constants — named values used throughout game.js ─────────────────
+const STARTING_GOLD      = 80000;  // money each player begins with
+const WEEKS_PER_SEASON   = 6;      // total weeks per season
+const EVENT_POPUP_MS     = 8000;   // auto-close delay for action-card popups
+const SPONSOR_BONUS      = 15000;  // Trikotsponsor cash grant
+const AUDIENCE_LOSS      = 8000;   // Zuschauerrückgang deduction per player
+const VETERAN_BONUS      = 5000;   // Ehemaligentreffen bonus per 1-star card
+const MATCH_DRAW_BONUS   = 5000;   // money awarded on draw / bye week
+const MATCH_WIN_BONUS    = 10000;  // base bank bonus for league win
+const MATCH_DRAW_LP      = 1;      // league points for a draw
+const MATCH_WIN_LP       = 3;      // league points for a win
+const WAITFOR_TIMEOUT_MS = 30000;  // safety timeout for waitFor()
+// ─────────────────────────────────────────────────────────────────────────
+
 const i18n = {
   de: {
     loading: 'Lädt…',
@@ -476,9 +491,9 @@ const COMMENTARY = {
   }
 };
 
-// ────────────────────────────────────────────────────────────────
-//  Helpers
-// ────────────────────────────────────────────────────────────────
+// ============================================================
+// 3. UTILITY FUNCTIONS
+// ============================================================
 const $ = (s, r) => (r||document).querySelector(s);
 const $$ = (s, r) => Array.from((r||document).querySelectorAll(s));
 const T = (k) => (i18n[state.lang] && i18n[state.lang][k]) || k;
@@ -528,9 +543,63 @@ function buildAllCards() {
 }
 let ALL_CARDS = [];
 
-// ────────────────────────────────────────────────────────────────
-//  State
-// ────────────────────────────────────────────────────────────────
+
+// ── Card-lookup helpers ────────────────────────────────────────────────────
+/**
+ * Ensures the highest-star non-disabled card of each position is on the field.
+ * Disabled (suspended) cards are never placed on the field.
+ * Call after any team change: auction win, market buy/sell, loan, week start.
+ */
+function autoSelectLineup(player) {
+  const POS_SEC = { outside: 'outside2', middle: 'middle2' };
+  for (const pos of ['outside', 'middle', 'setter', 'diagonal', 'libero']) {
+    const sec = POS_SEC[pos];
+    // Collect all available (non-disabled) cards of this position from team + bench
+    const avail = [];
+    const pCard = player.team[pos];
+    if (pCard && !pCard.disabled) { avail.push(pCard); player.team[pos] = null; }
+    if (sec) {
+      const sCard = player.team[sec];
+      if (sCard && !sCard.disabled) { avail.push(sCard); player.team[sec] = null; }
+    }
+    const keptBench = [];
+    for (const c of (player.bench || [])) {
+      if (c && !c.disabled && c.pos === pos) avail.push(c);
+      else if (c) keptBench.push(c);
+    }
+    player.bench = keptBench;
+    // Sort: highest stars first
+    avail.sort((a, b) => b.stars - a.stars);
+    // Re-assign: primary slot, secondary slot, then bench
+    let i = 0;
+    if (i < avail.length) player.team[pos] = avail[i++];
+    if (sec && i < avail.length) player.team[sec] = avail[i++];
+    while (i < avail.length) player.bench.push(avail[i++]);
+  }
+}
+
+/** Returns {card, pos} of the highest-star non-disabled team card, or null. */
+function teamBestCard(player) {
+  let bestCard = null, bestPos = null;
+  for (const pos of Object.keys(player.team)) {
+    const c = player.team[pos];
+    if (c && !c.disabled && (!bestCard || c.stars > bestCard.stars)) { bestCard = c; bestPos = pos; }
+  }
+  return bestCard ? { card: bestCard, pos: bestPos } : null;
+}
+/** Returns {card, pos} of the lowest-star non-disabled team card, or null. */
+function teamWorstCard(player) {
+  let worstCard = null, worstPos = null;
+  for (const pos of Object.keys(player.team)) {
+    const c = player.team[pos];
+    if (c && !c.disabled && (!worstCard || c.stars < worstCard.stars)) { worstCard = c; worstPos = pos; }
+  }
+  return worstCard ? { card: worstCard, pos: worstPos } : null;
+}
+// ─────────────────────────────────────────────────────────────────────────
+// ============================================================
+// 2. STATE
+// ============================================================
 const state = {
   lang: localStorage.getItem('vv_lang') || 'de',
   soundOn: localStorage.getItem('vv_sound') === '1',
@@ -542,11 +611,14 @@ const state = {
   speed: 'normal',
   game: null,
   skipping: false,
+  sellMode: false,
+  selectedBenchCard: null, // id of bench card selected for manual swap
 };
 
-// ────────────────────────────────────────────────────────────────
-//  Toast / log / flash / beep
-// ────────────────────────────────────────────────────────────────
+// ============================================================
+// 4. UI HELPERS
+//    Toast, flash, log, beep, popups, view switching
+// ============================================================
 function toast(msg, kind='', ms=2500) {
   const layer = $('#toast-layer'); if (!layer) return;
   const el = document.createElement('div');
@@ -619,7 +691,7 @@ function beep(freq=440, dur=80, type='square', vol=0.05) {
 }
 
 // ────────────────────────────────────────────────────────────────
-//  View switching
+//  4b. View switching
 // ────────────────────────────────────────────────────────────────
 function setView(v) {
   state.view = v;
@@ -689,7 +761,7 @@ function fire(name, val) {
   _pendingFires[name] = val !== undefined ? val : true;
   // Keep pending clicks longer so early "Continue" presses during animations/events
   // are not lost before waitFor(...) is reached.
-  setTimeout(() => { delete _pendingFires[name]; }, 30000);
+  setTimeout(() => { delete _pendingFires[name]; }, WAITFOR_TIMEOUT_MS);
   refreshDebugHud();
 }
 function skipAll() {
@@ -705,6 +777,7 @@ const _popupCloseCallbacks = {};
 function registerPopupClose(id, fn) { _popupCloseCallbacks[id] = fn; }
 
 function openGamePopup(id, title, bodyHtml) {
+  state.selectedBenchCard = null; // cancel any pending swap when a popup opens
   let pop = document.getElementById(id);
   if (!pop) {
     pop = document.createElement('div');
@@ -751,9 +824,10 @@ function setActionsHtml(html) {
   el.innerHTML = html;
 }
 
-// ────────────────────────────────────────────────────────────────
-//  Position helpers
-// ────────────────────────────────────────────────────────────────
+// ============================================================
+// 5. CARD & DECK MANAGEMENT
+//    Positions, team strength, deck draw, slot helpers
+// ============================================================
 const POSITIONS = ['outside','outside2','middle','middle2','setter','diagonal','libero'];
 const POS_COLORS = { outside:'#e84317', outside2:'#c2410c', middle:'#16a34a', middle2:'#166534', setter:'#0ea5e9', diagonal:'#4f46e5', libero:'#ca8a04' };
 function posShort(p) { return T('pos_short_'+p); }
@@ -834,7 +908,7 @@ function dicePanel_roll(force, preferredWaiter) {
 
 
 // ────────────────────────────────────────────────────────────────
-//  CONFETTI (canvas)
+//  CONFETTI animation (UI helper — defined here for scope reasons)
 // ────────────────────────────────────────────────────────────────
 let confettiAnim = null;
 function startConfetti(durationMs = 8000) {
@@ -868,9 +942,10 @@ function startConfetti(durationMs = 8000) {
   confettiAnim = requestAnimationFrame(frame);
 }
 
-// ────────────────────────────────────────────────────────────────
-//  BOOT, INTRO, MENU
-// ────────────────────────────────────────────────────────────────
+// ============================================================
+// 11. SPLASH / DRAFT / OPENING
+//     Boot, intro, menu, draft, auction, starting roll
+// ============================================================
 function boot() {
   state.speed = 'normal';
   localStorage.setItem('vv_speed', 'normal');
@@ -988,12 +1063,12 @@ function showJoinForm() { toast(T('mp_unavailable'), 'bad', 4000); }
 
 
 // ────────────────────────────────────────────────────────────────
-//  GAME INIT
+//  11b. GAME INIT
 // ────────────────────────────────────────────────────────────────
 function makePlayer(name, color, emoji, isHuman, personality, biasPos) {
   return {
     id: uid(), name, color, emoji, isHuman: !!isHuman, personality: personality || 'balanced', biasPos: biasPos || 'outside',
-    money: 80000, vp: 0,
+    money: STARTING_GOLD, vp: 0,
     team: { outside:null, outside2:null, middle:null, middle2:null, setter:null, diagonal:null, libero:null },
     bench: [],
     suspended: [], // [{ card, pos, reason }] — players sidelined by Red Card / Injury / VNL until next league match
@@ -1034,7 +1109,7 @@ function initSoloGame() {
 }
 
 // ────────────────────────────────────────────────────────────────
-//  BLIND DRAFT (Setup Step 2 from rulebook)
+//  11c. BLIND DRAFT (Setup Step 2 from rulebook)
 // ────────────────────────────────────────────────────────────────
 function setupTeamPanelHtml(p) {
   const s = p.team;
@@ -1269,6 +1344,8 @@ function draftFinish() {
   }
   // Check that the human has all 5 positions filled (otherwise bench cards fill in)
   ensureFiveStarter(g.players[0]);
+  // Optimize lineup for all players after draft
+  for (const p of g.players) autoSelectLineup(p);
   state.game.phase = 'auction';
   setView('auction');
 }
@@ -1321,7 +1398,7 @@ function ensureFiveStarter(p) {
 
 
 // ────────────────────────────────────────────────────────────────
-//  OPENING AUCTION  (Setup Step 3)
+//  11d. OPENING AUCTION (Setup Step 3)
 // ────────────────────────────────────────────────────────────────
 async function renderAuction() {
   const app = $('#app');
@@ -1508,7 +1585,7 @@ function humanBidPrompt(p, card, minNext) {
 }
 
 // ────────────────────────────────────────────────────────────────
-//  STARTING-PLAYER ROLL
+//  11e. STARTING-PLAYER ROLL
 // ────────────────────────────────────────────────────────────────
 function renderStarting() {
   const app = $('#app');
@@ -1560,9 +1637,14 @@ async function rollStartingDice() {
 }
 
 
-// ────────────────────────────────────────────────────────────────
-//  GAME BOARD / SEASON LOOP
-// ────────────────────────────────────────────────────────────────
+// ============================================================
+// 6. BOARD & MOVEMENT
+//    Week layout, cone roll, day resolution
+// ============================================================
+
+// ============================================================
+// 10. SEASON LOOP & PHASE MANAGEMENT
+// ============================================================
 // Timeline: 6 weeks × 8 days = 48 days, day 1..48 (+ optional 49+ for week 7)
 // Day 4 of each week: tournament (varies)
 // Day 8 of each week: league match
@@ -1792,14 +1874,27 @@ function teamPanelHtml(p, opts) {
   const readOnly = !!(opts && opts.readOnly);
   const sellMode = !readOnly && !!state.sellMode;
   
+  // Resolve any active bench-card swap selection (only relevant for the human player)
+  const selCardId = !readOnly ? state.selectedBenchCard : null;
+  const selCard = selCardId
+    ? (p.bench || []).find(c => c && c.id === selCardId)
+    : null;
+  const _primaryOf = { outside2: 'outside', middle2: 'middle' };
+
   function teamSlotHtml(card, pos) {
-    if (!card) return `<div class="slot empty vb-team-slot" data-tip="${posLabel(pos)}"><span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span></div>`;
+    if (!card) {
+      // If a compatible bench card is selected, highlight the empty slot as a swap target
+      const emptySwap = selCard && (selCard.pos === pos || selCard.pos === (_primaryOf[pos] || pos));
+      return `<div class="slot empty vb-team-slot${emptySwap ? ' card-swap-target' : ''}" data-tip="${posLabel(pos)}" ${emptySwap ? `onclick="VV.handleFloatingClick('${pos}')"` : ''}><span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span></div>`;
+    }
     // Safety: a disabled non-sub card should never be in the formation — show as empty
     if (card.disabled && !card._isSub) return `<div class="slot empty vb-team-slot" data-tip="${posLabel(pos)} · ⛔"><span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span></div>`;
     const dis = card.disabled ? 'disabled' : '';
     const sub = card._isSub ? 'is-sub' : '';
+    const slotBase = _primaryOf[pos] || pos;
+    const isSwapTarget = !!(selCard && (selCard.pos === pos || selCard.pos === slotBase));
     const click = readOnly ? '' : `onclick="VV.handleFloatingClick('${pos}')"`;
-    return `<div class="slot vb-team-slot ${dis} ${sub} ${sellMode?'sellable':''}" 
+    return `<div class="slot vb-team-slot ${dis} ${sub} ${sellMode?'sellable':''} ${isSwapTarget?'card-swap-target':''}" 
       data-tip="${escapeHTML(card.name)} · ${card.stars}★${card.disabled?' · '+(card.disabledReason||''):''}${sub?' · '+T('sub_tooltip'):''}"
       ${click}>
       <span class="pos-tag" style="background:${posColor(pos)}">${posShort(pos)}</span>
@@ -1812,7 +1907,9 @@ function teamPanelHtml(p, opts) {
   
   function benchSlotHtml(c) {
     const click = readOnly ? '' : `onclick="VV.handleFloatingBenchClick('${c.id}')"`;
-    return `<div class="slot vb-bench-slot ${sellMode?'sellable':''}" 
+    const isSelected = !readOnly && selCardId === c.id;
+    const benchCls = (!readOnly && !c.disabled && !sellMode) ? 'card-bench' : '';
+    return `<div class="slot vb-bench-slot ${benchCls} ${isSelected ? 'card-selected' : ''} ${sellMode?'sellable':''}" 
       data-tip="${escapeHTML(c.name)} · ${c.stars}★ · ${posLabel(c.pos)}${c.disabled?' · ⛔':''}"
       ${click}>
       <span class="pos-tag" style="background:${posColor(c.pos)}">${posShort(c.pos)}</span>
@@ -2019,7 +2116,7 @@ async function runSeason() {
   // `g.week` is the inner-loop index (1..6) for `targetEndOfWeek`; it increments right after
   // the weekend while `coneDay` may still sit on the league boundary (e.g. 8). UI week labels
   // use `boardWeekDisplay(g)` (= weekOfDay(coneDay)) so header, phase bar and week strip agree.
-  while (g.week <= 6 && !g.over) {
+  while (g.week <= WEEKS_PER_SEASON && !g.over) {
     refreshBoard();
     // For each week: simulate cone advancement until cone reaches day 8 (league match)
     // Strict < so the loop exits the moment coneDay hits the league-match boundary (day 8, 16, 24…)
@@ -2196,8 +2293,12 @@ async function resolveDay(day, triggerPlayer) {
   }
 }
 
+// ============================================================
+// 7. EVENT HANDLERS
+// ============================================================
+
 // ────────────────────────────────────────────────────────────────
-//  EVENT SPACES
+//  7c. OTHER EVENTS (Red Card, Transfer, Injury)
 // ────────────────────────────────────────────────────────────────
 async function runEventSpace(type, player) {
   const stage = $('#stage');
@@ -2274,7 +2375,6 @@ function drawAuctionCard() {
     g.auctionDeck = (ALL_CARDS || [])
       .filter(c => c && Number(c.stars) >= 2 && !owned.has(c.id))
       .sort(() => Math.random() - 0.5);
-    console.log('[VV] auctionDeck refilled:', g.auctionDeck.length, 'unowned cards');
   }
   const card = g.auctionDeck.shift();
   if (!card) return null;
@@ -2343,11 +2443,11 @@ function humanBidPopup(p, card, minNext) {
 }
 
 // ────────────────────────────────────────────────────────────────
-//  ACTION CARDS — 10 distinct effects
+//  7a. ACTION CARDS — 10 distinct effects
 // ────────────────────────────────────────────────────────────────
 
 // Show a modal popup that resolves when OK is clicked or auto-closes.
-function showActionPopupAsync(icon, title, bodyHtml, autoMs = 8000) {
+function showActionPopupAsync(icon, title, bodyHtml, autoMs = EVENT_POPUP_MS) {
   return new Promise(resolve => {
     const pid = 'ac-pop-' + Date.now();
     const div = document.createElement('div');
@@ -2411,18 +2511,15 @@ function pickOpponent(player) {
     div.querySelectorAll('[data-oid]').forEach(btn =>
       btn.addEventListener('click', () => finish(opponents.find(o => o.id === btn.dataset.oid)))
     );
-    setTimeout(() => finish(botPick()), 8000);
+    setTimeout(() => finish(botPick()), EVENT_POPUP_MS);
   });
 }
 
 // AC 1 — Muskelfaserriss: best team card is suspended this week
 async function ac_muskelfaserriss(player) {
   const de = state.lang === 'de';
-  let bestPos = null, bestCard = null;
-  for (const pos of POSITIONS) {
-    const c = player.team[pos];
-    if (c && !c.disabled && (!bestCard || c.stars > bestCard.stars)) { bestCard = c; bestPos = pos; }
-  }
+  const _best = teamBestCard(player);
+  let bestPos = _best ? _best.pos : null, bestCard = _best ? _best.card : null;
   if (!bestCard) {
     const msg = de ? 'Kein Spieler im Team — keine Auswirkung.' : 'No player in team — no effect.';
     appendConeLog(`🩻 Muskelfaserriss · ${player.emoji} ${escapeHTML(player.name)} · ${msg}`);
@@ -2444,7 +2541,7 @@ async function ac_muskelfaserriss(player) {
 // AC 2 — Trikotsponsor: +15 000 CHF
 async function ac_trikotsponsor(player) {
   const de = state.lang === 'de';
-  const amount = 15000;
+  const amount = SPONSOR_BONUS;
   player.money += amount; player.totalEarned += amount;
   animateMoneyChange(player, amount); refreshTopbar();
   const detail = $('#event-detail');
@@ -2459,11 +2556,8 @@ async function ac_trikotsponsor(player) {
 async function ac_transfergeruecht(player) {
   const de = state.lang === 'de';
   const opp = await pickOpponent(player);
-  let worstPos = null, worstCard = null;
-  for (const pos of POSITIONS) {
-    const c = opp.team[pos];
-    if (c && !c.disabled && (!worstCard || c.stars < worstCard.stars)) { worstCard = c; worstPos = pos; }
-  }
+  const _worst = teamWorstCard(opp);
+  let worstPos = _worst ? _worst.pos : null, worstCard = _worst ? _worst.card : null;
   if (!worstCard) {
     const msg = de ? `${escapeHTML(opp.name)} hat kein Team — keine Auswirkung.`
                    : `${escapeHTML(opp.name)} has no team — no effect.`;
@@ -2588,7 +2682,7 @@ async function ac_talentfoerderung(player) {
       div.querySelectorAll('[data-idx]').forEach(btn =>
         btn.addEventListener('click', () => finish(parseInt(btn.dataset.idx, 10)))
       );
-      setTimeout(() => finish(botIdx), 8000);
+      setTimeout(() => finish(botIdx), EVENT_POPUP_MS);
     });
   }
   // Return unchosen cards to the bottom of the auction deck
@@ -2660,7 +2754,7 @@ async function ac_ehemaligentreffen(player) {
     const c = player.team[pos];
     if (c && !c.disabled && c.stars === 1) count++;
   }
-  const earned = count * 5000;
+  const earned = count * VETERAN_BONUS;
   const detail = $('#event-detail');
   if (count === 0) {
     const msg = de ? 'Keine Ehemaligen im Team — keine Ausschüttung.' : 'No 1★ players in team — no payout.';
@@ -2736,7 +2830,7 @@ async function ac_leihgeschaeft(player) {
       div.querySelectorAll('[data-idx]').forEach(btn =>
         btn.addEventListener('click', () => finish(parseInt(btn.dataset.idx, 10)))
       );
-      setTimeout(() => finish(botPickIdx), 8000);
+      setTimeout(() => finish(botPickIdx), EVENT_POPUP_MS);
     });
   } else {
     entry = loanable[botPickIdx];
@@ -2753,6 +2847,8 @@ async function ac_leihgeschaeft(player) {
   loanCard._loanReturn = true;
   if (!Array.isArray(player.bench)) player.bench = [];
   player.bench.push(loanCard);
+  autoSelectLineup(player); // potentially fields the loaned card if it's strongest
+  autoSelectLineup(opp);    // fill the gap left by the loaned card
 
   refreshTeamPanel();
   if (typeof refreshFloatingPanel === 'function') refreshFloatingPanel();
@@ -2768,7 +2864,7 @@ async function ac_leihgeschaeft(player) {
 async function ac_zuschauerruckgang(player) {
   const g = state.game;
   const de = state.lang === 'de';
-  const loss = 8000;
+  const loss = AUDIENCE_LOSS;
   for (const p of g.players) {
     const actual = Math.min(p.money, loss);
     p.money = Math.max(0, p.money - loss);
@@ -2811,6 +2907,9 @@ function showActionCardPopup() {
   setTimeout(() => { if (document.body.contains(div)) div.remove(); }, 3500);
 }
 
+// ────────────────────────────────────────────────────────────────
+//  7b. LAENDERSPIEL / VNL
+// ────────────────────────────────────────────────────────────────
 // Active VNL nations per week (nation strings match the `nation` field in the ROSTER)
 const VNL_NATIONS_BY_WEEK = {
   1: ['Argentinien', 'Kanada',      'Brasilien',  'Bulgarien'],
@@ -2923,11 +3022,9 @@ async function applyInjury(player) {
 }
 
 // ────────────────────────────────────────────────────────────────
-//  SUSPENSION / INJURY HELPERS
-//  When an event (Red Card / Injury / VNL / dice criterion 11) sidelines
-//  a starter, we keep the disabled flag (so legacy paths still work) AND
-//  swap in a same-position bench card if available. The original goes
-//  into player.suspended and gets restored on the next league match.
+//  7d. SUSPENSION HELPERS
+//  Shared by all events that sideline a card (Red Card / Injury /
+//  VNL / Busunfall / Muskelfaserriss / match criterion 11).
 // ────────────────────────────────────────────────────────────────
 function disablePlayerOnTeam(player, pos, reason) {
   const card = player.team[pos];
@@ -2945,7 +3042,6 @@ function disablePlayerOnTeam(player, pos, reason) {
       return null; // already handled correctly before
     }
     // Card is disabled but still in the slot — force-remove it (should not normally happen)
-    console.warn('[VV] disablePlayerOnTeam: disabled card still in slot, forcing removal', pos, card.name);
   }
 
   // Mark the card as disabled and remove it from the team slot immediately
@@ -3047,13 +3143,21 @@ function restoreDisabledCards(afterLeague) {
     }
   }
 
+  // Re-optimize lineup for all players now that suspensions are cleared
+  for (const p of g.players) autoSelectLineup(p);
+  // Clear any pending manual swap selection (week boundary)
+  state.selectedBenchCard = null;
   refreshTopbar(); refreshTeamPanel();
   if (typeof refreshFloatingPanel === 'function') refreshFloatingPanel();
 }
 
 
+// ============================================================
+// 8. MATCH LOGIC
+// ============================================================
+
 // ────────────────────────────────────────────────────────────────
-//  TOURNAMENTS (Cup, Cup-Final, SuperCup, CL group, CL final)
+//  8b. CUP / SUPERCUP / CL
 // ────────────────────────────────────────────────────────────────
 async function runTournament(ev) {
   const g = state.game;
@@ -3194,9 +3298,8 @@ function showLockedFeaturePopup(title) {
 }
 
 // ────────────────────────────────────────────────────────────────
-//  CLASSIC LEAGUE MATCH — 12 criteria (rule-faithful)
-//  Used for both Liga-Spiele AND tournament resolutions.
-//  Returns the winning player.
+//  8a. CLASSIC MATCH — 12 criteria (rule-faithful)
+//  Used for Liga matches and all tournament resolutions.
 // ────────────────────────────────────────────────────────────────
 async function runMatchClassic(home, away, isTournament) {
   // Only swap the board for the human's match — bot vs bot would wrongly call showOpponentBoard(home).
@@ -3559,26 +3662,26 @@ async function runLeagueMatch() {
   // Award league points and money per rulebook (spec §2.9)
   if (winner === null) {
     // Draw: both +5k bank, both +1 LP
-    home.money += 5000; home.totalEarned += 5000; animateMoneyChange(home, 5000);
-    away.money += 5000; away.totalEarned += 5000; animateMoneyChange(away, 5000);
-    home.leaguePoints = leaguePointsVal(home) + 1;
-    away.leaguePoints = leaguePointsVal(away) + 1;
+    home.money += MATCH_DRAW_BONUS; home.totalEarned += MATCH_DRAW_BONUS; animateMoneyChange(home, MATCH_DRAW_BONUS);
+    away.money += MATCH_DRAW_BONUS; away.totalEarned += MATCH_DRAW_BONUS; animateMoneyChange(away, MATCH_DRAW_BONUS);
+    home.leaguePoints = leaguePointsVal(home) + MATCH_DRAW_LP;
+    away.leaguePoints = leaguePointsVal(away) + MATCH_DRAW_LP;
     logEntry(`🏐 ${T('phase_match')}: 🤝 ${state.lang==='de'?'Unentschieden':'Draw'} — ${escapeHTML(home.name)} & ${escapeHTML(away.name)} je +5'`);
   } else if (winner === home) {
-    home.money += 10000; home.totalEarned += 10000; animateMoneyChange(home, 10000);
-    if (away.money >= 5000) { away.money -= 5000; animateMoneyChange(away, -5000); home.money += 5000; home.totalEarned += 5000; animateMoneyChange(home, 5000); } else { home.money += away.money; away.money = 0; }
-    home.matchesWon++; home.leaguePoints = leaguePointsVal(home) + 3;
+    home.money += MATCH_WIN_BONUS; home.totalEarned += MATCH_WIN_BONUS; animateMoneyChange(home, MATCH_WIN_BONUS);
+    if (away.money >= MATCH_DRAW_BONUS) { away.money -= MATCH_DRAW_BONUS; animateMoneyChange(away, -MATCH_DRAW_BONUS); home.money += MATCH_DRAW_BONUS; home.totalEarned += MATCH_DRAW_BONUS; animateMoneyChange(home, MATCH_DRAW_BONUS); } else { home.money += away.money; away.money = 0; }
+    home.matchesWon++; home.leaguePoints = leaguePointsVal(home) + MATCH_WIN_LP;
     logEntry(`🏐 ${T('phase_match')}: <b>${escapeHTML(home.name)}</b> +10’ (Bank), +5’ (${escapeHTML(away.name)})`, 'win');
   } else {
-    away.money += 10000; away.totalEarned += 10000; animateMoneyChange(away, 10000);
-    if (home.money >= 5000) { home.money -= 5000; animateMoneyChange(home, -5000); away.money += 5000; away.totalEarned += 5000; animateMoneyChange(away, 5000); } else { away.money += home.money; home.money = 0; }
-    away.matchesWon++; away.leaguePoints = leaguePointsVal(away) + 3;
+    away.money += MATCH_WIN_BONUS; away.totalEarned += MATCH_WIN_BONUS; animateMoneyChange(away, MATCH_WIN_BONUS);
+    if (home.money >= MATCH_DRAW_BONUS) { home.money -= MATCH_DRAW_BONUS; animateMoneyChange(home, -MATCH_DRAW_BONUS); away.money += MATCH_DRAW_BONUS; away.totalEarned += MATCH_DRAW_BONUS; animateMoneyChange(away, MATCH_DRAW_BONUS); } else { away.money += home.money; home.money = 0; }
+    away.matchesWon++; away.leaguePoints = leaguePointsVal(away) + MATCH_WIN_LP;
     logEntry(`🏐 ${T('phase_match')}: <b>${escapeHTML(away.name)}</b> +10’ (Bank), +5’ (${escapeHTML(home.name)})`, 'loss');
   }
   // Other players: bye → +5'000
   for (const p of g.players) {
     if (p !== home && p !== away) {
-      p.money += 5000; p.totalEarned += 5000; animateMoneyChange(p, 5000);
+      p.money += MATCH_DRAW_BONUS; p.totalEarned += MATCH_DRAW_BONUS; animateMoneyChange(p, MATCH_DRAW_BONUS);
       logEntry(`🏐 ${T('week_event_league')} ${state.lang==='de'?'Freilos':'Bye'} → ${escapeHTML(p.name)} +5’`);
     }
   }
@@ -3587,9 +3690,9 @@ async function runLeagueMatch() {
 }
 
 
-// ────────────────────────────────────────────────────────────────
-//  MARKET PHASE  (between weeks)
-// ────────────────────────────────────────────────────────────────
+// ============================================================
+// 9. AUCTION & MARKET
+// ============================================================
 function regenMarket() {
   // Market only shows unsold auction cards (from marketPile) + 1-star section (always-available)
   // No random cards from the full deck — only what actually went through auction and wasn't bought
@@ -3724,6 +3827,7 @@ async function runAuctionUI(card, titleLabel, firstPlayer) {
     winner.money -= currentBid;
     animateMoneyChange(winner, -currentBid);
     placeIntoTeamOrBench(winner, card);
+    autoSelectLineup(winner);
     addFeed(`<b style="color:var(--gold)">🏆 ${escapeHTML(winner.name)} ${de?'gewinnt':'wins'} "${escapeHTML(card.name)}" ${de?'für':'for'} ${fmtMoney(currentBid)}!</b>`);
     beep(900, 120);
   } else {
@@ -3798,7 +3902,6 @@ async function runMarketPhase() {
   // Clear auction bans — they applied to the weekly auction above
   for (const p of g.players) p.auctionBanned = false;
   g.market = regenMarket();
-  console.log('[VV] runMarketPhase: market cards =', g.market.length, '| marketPile =', g.marketPile.length);
   const safeRenderMarket = () => {
     try {
       renderMarket();
@@ -3810,7 +3913,6 @@ async function runMarketPhase() {
     }
   };
   safeRenderMarket();
-  console.log('[VV] runMarketPhase: popup gerendert, starte Bot-Käufe');
   // Bots act first, then human's turn (to give clear "your turn" feel)
   for (const bot of g.players.filter(p => !p.isHuman)) {
     try {
@@ -3820,6 +3922,7 @@ async function runMarketPhase() {
         const cur = bot.team[pick.pos];
         bot.team[pick.pos] = pick;
         if (cur) bot.bench.push(cur);
+        autoSelectLineup(bot);
         bot.money -= pick.price;
         g.market = g.market.filter(c => c.id !== pick.id);
         logEntry(fmt(T('bot_buys'), `${bot.emoji} ${escapeHTML(bot.name)}`, T('pos_'+pick.pos), pick.stars, fmtMoney(pick.price)), 'tournament');
@@ -3834,17 +3937,13 @@ async function runMarketPhase() {
     safeRenderMarket();
   }
   safeRenderMarket();
-  console.log('[VV] runMarketPhase: Bot-Käufe fertig, warte auf endMarket. pendingFires =', JSON.stringify(_pendingFires));
   const marketAutoCloseMs = state.speed === 'auto' ? speedMs(800) : 0; // 0 = no auto-close; human must click
   if (marketAutoCloseMs > 0) setTimeout(() => { if (_waiters['endMarket']) endMarket(); }, marketAutoCloseMs);
   await waitFor('endMarket', marketAutoCloseMs || undefined);
-  console.log('[VV] runMarketPhase: endMarket resolved, Markt geschlossen');
 }
 
 // ────────────────────────────────────────────────────────────────
-//  WEEKEND MATCHES — genau 1 Partie pro Woche:
-//  Mensch vs. ein rotierender Bot (Woche mod 3).
-//  Fallback (ohne exakt 1 Human+3 Bots): erste valide Paarung aus dem Schedule.
+//  9b. WEEKEND MATCHES (Liga) + MARKET UI
 // ────────────────────────────────────────────────────────────────
 const WEEKEND_SCHEDULE_FALLBACK = [
   [[0, 1], [2, 3]],
@@ -4024,6 +4123,7 @@ function buyOneStar(pos) {
   const cur = me.team[pos];
   if (cur) me.bench.push(cur); // always move existing card to bench
   me.team[pos] = c;
+  autoSelectLineup(me);
   me.money -= 10000;
   animateMoneyChange(me, -10000);
   toast(state.lang==='de'?`Gekauft: ${c.name}`:`Bought: ${c.name}`, 'good');
@@ -4057,12 +4157,9 @@ function sellStarter(pos) {
   const c = me.team[pos]; if (!c) return;
   const price = Math.floor(c.stars * 10000 / 2);
   if (!confirm(state.lang==='de'?`${c.name} für ${fmtMoney(price)}’ verkaufen?`:`Sell ${c.name} for ${fmtMoney(price)}?`)) return;
-  // Replace from bench if available, else clear
-  // outside2/middle2 slots accept cards of the primary position type
-  const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
-  const replIdx = me.bench.findIndex(b => b.pos === poolPos || b.pos === pos);
-  if (replIdx >= 0) me.team[pos] = me.bench.splice(replIdx, 1)[0];
-  else me.team[pos] = null;
+  // Clear the slot first, then let autoSelectLineup pick the best available bench card
+  me.team[pos] = null;
+  autoSelectLineup(me);
   me.money += price;
   animateMoneyChange(me, +price);
   toast(`+${fmtMoney(price)}’`, 'gold');
@@ -4103,6 +4200,7 @@ function buyCard(id) {
   }
   if (cur) me.bench.push(cur);
   me.team[c.pos] = c;
+  autoSelectLineup(me);
   me.money -= c.price;
   // Remove from both market display list and marketPile
   state.game.market = state.game.market.filter(x => x.id !== c.id);
@@ -4146,9 +4244,7 @@ function weakestPosition(p) {
 }
 
 // ────────────────────────────────────────────────────────────────
-//  SEASON END (single-season MVP variant)
-//  Even in single-season we apply: standings VP, payouts.
-//  We skip the protect/steal phase since the season ends here.
+//  10b. SEASON END
 // ────────────────────────────────────────────────────────────────
 async function runSeasonEnd() {
   const g = state.game;
@@ -4168,7 +4264,7 @@ async function runSeasonEnd() {
 }
 
 // ────────────────────────────────────────────────────────────────
-//  END GAME
+//  10c. END GAME
 // ────────────────────────────────────────────────────────────────
 function checkWin() {
   const g = state.game;
@@ -4232,7 +4328,7 @@ function continueAfterMatch() { dicePanel_roll(true, 'continueAfterMatch'); }
 function serveOnce() { dicePanel_roll(true, 'serveOnce'); }
 
 // ────────────────────────────────────────────────────────────────
-//  RENDER DISPATCH
+//  10d. RENDER DISPATCH
 // ────────────────────────────────────────────────────────────────
 function render() {
   switch (state.view) {
@@ -4250,7 +4346,7 @@ function render() {
 
 
 // ────────────────────────────────────────────────────────────────
-//  ANIMATED MONEY / VP / COUNTERS
+//  4d. ANIMATED MONEY / VP / COUNTERS
 // ────────────────────────────────────────────────────────────────
 function animateMoneyChange(player, delta) {
   const topbar = $('#topbar'); if (!topbar) return;
@@ -4277,7 +4373,7 @@ function animateVpChange(player, delta) {
 }
 
 // ────────────────────────────────────────────────────────────────
-//  FLOATING TEAM PANEL (always visible bottom-right)
+//  4e. FLOATING TEAM PANEL (always visible bottom-right)
 // ────────────────────────────────────────────────────────────────
 function ensureFloatingPanel() {
   let fp = $('#floating-panel');
@@ -4310,14 +4406,62 @@ function toggleFloatingPanel() {
 }
 function toggleSellMode() {
   state.sellMode = !state.sellMode;
+  state.selectedBenchCard = null; // cancel any pending swap when entering/leaving sell mode
   refreshTeamPanel(); refreshFloatingPanel();
   toast(state.sellMode ? (state.lang==='de'?'Verkaufs-Modus aktiv — klicke auf eine Karte':'Sell mode active — click a card') : (state.lang==='de'?'Verkaufs-Modus aus':'Sell mode off'), state.sellMode?'gold':'good', 1800);
 }
 function handleFloatingClick(pos) {
-  if (state.sellMode) { sellStarter(pos); refreshTeamPanel(); }
+  if (state.sellMode) { sellStarter(pos); refreshTeamPanel(); return; }
+  // Manual bench-to-field swap: if a bench card is selected, try swapping it into this field slot
+  if (state.selectedBenchCard) {
+    try {
+      const me = state.game && state.game.players[0];
+      if (me) {
+        const benchCard = (me.bench || []).find(c => c && c.id === state.selectedBenchCard);
+        const primaryOf = { outside2: 'outside', middle2: 'middle' };
+        const slotBase = primaryOf[pos] || pos;
+        // Valid swap: bench card's position matches this slot (primary or secondary)
+        const validSlot = benchCard && (benchCard.pos === pos || benchCard.pos === slotBase);
+        if (benchCard && validSlot) {
+          const fieldCard = me.team[pos];
+          me.bench = (me.bench || []).filter(c => c.id !== benchCard.id);
+          me.team[pos] = benchCard;
+          if (fieldCard) me.bench.push(fieldCard);
+          beep(660, 50);
+          toast(
+            state.lang === 'de'
+              ? `${benchCard.name} → Aufstellung`
+              : `${benchCard.name} → starting lineup`,
+            'good', 1500
+          );
+        }
+        // Clear selection whether swap happened or was cancelled
+        state.selectedBenchCard = null;
+        refreshTeamPanel();
+        if (typeof refreshFloatingPanel === 'function') refreshFloatingPanel();
+      }
+    } catch (e) {
+      state.selectedBenchCard = null;
+      refreshTeamPanel();
+    }
+  }
 }
 function handleFloatingBenchClick(id) {
-  if (state.sellMode) { sellBenchCard(id); refreshTeamPanel(); }
+  if (state.sellMode) { sellBenchCard(id); refreshTeamPanel(); return; }
+  // Manual swap: toggle selection of this bench card
+  try {
+    const me = state.game && state.game.players[0];
+    if (!me) return;
+    const benchCard = (me.bench || []).find(c => c && c.id === id);
+    if (!benchCard || benchCard.disabled) return; // can't swap suspended cards
+    // Toggle: clicking the already-selected card deselects it
+    state.selectedBenchCard = (state.selectedBenchCard === id) ? null : id;
+    refreshTeamPanel();
+    if (typeof refreshFloatingPanel === 'function') refreshFloatingPanel();
+  } catch (e) {
+    state.selectedBenchCard = null;
+    refreshTeamPanel();
+  }
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -4357,9 +4501,9 @@ function showFullHistory() {
 }
 
 
-// ────────────────────────────────────────────────────────────────
+// ============================================================
 //  PUBLIC API
-// ────────────────────────────────────────────────────────────────
+// ============================================================
 window.VV = {
   setView, setLang, setSpeed,
   advanceIntro, skipIntro,
@@ -4376,7 +4520,20 @@ window.VV = {
 };
 
 // ────────────────────────────────────────────────────────────────
-//  KEYBOARD SHORTCUTS — Space / Enter advances any pending waiter
+//  BENCH SWAP: cancel selection on outside click
+// ────────────────────────────────────────────────────────────────
+document.addEventListener('click', e => {
+  if (!state.selectedBenchCard) return;
+  const insidePanel = e.target.closest('#team-panel') || e.target.closest('.fp') || e.target.closest('.fp-inner');
+  if (!insidePanel) {
+    state.selectedBenchCard = null;
+    refreshTeamPanel();
+    if (typeof refreshFloatingPanel === 'function') refreshFloatingPanel();
+  }
+}, true);
+
+// ────────────────────────────────────────────────────────────────
+//  KEYBOARD SHORTCUTS
 // ────────────────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
