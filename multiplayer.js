@@ -520,11 +520,41 @@ function paintViewerWaiting() {
   const app = $('#app');
   if (!app) return;
   setAppView('mp_viewer');
+
+  // Derive a live status line from the host's latest gameState snapshot.
+  // While the host is drafting, show progress; otherwise show the phase.
+  let statusHtml = `<div class="menu-sub">${esc(DE('Warte auf erste Daten vom Host…', 'Waiting for first snapshot from host…'))}</div>`;
+  try {
+    const g = (window.VV && window.VV.state && window.VV.state.game) || null;
+    if (g) {
+      if (g.phase === 'draft') {
+        const hostPlayer = (g.players || [])[0] || {};
+        const team = hostPlayer.team || {};
+        const slotsFilled = ['outside','outside2','middle','setter','diagonal','libero']
+          .filter(k => team[k]).length;
+        const benchFilled = Array.isArray(hostPlayer.bench) ? hostPlayer.bench.length : 0;
+        const totalPicked = slotsFilled + benchFilled;
+        statusHtml = `
+          <div class="menu-sub">${esc(DE('Host draftet sein Team…', 'Host is drafting their team…'))}</div>
+          <div class="menu-sub" style="margin-top:0.4rem; opacity:0.7;">
+            ${esc(DE('Karten gezogen', 'Cards drawn'))}: ${totalPicked}/9
+          </div>
+          <div class="menu-sub" style="margin-top:0.6rem; color:var(--gold);">
+            ${esc(DE('Gleich bist du dran — in der Eröffnungs-Auktion bietest du auf deinem Gerät.',
+                     'You are up next — you will bid on your own device during the opening auction.'))}
+          </div>`;
+      } else {
+        statusHtml = `
+          <div class="menu-sub">${esc(DE('Verbinde mit Spiel…', 'Joining the round…'))}</div>`;
+      }
+    }
+  } catch (_) {}
+
   app.innerHTML = `
     <div class="menu-wrap">
       <div class="menu-card" style="text-align:center;">
-        <div class="menu-title"><span class="accent">${esc(DE('Spiel läuft', 'Game running'))}</span></div>
-        <div class="menu-sub">${esc(DE('Warte auf erste Daten vom Host…', 'Waiting for first snapshot from host…'))}</div>
+        <div class="menu-title"><span class="accent">${esc(DE('Multiplayer', 'Multiplayer'))}</span></div>
+        ${statusHtml}
         <div class="splash-spinner" style="margin:1.5rem auto;"></div>
         <button class="btn btn-secondary" data-vvmp-leave>${esc(DE('Lobby verlassen', 'Leave lobby'))}</button>
       </div>

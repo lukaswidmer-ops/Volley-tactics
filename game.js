@@ -1340,16 +1340,21 @@ function startMultiplayer(opts) {
     // and kick off the existing draft → auction → season pipeline.
     initMultiplayerGame(opts);
     setView('draft');
-    // Push state to Firebase periodically so spectators stay in sync.
+    // Push state to Firebase: immediate first sync so non-hosts move out of
+    // the waiting screen quickly, then a slower periodic safety net.
     if (state.mpSyncTimer) clearInterval(state.mpSyncTimer);
     state.mpSyncTimer = setInterval(() => {
       try { if (window.VV_MP && window.VV_MP.forceGameStateSync) window.VV_MP.forceGameStateSync(); }
       catch (_) {}
-    }, 10000);
-    try { if (window.VV_MP && window.VV_MP.scheduleGameStateSync) window.VV_MP.scheduleGameStateSync(); } catch (_) {}
+    }, 5000);
+    try { if (window.VV_MP && window.VV_MP.forceGameStateSync) window.VV_MP.forceGameStateSync(); } catch (_) {}
     toast(state.lang === 'de' ? 'Spiel gestartet — du bist Host.' : 'Game started — you are host.', 'good', 2200);
   } else {
-    // Non-host: spectator mode. Wait for host's snapshot.
+    // Non-host: show the connecting screen and wait for the host's first
+    // gameState snapshot. They are NOT a passive spectator — they will
+    // play their own seat via seat-prompt overlays once the auction
+    // phase starts. applyRemoteState() decides when to flip to the
+    // live board.
     state.game = null;
     setView('mp_viewer');
     try {
@@ -1357,22 +1362,35 @@ function startMultiplayer(opts) {
         window.VV_MP.paintViewerWaiting();
       }
     } catch (_) {}
-    toast(state.lang === 'de' ? 'Zuschauer-Modus — Host spielt' : 'Spectator — host plays', '', 2800);
+    toast(state.lang === 'de'
+      ? 'Verbinde mit Spiel — du spielst auf deinem Gerät.'
+      : 'Connecting to the game — you play on your own device.', 'good', 3200);
   }
 }
 
 function applyRemoteState(remote) {
   if (!MULTIPLAYER) return;
   if (!remote) return;
-  // Non-host viewer: adopt the host's snapshot wholesale and switch to
-  // the live board the first time real data arrives.
+  // Non-host viewer: adopt the host's snapshot wholesale, but only flip to
+  // the live board once the host has finished the draft. During draft, the
+  // non-host stays on mp_viewer with a status indicator since they have no
+  // controls yet (draft is host-only). They become active in the auction.
   try {
-    const hadGame = !!state.game;
     state.game = remote;
-    if (!hadGame || state.view === 'mp_viewer') {
+    const phase = remote.phase || 'draft';
+    const shouldShowGame = (phase !== 'draft');
+
+    if (shouldShowGame && state.view === 'mp_viewer') {
       setView('game');
     } else if (state.view === 'game') {
       render();
+    } else if (state.view === 'mp_viewer') {
+      // Stay on viewer but refresh the status line (Host drafts… X/9 etc.).
+      try {
+        if (window.VV_MP && typeof window.VV_MP.paintViewerWaiting === 'function') {
+          window.VV_MP.paintViewerWaiting();
+        }
+      } catch (_) {}
     }
   } catch (e) {
     console.warn('[VV] applyRemoteState failed:', e);
@@ -1397,6 +1415,15 @@ function resetLocalMultiplayerSession() {
 
 function mpIsMultiplayerHost() {
   return !!(MULTIPLAYER && state.mpRoom && state.mpRoom.isHost && state.mpRoom.localPlayerId);
+}
+/** Schedule a state push to Firebase if we are the multiplayer host. No-op for solo. */
+function mpSyncIfHost() {
+  if (!mpIsMultiplayerHost()) return;
+  try {
+    if (window.VV_MP && typeof window.VV_MP.scheduleGameStateSync === 'function') {
+      window.VV_MP.scheduleGameStateSync();
+    }
+  } catch (_) {}
 }
 /** True on host for a lobby human seat that is controlled from another device (Firebase seatPrompt). */
 function mpSeatIsRemoteHumanOnHost(player) {
@@ -1837,6 +1864,7 @@ function draftDraw(stars) {
   renderDraft();
   toast(`+ ${c.name} (${c.stars}★)`, 'good', 1200);
   refreshDraftRestartButton();
+  mpSyncIfHost();
 }
 
 function draftRedraw() {
@@ -1851,6 +1879,7 @@ function draftRedraw() {
   me.bench = [];
   renderDraft();
   refreshDraftRestartButton();
+  mpSyncIfHost();
 }
 
 function draftPick1(pos) {
@@ -1870,6 +1899,7 @@ function draftPick1(pos) {
   beep(640, 60);
   renderDraft();
   refreshDraftRestartButton();
+  mpSyncIfHost();
 }
 
 function draftFinish() {
@@ -1887,6 +1917,7 @@ function draftFinish() {
   assertNoDuplicates();
   state.game.phase = 'auction';
   setView('auction');
+  mpSyncIfHost();
 }
 
 function autoDraftBot(bot) {
