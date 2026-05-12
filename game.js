@@ -4263,6 +4263,9 @@ async function runEventSpace(type, player) {
       <div class="event-p">${e.p} · <span style="color:var(--silver);">${escapeHTML(player.name)}</span></div>
       <div id="event-detail"></div>
     </div>`;
+  if (MULTIPLAYER && mpIsMultiplayerHost()) {
+    try { mpHostBroadcastPlayfieldToClients(); } catch (_) {}
+  }
   flash(type === 'action' ? 'win' : 'loss');
   beep(type === 'action' ? 760 : 320, 120);
   if (type === 'red')      await applyRedCard(player);
@@ -4322,6 +4325,9 @@ async function applyRedCard(player) {
   const detail = $('#event-detail');
   if (!detail) return;
   detail.innerHTML = `<div class="dice-area"><div class="dice-num" id="dice-num">—</div></div>`;
+  if (MULTIPLAYER && mpIsMultiplayerHost()) {
+    try { mpHostBroadcastPlayfieldToClients(); } catch (_) {}
+  }
   const v = await performDiceRoll(6);
   const pos = diePositionFor(v);
   const outCard = player.team[pos];
@@ -5333,6 +5339,9 @@ async function showWeekStartSummary(g) {
 async function applyInjury(player) {
   const detail = $('#event-detail');
   if (detail) detail.innerHTML = `<div class="dice-area"><div class="dice-num" id="dice-num">—</div></div>`;
+  if (MULTIPLAYER && mpIsMultiplayerHost()) {
+    try { mpHostBroadcastPlayfieldToClients(); } catch (_) {}
+  }
   const v = await performDiceRoll(6);
   const pos = diePositionFor(v);
   const outCard = player.team[pos];
@@ -6079,6 +6088,10 @@ async function runAuctionUI(card, titleLabel, firstPlayer) {
   }
   let currentBid = 0, winner = null;
   const popId = 'live-auction-popup';
+  const syncAuctionPopupToClients = () => {
+    if (!MULTIPLAYER || !mpIsMultiplayerHost() || !state.game) return;
+    try { mpHostSyncLivePopupFromDom(popId); } catch (_) {}
+  };
   const renderPopup = (feedLines) => {
     showTeamSidebar(card);
     const feedHtml = feedLines.map(l => `<div style="font-size:0.78rem;color:var(--silver);margin-top:0.2rem;">${l}</div>`).join('');
@@ -6103,6 +6116,7 @@ async function runAuctionUI(card, titleLabel, firstPlayer) {
     feedLines.push(line);
     const feed = document.getElementById('wa-feed');
     if (feed) feed.innerHTML = feedLines.map(l => `<div style="font-size:0.78rem;color:var(--silver);margin-top:0.2rem;">${l}</div>`).join('');
+    syncAuctionPopupToClients();
   };
   renderPopup([]);
 
@@ -6161,6 +6175,7 @@ async function runAuctionUI(card, titleLabel, firstPlayer) {
           bidBtn.onclick = go;
           if (inp) { inp.focus(); inp.onkeydown = e => { if (e.key === 'Enter') go(); }; }
           if (passBtn) passBtn.onclick = () => finish({ pass: true });
+          syncAuctionPopupToClients();
         });
         if (result.pass) {
           passes.add(p.id);
@@ -6169,6 +6184,9 @@ async function runAuctionUI(card, titleLabel, firstPlayer) {
           currentBid = result.bid; winner = p; lastBidder = p.id; bidThisRound = true;
           addFeed(`<b>${p.emoji} ${escapeHTML(p.name)}</b> → ${fmtMoney(currentBid)}`);
           beep(820, 50);
+          const bidLine = document.querySelector(`#${popId}-body .wa-bid-line`);
+          if (bidLine) bidLine.innerHTML = `${de?'Aktuelles Gebot':'Current bid'}: <b style="color:var(--gold)">${fmtMoney(currentBid)}</b> <span style="color:var(--silver)">(${escapeHTML(winner.name)})</span>`;
+          syncAuctionPopupToClients();
         }
       } else if (mpSeatIsRemoteHumanOnHost(p)) {
         renderPopup(feedLines);
@@ -6183,6 +6201,7 @@ async function runAuctionUI(card, titleLabel, firstPlayer) {
           beep(820, 50);
           const bidLine = document.querySelector(`#${popId}-body .wa-bid-line`);
           if (bidLine) bidLine.innerHTML = `${de?'Aktuelles Gebot':'Current bid'}: <b style="color:var(--gold)">${fmtMoney(currentBid)}</b> <span style="color:var(--silver)">(${escapeHTML(winner.name)})</span>`;
+          syncAuctionPopupToClients();
         }
       } else {
         await sleep(speedMs(400));
@@ -6197,6 +6216,7 @@ async function runAuctionUI(card, titleLabel, firstPlayer) {
           // Update the current-bid display in-place (don't rebuild the whole popup)
           const bidLine = document.querySelector(`#${popId}-body .wa-bid-line`);
           if (bidLine) bidLine.innerHTML = `${de?'Aktuelles Gebot':'Current bid'}: <b style="color:var(--gold)">${fmtMoney(currentBid)}</b> <span style="color:var(--silver)">(${escapeHTML(winner.name)})</span>`;
+          syncAuctionPopupToClients();
           showTeamSidebar(card);
         }
       }
@@ -6232,6 +6252,7 @@ async function runAuctionUI(card, titleLabel, firstPlayer) {
       okBtn.onclick = () => { closeGamePopup(popId); resolve(); };
       feed.appendChild(okBtn);
     }
+    syncAuctionPopupToClients();
     registerPopupClose(popId, () => resolve());
   });
   await sleep(200);
