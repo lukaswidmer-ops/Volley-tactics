@@ -111,7 +111,6 @@ const i18n = {
     week_event_cup: 'Cup', week_event_cupfinal: 'Cup-Final', week_event_clfinal: 'CL-Final',
     week_event_league: 'Liga',
 
-    mp_live_from_host: 'Live vom Host — Wochenend-Spiele, Kriterien und Stände siehst du hier mit.',
 
     yourturn: 'DU BIST AM ZUG', bot_thinking: 'denkt nach',
 
@@ -285,7 +284,6 @@ const i18n = {
     week_event_cup: 'Cup', week_event_cupfinal: 'Cup Final', week_event_clfinal: 'CL Final',
     week_event_league: 'League',
 
-    mp_live_from_host: 'Live from the host — weekend matches, criteria and scores sync here.',
 
     yourturn: 'YOUR TURN', bot_thinking: 'thinking',
 
@@ -1260,24 +1258,43 @@ function dicePanel_roll(force, preferredWaiter) {
       else if (_waiters['endMarket']) name = 'endMarket';
       else name = _expectedAdvance || 'coneRollNow';
     }
+    if (!mpLocalMayFireMatchWaiter(name)) return;
     mpGameClientSubmit({ action: 'fireWaiter', name });
     refreshDebugHud();
     return;
   }
   // Prefer explicit intent from the clicked action button.
-  if (preferredWaiter && _waiters[preferredWaiter]) { fire(preferredWaiter); return; }
+  if (preferredWaiter && _waiters[preferredWaiter]) {
+    if (!mpLocalMayFireMatchWaiter(preferredWaiter)) return;
+    fire(preferredWaiter);
+    return;
+  }
   // Then prefer what the flow expects next.
-  if (_expectedAdvance && _waiters[_expectedAdvance]) { fire(_expectedAdvance); return; }
+  if (_expectedAdvance && _waiters[_expectedAdvance]) {
+    if (!mpLocalMayFireMatchWaiter(_expectedAdvance)) return;
+    fire(_expectedAdvance);
+    return;
+  }
   // Fallback: first active waiter wins.
-  if (_waiters['serveOnce']) { fire('serveOnce'); return; }
-  if (_waiters['continueAfterMatch']) { fire('continueAfterMatch'); return; }
+  if (_waiters['serveOnce']) {
+    if (!mpLocalMayFireMatchWaiter('serveOnce')) return;
+    fire('serveOnce');
+    return;
+  }
+  if (_waiters['continueAfterMatch']) {
+    if (!mpLocalMayFireMatchWaiter('continueAfterMatch')) return;
+    fire('continueAfterMatch');
+    return;
+  }
   if (_waiters['coneContinue']) { fire('coneContinue'); return; }
   if (_waiters['coneRollNow']) { fire('coneRollNow'); return; }
   if (_waiters['endMarket']) { fire('endMarket'); return; }
   // No active waiter yet (e.g. short animation/event gap):
   // queue exactly ONE action — never fire two names; that leaves stale pendings
   // (e.g. coneRollNow) and the next bot turn can resolve waitFor('coneRollNow') instantly → chaos.
-  fire(_expectedAdvance || 'coneRollNow');
+  const fall = _expectedAdvance || 'coneRollNow';
+  if (!mpLocalMayFireMatchWaiter(fall)) return;
+  fire(fall);
   refreshDebugHud();
 }
 
@@ -2161,6 +2178,26 @@ function mpClientApplyHudSnapshot() {
   if (btn) {
     btn.disabled = !!h.diceDisabled;
     if (h.diceText != null) btn.textContent = h.diceText;
+    if (MULTIPLAYER && !mpIsMultiplayerHost() && state.game && state.game.phase === 'season') {
+      const sides = state.game._mpMatchSides;
+      const loc = mpLocalGamePlayer();
+      const inPair = !!(sides && sides.homeId && sides.awayId && loc &&
+        (loc.id === sides.homeId || loc.id === sides.awayId));
+      const ea = h.expectedAdvance;
+      if ((ea === 'serveOnce' || ea === 'continueAfterMatch') && sides && sides.homeId) {
+        if (!inPair) {
+          btn.disabled = true;
+          btn.classList.remove('pulse');
+          btn.textContent = state.lang === 'de' ? '👁 Anderes Spiel' : '👁 Other match';
+        } else if (ea === 'serveOnce') {
+          btn.disabled = false;
+          btn.classList.add('pulse');
+          if (!h.diceText || !String(h.diceText).includes('🏐')) {
+            btn.textContent = '🏐 ' + T('serve');
+          }
+        }
+      }
+    }
   }
   if (lbl && h.diceLbl != null) lbl.textContent = h.diceLbl;
   if (res && h.diceRes != null) res.textContent = h.diceRes;
@@ -2353,6 +2390,12 @@ function mpHostOnClientGameInput(mpId, payload) {
   if (act === 'fireWaiter') {
     const name = payload.name;
     if (!name || typeof name !== 'string') return;
+    if (name === 'serveOnce' || name === 'continueAfterMatch') {
+      const sides = g._mpMatchSides;
+      if (sides && sides.homeId && sides.awayId) {
+        if (subject.id !== sides.homeId && subject.id !== sides.awayId) return;
+      }
+    }
     if ((name === 'coneRollNow' || name === 'coneContinue')) {
       const active = g.players[g.activeIdx];
       if (!active || active.mpId !== mpId) return;
@@ -2427,6 +2470,25 @@ function mpIsLobbyHumanSeat(p) {
   if (!p) return false;
   if (MULTIPLAYER && state.mpRoom) return !!p.mpId && !p.mpIsBot;
   return !!p.isHuman;
+}
+
+/** True, wenn der lokale Sitz gerade Heim oder Gast dieses Duells ist (MP: Zuschauer false). Solo: mindestens ein isHuman im Paar. */
+function mpLocalSeatInMatchPair(home, away) {
+  if (!home || !away) return false;
+  if (!MULTIPLAYER || !state.mpRoom) return !!(home.isHuman || away.isHuman);
+  const loc = mpLocalGamePlayer();
+  return !!(loc && (loc === home || loc === away));
+}
+
+function mpLocalMayFireMatchWaiter(name) {
+  if (name !== 'serveOnce' && name !== 'continueAfterMatch') return true;
+  const g = state.game;
+  if (!g) return true;
+  const sides = g._mpMatchSides;
+  if (!sides || !sides.homeId || !sides.awayId) return true;
+  const home = Array.isArray(g.players) ? g.players.find(p => p && p.id === sides.homeId) : null;
+  const away = Array.isArray(g.players) ? g.players.find(p => p && p.id === sides.awayId) : null;
+  return mpLocalSeatInMatchPair(home, away);
 }
 
 async function humanBidPromptRemote(p, card, minNext) {
@@ -3507,7 +3569,6 @@ function renderGame() {
       <button type="button" class="btn btn-secondary vvmp-resume-btn" onclick="if(window.VV&&VV.resumeSelf)VV.resumeSelf()">${state.lang==='de'?'Pause beenden':'End pause'}</button>
     </div>` : ''}
     <div class="game">
-      ${MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost ? `<div class="mp-live-banner" style="text-align:center;font-size:0.78rem;padding:0.4rem 0.75rem;background:rgba(34,197,94,0.09);border-bottom:1px solid rgba(34,197,94,0.3);color:#86efac;letter-spacing:0.03em;">${escapeHTML(T('mp_live_from_host'))}</div>` : ''}
       <div class="topbar" id="topbar">
         <div class="topbar-bots">${g.players.filter(p=>!p.isHuman).map((p)=>playerCardHtml(p,g.players.indexOf(p),true)).join('')}</div>
         <div class="topbar-sep"></div>
@@ -4004,23 +4065,6 @@ async function runSeason() {
   endGame();
 }
 
-// Returns the logical field type for a given absolute day.
-// 'liga' = league match (day-in-week 8), 'cup' = any tournament day (day-in-week 4),
-// otherwise the fixed event type ('red', 'transfer', 'action', 'vnl', 'injury').
-function getFieldType(day) {
-  const dInW = dayInWeekOf(day);
-  if (dInW === 8) return 'liga';
-  const weekEv = weekEventByWeek(weekOfDay(day));
-  if (weekEv != null && weekEv.day === dInW) return 'cup';
-  return eventTypeForDay(dInW);
-}
-
-// Only liga and cup fields trigger resolution when the cone passes through them.
-// All other field types (red, transfer, action, vnl, injury) are silent on passthrough.
-function shouldTriggerOnPassthrough(fieldType) {
-  return fieldType === 'liga' || fieldType === 'cup';
-}
-
 // One cone-roll turn for a player
 async function runConeRoll(player) {
   const g = state.game;
@@ -4073,33 +4117,20 @@ async function runConeRoll(player) {
   const advance = v >= 3 ? 2 : 1;     // rule: 1=+1, 2=+1, 3=+2
   const start = g.coneDay;
   appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🎲 ${v} (${state.lang==='de'?'+':'+'}${advance})`);
-  // Movement resolver: animate every step; resolve only on terminal or passthrough-eligible fields.
-  // • Final landing (isLastStep) — always resolves, no exceptions.
-  // • Liga (day 8) — always terminal; cone rests here (break). Resolves via isTerminal path.
-  // • Cup/tournament (day 4) — resolves when passed through as an intermediate step.
-  // • All other field types — animate only on intermediate steps, never resolve on passthrough.
+  // Movement: jeden betretenen Tag auflösen (Turnier, Wochenende-Log, Event-Felder).
+  // Früher wurden bei +2 nur das Zielfeld und Cup/Liga-Zwischenfelder ausgelöst — dann fehlten
+  // Events auf dem ersten Schritt (z. B. Woche 2: 8→9→10 ohne Popup auf Tag 9).
   for (let i = 0; i < advance; i++) {
-    const isLastStep  = (i === advance - 1);
-    const d           = start + 1 + i;
-    g.coneDay         = d;
+    const d = start + 1 + i;
+    g.coneDay = d;
     refreshBoard();
     await sleep(speedMs(350));
 
     const isLeagueDay = dayInWeekOf(d) === 8;
-    const fieldType   = getFieldType(d);
-    const isTerminal  = isLastStep || isLeagueDay;
 
     try {
-      if (isTerminal) {
-        // Final landing field OR league barrier — always resolve, no exceptions.
-        await resolveDay(d, player);
-        if (g.over) return;
-      } else if (shouldTriggerOnPassthrough(fieldType)) {
-        // Intermediate liga/cup field: fire and keep moving.
-        await resolveDay(d, player);
-        if (g.over) return;
-      }
-      // All other intermediate fields: animate only, no resolve.
+      await resolveDay(d, player);
+      if (g.over) return;
     } catch (err) {
       console.error('[VV] executeMove crashed (day=' + d + '):', err);
       ['coneRollNow','coneContinue','continueAfterMatch','serveOnce','endMarket'].forEach(fire);
@@ -5620,15 +5651,22 @@ async function runMatchClassic(home, away, isTournament) {
   refreshMatchSidePanels(M);
 
   const anyLobbyHumanInMatch = mpIsLobbyHumanSeat(home) || mpIsLobbyHumanSeat(away);
+  const localMayServeUi = mpLocalSeatInMatchPair(home, away);
   const totalRolls = () => M.totalRolls + M.crunchExtra;
   while (M.iRoll < totalRolls() && !M.ended) {
     if (anyLobbyHumanInMatch && state.speed !== 'auto') {
       // Backup trigger: if the action button is obscured, dice-panel can still start the next rally.
       const dpBtn = document.getElementById('dice-panel-btn');
       if (dpBtn) {
-        dpBtn.disabled = false;
-        dpBtn.classList.add('pulse');
-        dpBtn.textContent = '🏐 ' + T('serve');
+        if (localMayServeUi) {
+          dpBtn.disabled = false;
+          dpBtn.classList.add('pulse');
+          dpBtn.textContent = '🏐 ' + T('serve');
+        } else {
+          dpBtn.disabled = true;
+          dpBtn.classList.remove('pulse');
+          dpBtn.textContent = state.lang === 'de' ? '👁 Anderes Spiel' : '👁 Other match';
+        }
       }
       // No autoMs: each criterion waits for your click (15s safety in waitFor still prevents deadlocks).
       // speedMs(3500) here used to auto-fire — felt like the game "played itself", esp. on fast speed.
@@ -5846,6 +5884,7 @@ async function showMatchSummary(M, winner, opts = {}) {
       ${M.events.map(e => `<span class="crit-pill ${e.winner}">#${e.dice} ${T('crit_'+e.kind)}</span>`).join('')}
     </div>`;
   const anyLobbyHumanInMatch = !!(state.game && (mpIsLobbyHumanSeat(M.home) || mpIsLobbyHumanSeat(M.away)));
+  const localMayMatchSummaryBtn = mpLocalSeatInMatchPair(M.home, M.away);
   const forceAutoContinue = !!opts.forceAutoContinue;
 
   // Bot-vs-bot summaries must never depend on waiter/click flows.
@@ -5864,9 +5903,13 @@ async function showMatchSummary(M, winner, opts = {}) {
   setActionsHtml(`<h3>${T('phase_match')}</h3>${speedToggleHtml()}`);
   // Dice-panel button acts as backup "Continue" trigger during match summary
   const matchDpBtn = document.getElementById('dice-panel-btn');
-  if (anyLobbyHumanInMatch && state.speed !== 'auto' && matchDpBtn) {
+  if (anyLobbyHumanInMatch && state.speed !== 'auto' && matchDpBtn && localMayMatchSummaryBtn) {
     matchDpBtn.disabled = false; matchDpBtn.classList.add('pulse');
     matchDpBtn.textContent = '▶ ' + T('next_match');
+  } else if (anyLobbyHumanInMatch && state.speed !== 'auto' && matchDpBtn && !localMayMatchSummaryBtn) {
+    matchDpBtn.disabled = true;
+    matchDpBtn.classList.remove('pulse');
+    matchDpBtn.textContent = state.lang === 'de' ? '👁 Anderes Spiel' : '👁 Other match';
   }
   if (shouldAutoContinue) setTimeout(() => fire('continueAfterMatch'), speedMs(2500));
   await waitFor('continueAfterMatch', autoMs);
@@ -6888,8 +6931,8 @@ document.addEventListener('keydown', e => {
       return;
     }
     if (_waiters['coneContinue'])     { e.preventDefault(); fire('coneContinue');      return; }
-    if (_waiters['continueAfterMatch']){ e.preventDefault(); fire('continueAfterMatch'); return; }
-    if (_waiters['serveOnce'])        { e.preventDefault(); fire('serveOnce');         return; }
+    if (_waiters['continueAfterMatch'] && mpLocalMayFireMatchWaiter('continueAfterMatch')) { e.preventDefault(); fire('continueAfterMatch'); return; }
+    if (_waiters['serveOnce'] && mpLocalMayFireMatchWaiter('serveOnce')) { e.preventDefault(); fire('serveOnce'); return; }
     if (_waiters['coneRollNow'])      { e.preventDefault(); fire('coneRollNow');       return; }
     if (_waiters['endMarket'])        { e.preventDefault(); fire('endMarket');         return; }
   }

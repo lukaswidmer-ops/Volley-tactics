@@ -74,12 +74,14 @@
    match begins, syncState() pushes the host's state to Firebase
    and non-host clients re-render from the snapshot.
 
-   Idle-TTL cleanup (15 min):
-   • Every meaningful write (createRoom, heartbeat, syncState,
-     submitInput, addBot, removePlayer) updates `meta.lastActivity`.
-   • A best-effort sweep on every page load + every 5 min deletes
-     rooms whose freshest signal (lastActivity / createdAt /
-     newest human heartbeat) is older than IDLE_TTL_MS.
+   Idle-TTL cleanup (8 min, nur Host):
+   • `meta.lastActivity` und Host-`lastSeen` signalisieren, dass der
+     Host noch da ist (Heartbeats nur Host → meta; Spiel-Syncs vom Host
+     setzen lastActivity ebenfalls).
+   • Mitspieler-Heartbeats aktualisieren nur deren `players/…/lastSeen`,
+     nicht `meta.lastActivity` (sonst würde der Raum nie „Host idle“ werden).
+   • Ein Sweep beim Laden + alle 5 min löscht Räume, deren letzte
+     Host-Aktivität älter als IDLE_TTL_MS ist.
    ================================================================ */
 
 import {
@@ -89,7 +91,7 @@ import {
 // ---------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------
-const IDLE_TTL_MS         = 15 * 60 * 1000;   // idle TTL — auto-delete rooms idle > 15 min
+const IDLE_TTL_MS         = 8 * 60 * 1000;    // Host idle TTL — auto-delete if host silent > 8 min
 const HEARTBEAT_MS        = 15 * 1000;        // lastSeen ping
 const DISCONNECT_AFTER_MS = 20 * 1000;        // host promotion / bot takeover
 const PAUSE_MAX_MS        = 60 * 1000;        // 60 s
@@ -203,21 +205,18 @@ function roomLastActivity(room) {
   const meta = (room && room.meta) || {};
   const lastA   = typeof meta.lastActivity === 'number' ? meta.lastActivity : 0;
   const created = typeof meta.createdAt    === 'number' ? meta.createdAt    : 0;
-  // Freshest human heartbeat counts as "alive" even if meta.lastActivity is stale.
-  let lastSeen = 0;
+  const hostId = meta.hostId;
+  let hostSeen = 0;
   const players = (room && room.players) || {};
-  for (const p of Object.values(players)) {
-    if (p && !p.isBot && typeof p.lastSeen === 'number' && p.lastSeen > lastSeen) {
-      lastSeen = p.lastSeen;
-    }
-  }
-  return Math.max(lastA, created, lastSeen);
+  const hp = hostId ? players[hostId] : null;
+  if (hp && typeof hp.lastSeen === 'number') hostSeen = hp.lastSeen;
+  return Math.max(lastA, created, hostSeen);
 }
 function isRoomStale(room) {
   return (Date.now() - roomLastActivity(room)) > IDLE_TTL_MS;
 }
 
-// Best-effort scan of /rooms; deletes any room idle for longer than IDLE_TTL_MS.
+// Best-effort scan of /rooms; deletes rooms whose host has been idle longer than IDLE_TTL_MS.
 // Requires ".read": true at /rooms in DB rules (database.rules.json already has it).
 async function sweepStaleRooms() {
   try {
@@ -443,13 +442,14 @@ function startHeartbeat() {
   const ping = () => {
     if (!session.roomCode || !session.playerId) return;
     const now = Date.now();
-    // Atomic multi-path update: own lastSeen + room-level lastActivity, so
-    // the idle-TTL sweep sees an active human and won't drop the room.
-    update(ref(db, `rooms/${session.roomCode}`), {
+    const patch = {
       [`players/${session.playerId}/lastSeen`]:    now,
       [`players/${session.playerId}/isConnected`]: true,
-      'meta/lastActivity':                          now,
-    }).catch(err => console.warn('[VV_MP] heartbeat failed:', err));
+    };
+    // Nur der Host hält meta.lastActivity warm — sonst „aktive“ Clients
+    // verhindern das Aufräumen, obwohl der Host-Rechner lange weg ist.
+    if (session.isHost) patch['meta/lastActivity'] = now;
+    update(ref(db, `rooms/${session.roomCode}`), patch).catch(err => console.warn('[VV_MP] heartbeat failed:', err));
   };
   ping();
   session.heartbeatTimer = setInterval(ping, HEARTBEAT_MS);
@@ -1224,7 +1224,6 @@ async function submitInput(payload) {
   const now = Date.now();
   await fb('submitInput', () => update(ref(db, `rooms/${session.roomCode}`), {
     [`inputs/${session.playerId}`]: { at: now, payload },
-    'meta/lastActivity':            now,
   }));
 }
 
@@ -1353,6 +1352,6 @@ installBridge();
 ensurePlayerId();
 
 // Opportunistic stale-room cleanup: on load + every 5 min while the page
-// stays open. Auto-deletes any room idle for more than IDLE_TTL_MS (15 min).
+// stays open. Auto-deletes any room whose host idle exceeds IDLE_TTL_MS (8 min).
 sweepStaleRooms();
 setInterval(sweepStaleRooms, SWEEP_INTERVAL_MS);
