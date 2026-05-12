@@ -1174,8 +1174,15 @@ function mpClientApplyDiceRollIfNeeded() {
   if (!MULTIPLAYER || mpIsMultiplayerHost() || !state.game) return;
   const d = state.game._mpDiceRoll;
   if (!d || !Number.isFinite(d.type) || !Number.isFinite(d.final) || !Number.isFinite(d.seq)) return;
-  if (d.seq <= _mpClientLastDiceSeq) return;
-  _mpClientLastDiceSeq = d.seq;
+  if (d.seq < _mpClientLastDiceSeq) return;
+  const res = document.getElementById('dice-panel-result');
+  const numEl = document.getElementById('dice-num');
+  const primary = res || numEl;
+  const landed = !!(primary && primary.classList && primary.classList.contains('landed'));
+  const txt = primary ? String(primary.textContent).trim() : '';
+  const done = landed && txt === String(d.final);
+  if (d.seq === _mpClientLastDiceSeq && done) return;
+  if (d.seq > _mpClientLastDiceSeq) _mpClientLastDiceSeq = d.seq;
   void animateDicePanel(d.type, d.final, { silent: true });
 }
 
@@ -2199,8 +2206,12 @@ function mpClientApplyHudSnapshot() {
       }
     }
   }
-  if (lbl && h.diceLbl != null) lbl.textContent = h.diceLbl;
-  if (res && h.diceRes != null) res.textContent = h.diceRes;
+  // Während Host-Wurf (_mpDiceRoll) nicht überschreiben — sonst flackert die Box oder bricht die Animation.
+  const rollInFlight = !!(state.game._mpDiceRoll && Number.isFinite(state.game._mpDiceRoll.seq));
+  if (!rollInFlight) {
+    if (lbl && h.diceLbl != null) lbl.textContent = h.diceLbl;
+    if (res && h.diceRes != null) res.textContent = h.diceRes;
+  }
   mpClientMergeMatchCritBannerFromHud(h);
   mpClientSwapBoardToLocalMatchOpponent();
   if (state.view === 'game' && state.game.phase === 'season') {
@@ -4259,6 +4270,9 @@ async function runEventSpace(type, player) {
   if (type === 'action')   await applyActionCard(player);
   if (type === 'vnl')      await applyVnlEvent(player);
   if (type === 'injury')   await applyInjury(player);
+  if (MULTIPLAYER && mpIsMultiplayerHost()) {
+    try { mpHostBroadcastPlayfieldToClients(); } catch (_) {}
+  }
   await sleep(speedMs(1500));
 }
 
@@ -4267,16 +4281,55 @@ function diePositionFor(roll6) {
   return ['libero','outside','middle','setter','diagonal','outside'][roll6-1];
 }
 
+/** Rote Karte / Verletzung: für alle (Host + Mitspieler) gleiches Popup — wer betroffen ist, welche Karte fürs Wochenende fehlt. */
+async function showSuspensionWeekendPopup(kind, player, pos, outCard, subbed) {
+  const de = state.lang === 'de';
+  const isRed = kind === 'red';
+  const title = isRed ? ('🟥 ' + T('cone_event_red')) : ('🩹 ' + T('cone_event_injury'));
+  if (!outCard) {
+    const desc = de
+      ? `${player.emoji} <b>${escapeHTML(player.name)}</b><br><br>Am gewürfelten Platz <b>${escapeHTML(posLabel(pos))}</b> steht kein Stammspieler — <b>kein Ausfall</b> fürs Wochenende.`
+      : `${player.emoji} <b>${escapeHTML(player.name)}</b><br><br>No starter at <b>${escapeHTML(posLabel(pos))}</b> — <b>nobody</b> is ruled out for the weekend.`;
+    await showActionPopup({
+      title,
+      description: desc,
+      affectedPlayers: [player],
+      autoMs: EVENT_POPUP_MS,
+    });
+    return;
+  }
+  const userLine = de
+    ? `<b>Verein:</b> ${player.emoji} ${escapeHTML(player.name)}`
+    : `<b>Team:</b> ${player.emoji} ${escapeHTML(player.name)}`;
+  const cardLine = de
+    ? `<b>Ausfall für die Wochenend-Spiele:</b><br>${escapeHTML(outCard.name)} · ${escapeHTML(posLabel(outCard.pos))} · ${'★'.repeat(outCard.stars)}<br><span style="color:var(--silver);font-size:0.88em;">Rückkehr nach dem Liga-Spiel (${T('phase_match')}, ${T('cal_day')} 8).</span>`
+    : `<b>Out for weekend matches:</b><br>${escapeHTML(outCard.name)} · ${escapeHTML(posLabel(outCard.pos))} · ${'★'.repeat(outCard.stars)}<br><span style="color:var(--silver);font-size:0.88em;">Returns after the league match (${T('phase_match')}, ${T('cal_day')} 8).</span>`;
+  const subLine = subbed
+    ? (de
+      ? `<br><br><b>Ersatz auf dem Feld:</b> ${escapeHTML(subbed.name)} · ${'★'.repeat(subbed.stars)} · ${escapeHTML(posLabel(subbed.pos))}`
+      : `<br><br><b>Replacement on court:</b> ${escapeHTML(subbed.name)} · ${'★'.repeat(subbed.stars)} · ${escapeHTML(posLabel(subbed.pos))}`)
+    : '';
+  await showActionPopup({
+    title,
+    description: `${userLine}<br><br>${cardLine}${subLine}`,
+    affectedCards: [outCard],
+    affectedPlayers: [player],
+    autoMs: EVENT_POPUP_MS,
+  });
+}
+
 async function applyRedCard(player) {
   const detail = $('#event-detail');
   if (!detail) return;
   detail.innerHTML = `<div class="dice-area"><div class="dice-num" id="dice-num">—</div></div>`;
   const v = await performDiceRoll(6);
   const pos = diePositionFor(v);
+  const outCard = player.team[pos];
   const subbed = disablePlayerOnTeam(player, pos, T('cone_event_red'));
   appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🟥 ${posLabel(pos)} ${T('injury_out')}${subbed?` · ${T('sub_in')}: ${escapeHTML(subbed.name)}`:''}`);
   refreshTeamPanel();
   refreshFloatingPanel();
+  await showSuspensionWeekendPopup('red', player, pos, outCard, subbed);
 }
 
 function ownedCardIds() {
@@ -5282,10 +5335,12 @@ async function applyInjury(player) {
   if (detail) detail.innerHTML = `<div class="dice-area"><div class="dice-num" id="dice-num">—</div></div>`;
   const v = await performDiceRoll(6);
   const pos = diePositionFor(v);
+  const outCard = player.team[pos];
   const subbed = disablePlayerOnTeam(player, pos, T('cone_event_injury'));
   appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🩹 ${posLabel(pos)} ${T('injury_out')}${subbed?` · ${T('sub_in')}: ${escapeHTML(subbed.name)}`:''}`);
   refreshTeamPanel();
   refreshFloatingPanel();
+  await showSuspensionWeekendPopup('injury', player, pos, outCard, subbed);
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -5796,9 +5851,11 @@ async function resolveCriterion(dice, M) {
       const r = roll(12);
       const team = r <= 6 ? home : away;
       const pos = diePositionFor(((r - 1) % 6) + 1);
+      const outCard = team.team[pos];
       const sub = disablePlayerOnTeam(team, pos, T('cone_event_injury'));
       M._injuryWho = team; M._injuryPos = pos; M._injurySub = sub;
       winner = 'tie';
+      await showSuspensionWeekendPopup('injury', team, pos, outCard, sub);
       break;
     }
     case 12: kind='money'; {
@@ -6700,21 +6757,27 @@ function renderCurrentPhase() {
   }
 }
 
-/** MP-Nicht-Host: nach Phasen-Zeichnen HUD, Live-Popup, gespiegelte Modals, Startwurf- und Würfel-Sync. */
+/** MP-Nicht-Host: gespiegelte Modals zuerst (unabhängig von HUD-Fehlern), dann Würfel + HUD. */
 function mpClientApplyNonHostUiMirror() {
   if (!MULTIPLAYER || !state.mpRoom || state.mpRoom.isHost || !state.game) return;
   try {
+    mpClientSyncMirroredPopupFromState();
+  } catch (e) {
+    console.warn('[VV] mpClientSyncMirroredPopupFromState:', e);
+  }
+  try {
+    if (state.game._mpDiceRoll) {
+      try { mpClientApplyDiceRollIfNeeded(); } catch (_) {}
+    }
     if (state.view === 'game' && state.game.phase === 'season') {
       mpClientApplyHudSnapshot();
       mpClientEnsureLiveGamePopup();
     }
-    mpClientSyncMirroredPopupFromState();
-  } catch (_) {}
+  } catch (e) {
+    console.warn('[VV] mpClientApplyNonHostUiMirror hud/dice:', e);
+  }
   if (state.view === 'starting') {
     try { mpClientApplyStartingRollSnapshot(); } catch (_) {}
-  }
-  if (state.game._mpDiceRoll) {
-    try { mpClientApplyDiceRollIfNeeded(); } catch (_) {}
   }
 }
 
