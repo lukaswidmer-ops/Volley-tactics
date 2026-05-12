@@ -109,8 +109,7 @@ const session = {
   heartbeatTimer: null,
   pauseTimer: null,
   lastRoomSnapshot: null,
-  gameLaunched: false,   // reset in leaveRoom so a new room can run onRoomUpdate → startMultiplayer again
-  lobbyGameState: null,  // host snapshot { phase:'lobby', … } for non-host lobby UI
+  gameLaunched: false,   // reset in leaveRoom; gesetzt sobald meta.status === 'running'
 };
 
 function ensurePlayerId() {
@@ -517,13 +516,11 @@ function onRoomUpdate(room) {
   // Nicht-Host: Spielzustand **vor** paintLobby anwenden — sonst feuert paintLobby bei jedem Tick
   // die Lobby-HTML neu und hängt Mitspieler trotz meta.status=running wieder in der Lobby fest.
   if (!session.isHost) {
-    if (st === 'lobby' && gs && gs.phase === 'lobby') {
-      session.lobbyGameState = gs;
-    } else if (st === 'running' || st === 'finished') {
+    if (st === 'running' || st === 'finished') {
       if (gs && gs.phase && gs.phase !== 'lobby') {
         applyRemoteGameState(gs);
       } else if (st === 'running') {
-        // Noch kein Draft-Snapshot (null) oder veraltetes lobby-gameState bei laufendem Spiel
+        // Noch kein Draft-Snapshot oder veralteter Lobby-Eintrag in gameState (sollte nach Fix nicht mehr vorkommen)
         const hasGame = !!(window.VV && window.VV.state && window.VV.state.game);
         if (!hasGame && window.VV && typeof window.VV.setView === 'function') {
           window.VV.setView('mp_viewer');
@@ -839,25 +836,24 @@ function maybePromoteHost(room) {
 // ---------------------------------------------------------------
 // Lobby UI
 // ---------------------------------------------------------------
-async function writeLobbyGameStateSnapshot(room) {
+/**
+ * Nur Meta — **nie** `gameState` in der Lobby schreiben (sonst Race mit Spielstart:
+ * verzögertes Update kann Draft überschreiben oder Clients mit phase=lobby festhalten).
+ */
+async function bumpLobbyMetaOnly(room) {
   if (!session.isHost || !session.roomCode) return;
   const meta = (room && room.meta) || {};
-  if (meta.status === 'running') return;
+  if (meta.status === 'running' || meta.status === 'finished') return;
   const playersMap = (room && room.players) || {};
   const humanCount = Object.values(playersMap).filter(p => p && !p.isBot).length;
   const now = Date.now();
   try {
     await update(ref(db, `rooms/${session.roomCode}`), {
-      gameState: {
-        phase:           'lobby',
-        _mpUiView:       'mp_lobby',
-        lobbyHumanCount: humanCount,
-        updatedAt:       now,
-      },
       'meta/lastActivity': now,
+      'meta/lobbyHumans':  humanCount,
     });
   } catch (err) {
-    console.warn('[VV_MP] writeLobbyGameStateSnapshot:', err);
+    console.warn('[VV_MP] bumpLobbyMetaOnly:', err);
   }
 }
 
@@ -889,9 +885,8 @@ function paintLobby(room) {
 
   const filled = slots.filter(Boolean).length;
   const canStart = isHost && filled >= 2 && filled === MAX_HUMANS_PER_ROOM;
-  const lg = session.lobbyGameState;
-  const lobbyLiveHint = (!isHost && lg && lg.phase === 'lobby')
-    ? `<div class="menu-sub" style="text-align:center;margin-top:0.35rem;opacity:0.65;font-size:0.88rem;">${esc(DE('Raum-State: live mit Host verbunden', 'Room state: live with host'))}</div>`
+  const lobbyLiveHint = (!isHost && meta.status === 'lobby')
+    ? `<div class="menu-sub" style="text-align:center;margin-top:0.35rem;opacity:0.65;font-size:0.88rem;">${esc(DE('Raum live — mit Host verbunden', 'Room live — connected to host'))}</div>`
     : '';
 
   const slotRows = slots.map((p, i) => {
@@ -984,8 +979,8 @@ function paintLobby(room) {
   const startBtn = document.getElementById('vvmp-start');
   if (startBtn) startBtn.addEventListener('click', startGameFromLobby);
 
-  if (isHost && meta.status !== 'running') {
-    void writeLobbyGameStateSnapshot(room);
+  if (isHost && meta.status !== 'running' && meta.status !== 'finished') {
+    void bumpLobbyMetaOnly(room);
   }
 }
 
@@ -1042,7 +1037,6 @@ async function leaveRoom(silent) {
   session.roomCode = null;
   session.isHost = false;
   session.lastRoomSnapshot = null;
-  session.lobbyGameState = null;
   if (code && pid) {
     try { await remove(ref(db, `rooms/${code}/players/${pid}`)); } catch (_) {}
   }
@@ -1090,11 +1084,18 @@ async function startGameFromLobby() {
     return;
   }
   const ts = Date.now();
+  // Ein einziges RTDB-`update`: Status + Aktivität + vollständiger Draft-Snapshot — kein getrenntes Lobby-gameState mehr.
   await fb('startGame', () => update(ref(db, `rooms/${session.roomCode}`), {
     'meta/status':       'running',
     'meta/lastActivity': ts,
     gameState:           safe,
   }));
+  try {
+    const json = JSON.stringify(safe);
+    resetSyncScheduler();
+    _lastSyncedJson = json;
+    _lastSyncWriteAt = ts;
+  } catch (_) {}
 }
 
 // ---------------------------------------------------------------
@@ -1127,6 +1128,9 @@ function scheduleGameStateSync() {
 
 async function flushGameStateSyncNow(force) {
   if (!session.isHost || !session.roomCode) return;
+  const roomSnap = session.lastRoomSnapshot;
+  const st = roomSnap && roomSnap.meta && roomSnap.meta.status;
+  if (st !== 'running' && st !== 'finished') return;
   const now = Date.now();
   const gap = SYNC_MIN_GAP_MS;
   if (!force && _lastSyncWriteAt && (now - _lastSyncWriteAt) < gap) {
@@ -1173,6 +1177,9 @@ async function forceGameStateSync() {
 
 async function syncState(gameState) {
   if (!session.isHost || !session.roomCode) return;
+  const roomSnap = session.lastRoomSnapshot;
+  const st = roomSnap && roomSnap.meta && roomSnap.meta.status;
+  if (st !== 'running' && st !== 'finished') return;
   try {
     const safe = JSON.parse(JSON.stringify(gameState || null));
     const json = JSON.stringify(safe);
