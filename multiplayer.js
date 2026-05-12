@@ -408,6 +408,7 @@ async function joinRoom(code, name) {
     }));
     session.roomCode = code;
     session.isHost = (meta.hostId === session.playerId);
+    session.gameLaunched = false;
     startHeartbeat();
     listenToRoom();
     renderLobby();
@@ -491,10 +492,12 @@ function onRoomUpdate(room) {
   maybePromoteHost(room);
 
   const meta = room.meta || {};
+  const st = meta.status || 'lobby';
+  const gs = room.gameState || null;
 
   // Laufendes Spiel: Nicht-Hosts brauchen **immer** MULTIPLAYER/mpRoom bevor applyRemoteState,
   // sonst bricht applyRemoteState wegen `!MULTIPLAYER` ab (startMultiplayer lief nur einmal / zu früh).
-  if ((meta.status === 'running' || meta.status === 'finished')
+  if ((st === 'running' || st === 'finished')
       && !session.isHost
       && window.VV && typeof window.VV.ensureMpClientSession === 'function') {
     const lobbyPlayers = Object.entries(room.players || {})
@@ -507,28 +510,35 @@ function onRoomUpdate(room) {
     });
   }
 
-  // Einmal-Flag (z. B. Rejoin / Telemetrie); Spielstart-UI kommt über ensure + applyRemoteState.
-  if (meta.status === 'running' && !session.gameLaunched) {
+  if (st === 'running' && !session.gameLaunched) {
     session.gameLaunched = true;
   }
 
-  // Re-read the view AFTER any possible transition above so we don't repaint
-  // the lobby on top of mp_viewer / game when the non-host just moved on.
-  const view = ($('#app') || {}).dataset && $('#app').dataset.view;
-
-  if (view === 'mp_lobby') {
-    paintLobby(room);
+  // Nicht-Host: Spielzustand **vor** paintLobby anwenden — sonst feuert paintLobby bei jedem Tick
+  // die Lobby-HTML neu und hängt Mitspieler trotz meta.status=running wieder in der Lobby fest.
+  if (!session.isHost) {
+    if (st === 'lobby' && gs && gs.phase === 'lobby') {
+      session.lobbyGameState = gs;
+    } else if (st === 'running' || st === 'finished') {
+      if (gs && gs.phase && gs.phase !== 'lobby') {
+        applyRemoteGameState(gs);
+      } else if (st === 'running') {
+        // Noch kein Draft-Snapshot (null) oder veraltetes lobby-gameState bei laufendem Spiel
+        const hasGame = !!(window.VV && window.VV.state && window.VV.state.game);
+        if (!hasGame && window.VV && typeof window.VV.setView === 'function') {
+          window.VV.setView('mp_viewer');
+          paintViewerWaiting();
+        }
+      }
+    }
   }
 
-  // Non-host: lobby gameState nur für Lobby-UI; laufendes Spiel über vollen Snapshot.
-  if (!session.isHost && room.gameState) {
-    const gs = room.gameState;
-    const st = meta.status;
-    if (st === 'lobby' && gs.phase === 'lobby') {
-      session.lobbyGameState = gs;
-      if (view === 'mp_lobby') paintLobby(room);
-    } else if (st === 'running' || st === 'finished') {
-      applyRemoteGameState(gs);
+  const view = ($('#app') || {}).dataset && $('#app').dataset.view;
+  if (view === 'mp_lobby') {
+    if (st === 'running' && !session.isHost) {
+      // Lobby nicht erneut übermalen, sobald der Host gestartet hat
+    } else {
+      paintLobby(room);
     }
   }
 
