@@ -110,7 +110,6 @@ const session = {
   pauseTimer: null,
   lastRoomSnapshot: null,
   gameLaunched: false,   // reset in leaveRoom; gesetzt sobald meta.status === 'running'
-  _mpDebugShownForRunning: false,
 };
 
 function ensurePlayerId() {
@@ -409,7 +408,6 @@ async function joinRoom(code, name) {
     session.roomCode = code;
     session.isHost = (meta.hostId === session.playerId);
     session.gameLaunched = false;
-    session._mpDebugShownForRunning = false;
     startHeartbeat();
     listenToRoom();
     renderLobby();
@@ -488,83 +486,6 @@ function stopListening() {
   session.unsubscribers = [];
 }
 
-// ── Temporäres MP-Debug-Fenster (Start + Fehler) — später wieder entfernen ──
-const _VVMP_DEBUG_MAX = 120;
-const _vvmpDebugLines = [];
-let _vvmpDebugGlobalsInstalled = false;
-
-function vvmpDebugLog(msg) {
-  const line = `${new Date().toISOString().slice(11, 23)} ${String(msg)}`;
-  _vvmpDebugLines.push(line);
-  while (_vvmpDebugLines.length > _VVMP_DEBUG_MAX) _vvmpDebugLines.shift();
-  const pre = document.getElementById('vvmp-debug-pre');
-  if (pre) pre.textContent = _vvmpDebugLines.join('\n');
-  try { console.info('[VVMP-DEBUG]', msg); } catch (_) {}
-}
-
-function vvmpDebugEnsureOverlay() {
-  let root = document.getElementById('vvmp-debug-overlay');
-  if (root) return root;
-  root = document.createElement('div');
-  root.id = 'vvmp-debug-overlay';
-  root.style.cssText = [
-    'display:none', 'position:fixed', 'inset:0', 'z-index:2147483000',
-    'align-items:flex-start', 'justify-content:center', 'padding:1rem',
-    'background:rgba(0,0,0,0.55)', 'font-family:ui-monospace,Consolas,monospace',
-    'font-size:12px', 'color:#e4e4e7', 'box-sizing:border-box',
-  ].join(';');
-  root.innerHTML = `
-    <div id="vvmp-debug-card" style="max-width:min(720px,96vw);max-height:min(70vh,520px);display:flex;flex-direction:column;
-      background:#18181b;border:1px solid #f97316;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,0.6);overflow:hidden;">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:0.5rem 0.75rem;background:#27272a;border-bottom:1px solid #3f3f46;">
-        <strong style="color:#fb923c;letter-spacing:0.05em;">MP DEBUG (temporär)</strong>
-        <button type="button" id="vvmp-debug-close" style="cursor:pointer;padding:0.25rem 0.6rem;border-radius:4px;border:1px solid #71717a;background:#3f3f46;color:#fff;">Schließen</button>
-      </div>
-      <pre id="vvmp-debug-pre" style="margin:0;padding:0.75rem;white-space:pre-wrap;word-break:break-word;overflow:auto;flex:1;line-height:1.35;"></pre>
-      <div style="padding:0.45rem 0.75rem;font-size:11px;color:#a1a1aa;border-top:1px solid #3f3f46;">
-        Klick außerhalb oder „Schließen“ — Host: beim Start; Mitspieler: erster „running“-Snapshot
-      </div>
-    </div>`;
-  document.body.appendChild(root);
-  root.addEventListener('click', (e) => {
-    if (e.target === root) vvmpDebugHideOverlay();
-  });
-  document.getElementById('vvmp-debug-close')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    vvmpDebugHideOverlay();
-  });
-  document.getElementById('vvmp-debug-card')?.addEventListener('click', (e) => e.stopPropagation());
-  return root;
-}
-
-function vvmpDebugShowOverlay(clear) {
-  const root = vvmpDebugEnsureOverlay();
-  if (clear) {
-    _vvmpDebugLines.length = 0;
-    const pre = document.getElementById('vvmp-debug-pre');
-    if (pre) pre.textContent = '';
-  }
-  root.style.display = 'flex';
-}
-
-function vvmpDebugHideOverlay() {
-  const root = document.getElementById('vvmp-debug-overlay');
-  if (root) root.style.display = 'none';
-}
-
-function vvmpDebugInstallGlobalHandlersOnce() {
-  if (_vvmpDebugGlobalsInstalled) return;
-  _vvmpDebugGlobalsInstalled = true;
-  window.addEventListener('error', (ev) => {
-    vvmpDebugLog(`window.error: ${ev.message || ''} @${ev.filename || ''}:${ev.lineno || ''}`);
-    vvmpDebugShowOverlay(false);
-  });
-  window.addEventListener('unhandledrejection', (ev) => {
-    vvmpDebugLog(`unhandledrejection: ${ev.reason && (ev.reason.stack || ev.reason.message || ev.reason)}`);
-    vvmpDebugShowOverlay(false);
-  });
-}
-
 function onRoomUpdate(room) {
   // Track host promotion if current host went stale.
   maybePromoteHost(room);
@@ -592,24 +513,12 @@ function onRoomUpdate(room) {
     session.gameLaunched = true;
   }
 
-  if ((st === 'running' || st === 'finished') && !session.isHost && !session._mpDebugShownForRunning) {
-    session._mpDebugShownForRunning = true;
-    vvmpDebugShowOverlay(true);
-    vvmpDebugLog(`CLIENT: status=${st} phase=${gs ? gs.phase : '(kein gameState)'} VV.view=${(window.VV && window.VV.state && window.VV.state.view) || '?'}`);
-    try {
-      vvmpDebugLog(`view=${($('#app') || {}).dataset && $('#app').dataset.view} playerId=${session.playerId}`);
-    } catch (_) {}
-  }
-
   // Nicht-Host: Spielzustand **vor** paintLobby anwenden — sonst feuert paintLobby bei jedem Tick
   // die Lobby-HTML neu und hängt Mitspieler trotz meta.status=running wieder in der Lobby fest.
   if (!session.isHost) {
     if (st === 'running' || st === 'finished') {
       if (gs && gs.phase && gs.phase !== 'lobby') {
         applyRemoteGameState(gs);
-        try {
-          vvmpDebugLog(`CLIENT: applyRemoteGameState OK → view=${(window.VV && window.VV.state && window.VV.state.view) || '?'}`);
-        } catch (_) {}
       } else if (st === 'running') {
         // Noch kein Draft-Snapshot oder veralteter Lobby-Eintrag in gameState (sollte nach Fix nicht mehr vorkommen)
         const hasGame = !!(window.VV && window.VV.state && window.VV.state.game);
@@ -1124,11 +1033,9 @@ async function leaveRoom(silent) {
     }
   } catch (_) {}
   dismissSeatPromptOverlay();
-  vvmpDebugHideOverlay();
   document.getElementById('vvmp-pause-root')?.remove();
   resetSyncScheduler();
   session.gameLaunched = false;
-  session._mpDebugShownForRunning = false;
   stopHeartbeat();
   stopListening();
   const code = session.roomCode;
@@ -1148,18 +1055,13 @@ async function leaveRoom(silent) {
 
 async function startGameFromLobby() {
   if (!session.isHost || !session.roomCode) return;
-  vvmpDebugInstallGlobalHandlersOnce();
-  vvmpDebugShowOverlay(true);
-  vvmpDebugLog('HOST: „Spiel starten“ geklickt');
   const room = session.lastRoomSnapshot;
   const players = (room && room.players) || {};
   const filled = Object.values(players).filter(Boolean);
   if (filled.length < 2) {
-    vvmpDebugLog('Abbruch: weniger als 2 Plätze belegt');
     showToast(DE('Min. 2 Spieler benötigt.', 'Need at least 2 players.'), 'bad'); return;
   }
   if (filled.length < MAX_HUMANS_PER_ROOM) {
-    vvmpDebugLog('Abbruch: nicht alle 4 Plätze gefüllt');
     showToast(DE('Bitte alle 4 Plätze füllen (Mensch oder Bot).',
                  'Fill all 4 seats (human or bot).'), 'bad');
     return;
@@ -1168,12 +1070,10 @@ async function startGameFromLobby() {
   // damit der erste Client-Tick gleichzeitig `running` + Draft-Snapshot enthält
   // (sonst: Clients sehen kurz Lobby-gameState und bleiben auf „Warten …“).
   if (!window.VV || typeof window.VV.startMultiplayer !== 'function') {
-    vvmpDebugLog('Abbruch: window.VV.startMultiplayer fehlt');
     showToast(DE('Spielstart-Brücke fehlt. Bitte Solo verwenden.',
                  'Game-start bridge missing. Please use Solo for now.'), 'bad');
     return;
   }
-  vvmpDebugLog('HOST: startMultiplayer() …');
   window.VV.startMultiplayer({
     roomCode:      session.roomCode,
     players:       Object.entries(players).map(([id, p]) => ({ id, ...p })),
@@ -1186,11 +1086,9 @@ async function startGameFromLobby() {
     if (g) safe = JSON.parse(JSON.stringify(g));
   } catch (_) {}
   if (!safe) {
-    vvmpDebugLog('Abbruch: gameState (safe) ist null / leer');
     showToast(DE('Spielzustand konnte nicht erstellt werden.', 'Could not create game state.'), 'bad');
     return;
   }
-  vvmpDebugLog(`HOST: lokaler gameState OK phase=${safe.phase} players=${(safe.players || []).length}`);
   const ts = Date.now();
   // Ein einziges RTDB-`update`: Status + Aktivität + vollständiger Draft-Snapshot — kein getrenntes Lobby-gameState mehr.
   try {
@@ -1199,9 +1097,7 @@ async function startGameFromLobby() {
       'meta/lastActivity': ts,
       gameState:           safe,
     }));
-    vvmpDebugLog('HOST: Firebase update (running + gameState) OK');
   } catch (err) {
-    vvmpDebugLog(`HOST: Firebase-Fehler: ${err && (err.message || err)}`);
     throw err;
   }
   try {
@@ -1317,10 +1213,6 @@ function applyRemoteGameState(remote) {
     }
   } catch (err) {
     console.warn('[VV_MP] applyRemoteState failed:', err);
-    try {
-      vvmpDebugLog(`applyRemoteGameState: ${err && (err.stack || err.message || err)}`);
-      vvmpDebugShowOverlay(false);
-    } catch (_) {}
   }
 }
 
@@ -1417,7 +1309,6 @@ window.addEventListener('beforeunload', handleDisconnect);
 // Bridge: replace game.js stubs and expose public surface
 // ---------------------------------------------------------------
 function installBridge() {
-  vvmpDebugInstallGlobalHandlersOnce();
   // Override the Firebase availability gate that game.js checks.
   window.VV_FIREBASE = {
     isAvailable: () => true,
@@ -1455,9 +1346,6 @@ function installBridge() {
     get playerId() { return session.playerId; },
     get isHost()   { return session.isHost; },
     get snapshot() { return session.lastRoomSnapshot; },
-    debugLog: vvmpDebugLog,
-    debugShow: (clear) => vvmpDebugShowOverlay(clear !== false),
-    debugHide: vvmpDebugHideOverlay,
   };
 }
 

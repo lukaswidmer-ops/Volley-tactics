@@ -23,6 +23,8 @@ const STARTING_GOLD      = 80000;  // money each player begins with
 const WEEKS_PER_SEASON   = 6;      // total weeks per season
 const EVENT_POPUP_MS     = 25000;  // auto-close delay for action-card popups (human turn) — 25 s
 const BOT_POPUP_MS       = 5000;   // auto-close delay when a bot triggers the popup — 5 s
+/** Multiplayer: Mitspieler sollen Popups mindestens so lange sehen (Host synchronisiert). */
+const MP_ACTION_POPUP_MIN_MS = 8000;
 const SPONSOR_BONUS      = 15000;  // Trikotsponsor cash grant
 const AUDIENCE_LOSS      = 8000;   // Zuschauerrückgang deduction per player
 const VETERAN_BONUS      = 5000;   // Ehemaligentreffen bonus per 1-star card
@@ -106,6 +108,8 @@ const i18n = {
     week_event_supercup: 'SuperCup', week_event_cl: 'Champions League',
     week_event_cup: 'Cup', week_event_cupfinal: 'Cup-Final', week_event_clfinal: 'CL-Final',
     week_event_league: 'Liga',
+
+    mp_live_from_host: 'Live vom Host — Wochenend-Spiele, Kriterien und Stände siehst du hier mit.',
 
     yourturn: 'DU BIST AM ZUG', bot_thinking: 'denkt nach',
 
@@ -276,6 +280,8 @@ const i18n = {
     week_event_supercup: 'Super Cup', week_event_cl: 'Champions League',
     week_event_cup: 'Cup', week_event_cupfinal: 'Cup Final', week_event_clfinal: 'CL Final',
     week_event_league: 'League',
+
+    mp_live_from_host: 'Live from the host — weekend matches, criteria and scores sync here.',
 
     yourturn: 'YOUR TURN', bot_thinking: 'thinking',
 
@@ -1486,6 +1492,15 @@ function mpHostPublishMirroredActionPopup(payload) {
   try { if (window.VV_MP && window.VV_MP.forceGameStateSync) void window.VV_MP.forceGameStateSync(); } catch (_) {}
 }
 
+/** Host: freistehendes .modal-popup (z. B. Auswahl-Dialog) read-only an andere Clients spiegeln. */
+function mpHostMirrorStandaloneModalReadonly(hostModalDiv, autoMs) {
+  if (!MULTIPLAYER || !mpIsMultiplayerHost() || !state.game || !hostModalDiv) return;
+  const inner = hostModalDiv.querySelector('.modal-card');
+  const cardHtml = inner ? inner.outerHTML : '';
+  const ms = autoMs != null ? Math.max(Number(autoMs) || 0, MP_ACTION_POPUP_MIN_MS) : Math.max(EVENT_POPUP_MS, MP_ACTION_POPUP_MIN_MS);
+  mpHostPublishMirroredActionPopup({ kind: 'asyncCard', cardHtml, autoMs: ms });
+}
+
 function mpHostClearMirroredPopup() {
   if (!MULTIPLAYER || !mpIsMultiplayerHost() || !state.game) return;
   if (!state.game._mpMirroredPopup) return;
@@ -1533,19 +1548,48 @@ function mpClientSyncMirroredPopupFromState() {
   const pid = 'mp-mir-' + (m.seq || Date.now());
   const div = document.createElement('div');
   div.className = 'modal-popup mp-client-mirror';
-  const hasCountdown = m.autoMs != null && Number(m.autoMs) > 0;
-  const isBot = hasCountdown && Number(m.autoMs) <= BOT_POPUP_MS + 500;
-  if (m.kind === 'async') {
+  const rawMs = Number(m.autoMs);
+  const hasCountdown = m.autoMs != null && !Number.isNaN(rawMs) && rawMs > 0;
+  const durationMs = hasCountdown ? Math.max(rawMs, MP_ACTION_POPUP_MIN_MS) : 0;
+  const isBot = hasCountdown && rawMs <= BOT_POPUP_MS + 500;
+  if (m.kind === 'asyncCard') {
+    const de = state.lang === 'de';
+    div.innerHTML = `
+      <div class="modal-card" style="max-width:min(460px,96vw)">
+        <div class="mp-mirror-card-html" style="pointer-events:none;user-select:none">${m.cardHtml || ''}</div>
+        <p style="font-size:.74rem;color:var(--silver);margin:.45rem 0 0;text-align:center">${de ? 'Nur Anzeige — der Host steuert das Spiel.' : 'View only — the host controls the game.'}</p>
+        <div class="action-upop-footer" style="margin-top:.55rem;display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;justify-content:center;width:100%">
+          <button class="btn btn-primary" id="${pid}-ok">OK</button>
+          ${hasCountdown ? `
+          <div class="popup-timer-wrap" style="flex:1;min-width:160px;max-width:240px">
+            <span class="popup-timer-seconds" id="${pid}-secs">${Math.ceil(durationMs / 1000)}s</span>
+            <div class="popup-timer-bar-outer">
+              <div class="popup-timer-bar-inner${isBot ? ' bot' : ''}" id="${pid}-bar"></div>
+            </div>
+          </div>` : ''}
+        </div>
+      </div>`;
+  } else if (m.kind === 'async') {
     div.innerHTML = `
       <div class="modal-card">
         <div class="modal-icon">${m.icon || ''}</div>
         <div class="modal-h">${escapeHTML(m.title || '')}</div>
         <div class="modal-p">${m.bodyHtml || ''}</div>
-        <button class="btn btn-primary" id="${pid}-ok">OK</button>
+        <div class="action-upop-footer" style="display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;justify-content:center;margin-top:.5rem">
+          <button class="btn btn-primary" id="${pid}-ok">OK</button>
+          ${hasCountdown ? `
+          <div class="popup-timer-wrap" style="flex:1;min-width:160px">
+            <span class="popup-timer-seconds" id="${pid}-secs">${Math.ceil(durationMs / 1000)}s</span>
+            <div class="popup-timer-bar-outer">
+              <div class="popup-timer-bar-inner${isBot ? ' bot' : ''}" id="${pid}-bar"></div>
+            </div>
+          </div>` : ''}
+        </div>
       </div>`;
   } else {
+    const upopExtra = m.modalExtraClass === 'action-upop--vnl' ? ' action-upop--vnl' : '';
     div.innerHTML = `
-      <div class="modal-card action-upop">
+      <div class="modal-card action-upop${upopExtra}">
         <div class="action-upop-title">${m.title || ''}</div>
         <hr class="action-upop-divider">
         <div class="action-upop-desc">${String(m.description || '').replace(/\n/g, '<br>')}</div>
@@ -1553,7 +1597,7 @@ function mpClientSyncMirroredPopupFromState() {
           <button class="btn btn-primary" id="${pid}-ok">OK</button>
           ${hasCountdown ? `
           <div class="popup-timer-wrap">
-            <span class="popup-timer-seconds${isBot ? '' : ''}" id="${pid}-secs">${Math.ceil(Number(m.autoMs) / 1000)}s</span>
+            <span class="popup-timer-seconds${isBot ? '' : ''}" id="${pid}-secs">${Math.ceil(durationMs / 1000)}s</span>
             <div class="popup-timer-bar-outer">
               <div class="popup-timer-bar-inner${isBot ? ' bot' : ''}" id="${pid}-bar"></div>
             </div>
@@ -1573,7 +1617,7 @@ function mpClientSyncMirroredPopupFromState() {
   if (hasCountdown) {
     setTimeout(() => {
       startPopupTimer({
-        durationMs: Number(m.autoMs),
+        durationMs: durationMs,
         isBot,
         onExpire: finish,
         secEl: document.getElementById(pid + '-secs'),
@@ -1673,14 +1717,9 @@ function applyRemoteState(remote) {
     } else {
       render();
     }
+    try { mpClientSyncMirroredPopupFromState(); } catch (_) {}
   } catch (e) {
     console.warn('[VV] applyRemoteState failed:', e);
-    try {
-      if (window.VV_MP && typeof window.VV_MP.debugLog === 'function') {
-        window.VV_MP.debugLog(`applyRemoteState: ${e && (e.stack || e.message || e)}`);
-        if (typeof window.VV_MP.debugShow === 'function') window.VV_MP.debugShow(false);
-      }
-    } catch (_) {}
   }
 }
 
@@ -1916,18 +1955,32 @@ function mpAfterHostGameMutation() {
   try { if (window.VV_MP && window.VV_MP.forceGameStateSync) void window.VV_MP.forceGameStateSync(); } catch (_) {}
 }
 
+/** Host: Spielbrett inkl. Liga-/Turnier-Match (#stage, Gegner-Brett) an Clients — ohne render(), damit Match-Schleifen intakt bleiben. */
+function mpHostBroadcastPlayfieldToClients() {
+  if (!MULTIPLAYER || !mpIsMultiplayerHost() || !state.game) return;
+  if (state.view !== 'game' || state.game.phase !== 'season') return;
+  try {
+    mpHostAttachHudSnapshot();
+    if (window.VV_MP && typeof window.VV_MP.forceGameStateSync === 'function') void window.VV_MP.forceGameStateSync();
+  } catch (_) {}
+}
+
 function mpHostAttachHudSnapshot() {
   if (!MULTIPLAYER || !mpIsMultiplayerHost() || !state.game) return;
   if (state.view !== 'game' || state.game.phase !== 'season') return;
   try {
     const a = document.getElementById('actions');
     const s = document.getElementById('stage');
+    const b = document.getElementById('board');
+    const pb = document.getElementById('phase-bar');
     const btn = document.getElementById('dice-panel-btn');
     const lbl = document.getElementById('dice-panel-label');
     const res = document.getElementById('dice-panel-result');
     state.game._mpHud = {
       actionsHtml: a ? a.innerHTML : '',
       stageHtml:   s ? s.innerHTML : '',
+      boardHtml:   b ? b.innerHTML : '',
+      phaseBarHtml: pb ? pb.innerHTML : '',
       diceDisabled: !!(btn && btn.disabled),
       diceText:     btn ? btn.textContent : '',
       diceLbl:      lbl ? lbl.textContent : '',
@@ -1962,11 +2015,15 @@ function mpClientApplyHudSnapshot() {
   if (typeof h.expectedAdvance === 'string') _expectedAdvance = h.expectedAdvance;
   const a = document.getElementById('actions');
   const s = document.getElementById('stage');
+  const b = document.getElementById('board');
+  const pb = document.getElementById('phase-bar');
   const btn = document.getElementById('dice-panel-btn');
   const lbl = document.getElementById('dice-panel-label');
   const res = document.getElementById('dice-panel-result');
   if (a && typeof h.actionsHtml === 'string') a.innerHTML = h.actionsHtml;
   if (s && typeof h.stageHtml === 'string') s.innerHTML = h.stageHtml;
+  if (b && typeof h.boardHtml === 'string') b.innerHTML = h.boardHtml;
+  if (pb && typeof h.phaseBarHtml === 'string') pb.innerHTML = h.phaseBarHtml;
   if (btn) {
     btn.disabled = !!h.diceDisabled;
     if (h.diceText != null) btn.textContent = h.diceText;
@@ -3215,6 +3272,7 @@ function renderGame() {
       <button type="button" class="btn btn-secondary vvmp-resume-btn" onclick="if(window.VV&&VV.resumeSelf)VV.resumeSelf()">${state.lang==='de'?'Pause beenden':'End pause'}</button>
     </div>` : ''}
     <div class="game">
+      ${MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost ? `<div class="mp-live-banner" style="text-align:center;font-size:0.78rem;padding:0.4rem 0.75rem;background:rgba(34,197,94,0.09);border-bottom:1px solid rgba(34,197,94,0.3);color:#86efac;letter-spacing:0.03em;">${escapeHTML(T('mp_live_from_host'))}</div>` : ''}
       <div class="topbar" id="topbar">
         <div class="topbar-bots">${g.players.filter(p=>!p.isHuman).map((p)=>playerCardHtml(p,g.players.indexOf(p),true)).join('')}</div>
         <div class="topbar-sep"></div>
@@ -3684,12 +3742,14 @@ async function runSeason() {
     }
     // Weekend matches first, then market
     setPhase('weekend');
+    mpHostBroadcastPlayfieldToClients();
     await runWeekendMatches(g.week);
     if (g.over) return;
     // After weekend, restore suspended/injured players for the next week
     restoreDisabledCards(true);
     // Market phase after the weekend matches
     setPhase('buy');
+    mpHostBroadcastPlayfieldToClients();
     // Ensure marketPile exists (safety for older saves)
     if (!Array.isArray(g.marketPile)) g.marketPile = [];
     try {
@@ -4062,8 +4122,13 @@ function humanBidPopup(p, card, minNext) {
  * @param {object[]} [opts.positiveCards]   - Cards highlighted green (gained etc.)
  * @param {object[]} [opts.affectedPlayers] - Player panels to glow
  * @param {number|null} [opts.autoMs] - Auto-close ms; null = no auto-close (OK only)
+ * @param {string} [opts.modalExtraClass] - Optional extra class on `.action-upop` (only `action-upop--vnl` supported).
  */
-function showActionPopup({ title, description, affectedCards = [], positiveCards = [], affectedPlayers = [], autoMs = EVENT_POPUP_MS }) {
+function showActionPopup({ title, description, affectedCards = [], positiveCards = [], affectedPlayers = [], autoMs = EVENT_POPUP_MS, modalExtraClass = '' }) {
+  if (MULTIPLAYER && autoMs != null) {
+    autoMs = Math.max(Number(autoMs) || 0, MP_ACTION_POPUP_MIN_MS);
+  }
+  const upopExtra = modalExtraClass === 'action-upop--vnl' ? ' action-upop--vnl' : '';
   return new Promise(resolve => {
     if (MULTIPLAYER && mpIsMultiplayerHost() && state.game) {
       mpHostPublishMirroredActionPopup({
@@ -4071,6 +4136,7 @@ function showActionPopup({ title, description, affectedCards = [], positiveCards
         title: String(title || ''),
         description: String(description || ''),
         autoMs,
+        modalExtraClass: upopExtra.trim() || undefined,
         affectedPlayerIds: (affectedPlayers || []).map(p => p && p.id).filter(Boolean),
         affectedCardIds: (affectedCards || []).map(c => c && c.id).filter(Boolean),
         positiveCardIds: (positiveCards || []).map(c => c && c.id).filter(Boolean),
@@ -4105,7 +4171,7 @@ function showActionPopup({ title, description, affectedCards = [], positiveCards
     const div = document.createElement('div');
     div.className = 'modal-popup';
     div.innerHTML = `
-      <div class="modal-card action-upop">
+      <div class="modal-card action-upop${upopExtra}">
         <div class="action-upop-title">${title}</div>
         <hr class="action-upop-divider">
         <div class="action-upop-desc">${description.replace(/\n/g, '<br>')}</div>
@@ -4201,6 +4267,9 @@ function startPopupTimer({ durationMs, isBot, onExpire, secEl, barEl }) {
 }
 
 function showActionPopupAsync(icon, title, bodyHtml, autoMs = EVENT_POPUP_MS) {
+  if (MULTIPLAYER && autoMs != null) {
+    autoMs = Math.max(Number(autoMs) || 0, MP_ACTION_POPUP_MIN_MS);
+  }
   return new Promise(resolve => {
     if (MULTIPLAYER && mpIsMultiplayerHost() && state.game) {
       mpHostPublishMirroredActionPopup({
@@ -4303,12 +4372,14 @@ function pickOpponent(player) {
         <div id="${pid}-note" style="font-size:.78em;color:var(--silver);text-align:center;padding-bottom:.5em;min-height:1.2em"></div>
       </div>`;
     document.body.appendChild(div);
+    if (MULTIPLAYER && mpIsMultiplayerHost()) mpHostMirrorStandaloneModalReadonly(div, EVENT_POPUP_MS);
     setTimeout(() => div.classList.add('open'), 10);
     let cancelTimer = () => {};
     let done = false;
     const finish = (opp, autoSelected = false) => {
       if (done) return; done = true;
       cancelTimer();
+      if (MULTIPLAYER && mpIsMultiplayerHost()) mpHostClearMirroredPopup();
       if (autoSelected) {
         const note = document.getElementById(pid + '-note');
         if (note) note.textContent = de ? '⏱ Zeit abgelaufen — automatische Auswahl getroffen.' : '⏱ Time up — auto-selected.';
@@ -4445,12 +4516,14 @@ async function ac_talentfoerderung(player) {
           <div id="${pid}-note" style="font-size:.78em;color:var(--silver);text-align:center;padding:.3em 0;min-height:1.2em"></div>
         </div>`;
       document.body.appendChild(div);
+      if (MULTIPLAYER && mpIsMultiplayerHost()) mpHostMirrorStandaloneModalReadonly(div, EVENT_POPUP_MS);
       setTimeout(() => div.classList.add('open'), 10);
       let cancelTimer = () => {};
       let done = false;
       const finish = (idx, autoSelected = false) => {
         if (done) return; done = true;
         cancelTimer();
+        if (MULTIPLAYER && mpIsMultiplayerHost()) mpHostClearMirroredPopup();
         const chosen = drawn[idx] ?? drawn[botIdx];
         if (autoSelected) {
           const note = document.getElementById(pid + '-note');
@@ -4636,12 +4709,14 @@ async function ac_leihgeschaeft(player) {
           <div id="${pid}-note" style="font-size:.78em;color:var(--silver);text-align:center;padding:.3em 0;min-height:1.2em"></div>
         </div>`;
       document.body.appendChild(div);
+      if (MULTIPLAYER && mpIsMultiplayerHost()) mpHostMirrorStandaloneModalReadonly(div, EVENT_POPUP_MS);
       setTimeout(() => div.classList.add('open'), 10);
       let cancelTimer = () => {};
       let done = false;
       const finish = (idx, autoSelected = false) => {
         if (done) return; done = true;
         cancelTimer();
+        if (MULTIPLAYER && mpIsMultiplayerHost()) mpHostClearMirroredPopup();
         const chosen = loanable[idx] ?? loanable[botPickIdx];
         if (autoSelected) {
           const note = document.getElementById(pid + '-note');
@@ -4813,6 +4888,22 @@ async function applyVnlEvent(player) {
   refreshTeamPanel();
   if (typeof refreshFloatingPanel === 'function') refreshFloatingPanel();
 
+  const vnlHitsBlocksHtml = suspensionsByTeam.length
+    ? suspensionsByTeam.map(({ p: tp, hits }) => `
+    <div class="vnl-team-block">
+      <div class="vnl-team-h">${tp.emoji} <b>${escapeHTML(tp.name)}</b></div>
+      <ul class="vnl-hit-list">
+        ${hits.map(c => `<li class="vnl-hit-row">
+            <img class="vnl-hit-thumb" src="${escapeHTML(c.url || '')}" alt="">
+            <div class="vnl-hit-text">
+              <strong>${escapeHTML(c.name)}</strong>
+              <span class="vnl-hit-meta">${escapeHTML(String(c.nation || ''))} · ${escapeHTML(posLabel(c.pos))} · ${'★'.repeat(c.stars)}</span>
+            </div>
+          </li>`).join('')}
+      </ul>
+    </div>`).join('')
+    : '';
+
   // Log & notify
   const vnlTitle = de ? `🌍 Länderspiel — Woche ${week}` : `🌍 International Match — Week ${week}`;
   const nationsHeader = de
@@ -4823,8 +4914,9 @@ async function applyVnlEvent(player) {
     appendConeLog(`${player.emoji} ${escapeHTML(player.name)} → 🌍 VNL Wk${week} · keine Spieler betroffen`);
     await showActionPopup({
       title: vnlTitle,
-      description: nationsHeader + '\n\n' + (de ? 'Keine Spieler betroffen.' : 'No players affected.'),
+      description: `${nationsHeader}<br><br><p class="vnl-lead"><strong>${de ? 'Keine Spieler betroffen.' : 'No players affected.'}</strong></p><p class="vnl-sub">${de ? 'Niemand fällt für die VNL aus.' : 'Nobody is out for the VNL.'}</p>`,
       autoMs: player.isHuman ? EVENT_POPUP_MS : BOT_POPUP_MS,
+      modalExtraClass: 'action-upop--vnl',
     });
   } else {
     const allHitCards   = suspensionsByTeam.flatMap(({ hits }) => hits);
@@ -4832,15 +4924,16 @@ async function applyVnlEvent(player) {
     for (const { p: tp, hits } of suspensionsByTeam) {
       appendConeLog(`🌍 VNL Wk${week} · ${tp.emoji} ${escapeHTML(tp.name)}: ${hits.map(c => escapeHTML(c.name)).join(', ')} ${de ? 'gesperrt' : 'suspended'}`);
     }
-    const vnlRows = suspensionsByTeam.map(({ p: tp, hits }) =>
-      `${tp.emoji} <b>${escapeHTML(tp.name)}</b>: ${hits.map(c => `${escapeHTML(c.name)} (${escapeHTML(c.nation)} ${posLabel(c.pos)} ★${c.stars})`).join(', ')}`
-    ).join('\n');
+    const lead = de
+      ? '<strong>Diese Spieler fallen für die VNL aus</strong> (gesperrt bis nach dem nächsten Liga-Spiel):'
+      : '<strong>These players are out for the VNL</strong> (suspended until after the next league match):';
     await showActionPopup({
       title: vnlTitle,
-      description: nationsHeader + '\n\n' + (de ? 'Gesperrte Spieler:\n' : 'Suspended players:\n') + vnlRows,
+      description: `${nationsHeader}<br><br><p class="vnl-lead">${lead}</p>${vnlHitsBlocksHtml}`,
       affectedCards: allHitCards,
       affectedPlayers: allHitPlayers,
       autoMs: player.isHuman ? EVENT_POPUP_MS : BOT_POPUP_MS,
+      modalExtraClass: 'action-upop--vnl',
     });
   }
 }
@@ -5185,21 +5278,28 @@ function showLockedFeaturePopup(title) {
     div.innerHTML = `
       <div class="modal-card">
         <div class="modal-icon">🔒</div>
-        <div class="modal-h">${title}</div>
+        <div class="modal-h">${escapeHTML(String(title || ''))}</div>
         <div class="modal-p">${state.lang==='de'
           ? 'Diese Funktion ist noch nicht freigeschaltet — schau später nochmal vorbei. 🛠️'
           : 'This feature is not yet unlocked — check back later. 🛠️'}</div>
         <button class="btn btn-primary" id="locked-ok">OK</button>
       </div>`;
     document.body.appendChild(div);
+    if (MULTIPLAYER && mpIsMultiplayerHost()) {
+      const innerMs = state.speed === 'auto' ? 1200 : speedMs(2500);
+      mpHostMirrorStandaloneModalReadonly(div, Math.max(innerMs, MP_ACTION_POPUP_MIN_MS));
+    }
     setTimeout(() => div.classList.add('open'), 10);
-    div.querySelector('#locked-ok').addEventListener('click', () => {
-      div.remove();
+    const close = () => {
+      if (MULTIPLAYER && mpIsMultiplayerHost()) mpHostClearMirroredPopup();
+      if (document.body.contains(div)) div.remove();
       resolve();
-    });
-    // Auto-close: fast for auto-speed, 2.5s otherwise (so bots never block)
-    const autoCloseMs = state.speed === 'auto' ? 1200 : speedMs(2500);
-    setTimeout(() => { if (document.body.contains(div)) { div.remove(); resolve(); } }, autoCloseMs);
+    };
+    div.querySelector('#locked-ok').addEventListener('click', close);
+    const autoCloseMs = MULTIPLAYER
+      ? Math.max(state.speed === 'auto' ? 1200 : speedMs(2500), MP_ACTION_POPUP_MIN_MS)
+      : (state.speed === 'auto' ? 1200 : speedMs(2500));
+    setTimeout(() => { if (document.body.contains(div)) close(); }, autoCloseMs);
   });
 }
 
@@ -5263,6 +5363,7 @@ async function runMatchClassic(home, away, isTournament) {
       $('#rally-feed').appendChild(d);
     });
     $('#rally-feed').scrollTop = $('#rally-feed').scrollHeight;
+    mpHostBroadcastPlayfieldToClients();
   }
   function setActionUI() {
     const total = M.totalRolls + M.crunchExtra;
@@ -5286,14 +5387,17 @@ async function runMatchClassic(home, away, isTournament) {
       // No autoMs: each criterion waits for your click (15s safety in waitFor still prevents deadlocks).
       // speedMs(3500) here used to auto-fire — felt like the game "played itself", esp. on fast speed.
       _expectedAdvance = 'serveOnce';
+      mpHostBroadcastPlayfieldToClients();
       await waitFor('serveOnce', 0);
       if (dpBtn) {
         dpBtn.disabled = true;
         dpBtn.classList.remove('pulse');
         dpBtn.textContent = '🎲 Würfeln';
       }
+      mpHostBroadcastPlayfieldToClients();
     } else await sleep(speedMs(1000)); // bot serve delay (shorter than 2s so matches don't drag)
     const dice = await performDiceRoll(12);
+    mpHostBroadcastPlayfieldToClients();
     M.rolls.push(dice);
     const result = await resolveCriterion(dice, M);
     M.events.push(result);
@@ -5325,6 +5429,7 @@ async function runMatchClassic(home, away, isTournament) {
 
   // Show summary
   await showMatchSummary(M, winner, { forceAutoContinue: !!isTournament });
+  mpHostBroadcastPlayfieldToClients();
   if (winner) flash(winner === home ? 'win' : 'loss');
   return winner;
 }
@@ -5970,6 +6075,7 @@ async function runWeekendMatches(week) {
     restoreBoardPanel();
     refreshTeamPanel();
     refreshTopbar();
+    mpHostBroadcastPlayfieldToClients();
     if (checkWin()) return;
   }
 }
