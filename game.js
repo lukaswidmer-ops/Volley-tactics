@@ -1465,6 +1465,18 @@ function mpNormalizeHumanFlagsForLocalSeat() {
   }
 }
 
+/** RTDB/Firebase kann leere Arrays weglassen — Draft-UI braucht immer `bench[]` + `team`. */
+function mpEnsurePlayersRosterShape() {
+  const g = state.game;
+  if (!g || !Array.isArray(g.players)) return;
+  const emptyTeam = () => ({ outside: null, outside2: null, middle: null, middle2: null, setter: null, diagonal: null, libero: null });
+  for (const p of g.players) {
+    if (!p || typeof p !== 'object') continue;
+    if (!Array.isArray(p.bench)) p.bench = [];
+    if (!p.team || typeof p.team !== 'object') p.team = emptyTeam();
+  }
+}
+
 let _mpMirrorPopupKey = null;
 
 function mpHostPublishMirroredActionPopup(payload) {
@@ -1654,6 +1666,7 @@ function applyRemoteState(remote) {
     const targetView = resolveMpTargetViewFromRemote(remote);
     const prevView = state.view;
     state.game = remote;
+    mpEnsurePlayersRosterShape();
     mpNormalizeHumanFlagsForLocalSeat();
     if (prevView !== targetView || prevView === 'mp_viewer' || prevView === 'mp_lobby') {
       setView(targetView);
@@ -2399,7 +2412,7 @@ function renderDraft() {
 }
 
 function computeDraftStage(p) {
-  const counts = countByStars([...p.bench, ...Object.values(p.team).filter(Boolean)]);
+  const counts = countByStars([...(p.bench || []), ...Object.values(p.team || {}).filter(Boolean)]);
   if (counts[4] < 1) return 'draw_4';
   if (counts[3] < 2) return 'draw_3';
   if (counts[2] < 3) return 'draw_2';
@@ -2425,7 +2438,7 @@ function countByStars(cards) {
 }
 
 function draftProgressHtml(p) {
-  const c = countByStars([...p.bench, ...Object.values(p.team).filter(Boolean)]);
+  const c = countByStars([...(p.bench || []), ...Object.values(p.team || {}).filter(Boolean)]);
   const stage = computeDraftStage(p);
   const items = [
     { label:'1× 4★', got:c[4], target:1, key:'draw_4' },
@@ -2450,7 +2463,7 @@ function draftActionsHtml(stage, p) {
     const stepLabel = T('draft_step_' + stars);
     // can redraw if there are >3 cards of any single position
     const counts = {};
-    [...p.bench, ...Object.values(p.team).filter(Boolean)].forEach(c => { counts[c.pos] = (counts[c.pos]||0)+1; });
+    [...(p.bench || []), ...Object.values(p.team || {}).filter(Boolean)].forEach(c => { counts[c.pos] = (counts[c.pos]||0)+1; });
     const canRedraw = Object.values(counts).some(v => v > 3);
     return `<div style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:center;">
       <span class="label" style="margin-bottom:0;">${stepLabel}</span>
@@ -2474,7 +2487,7 @@ function draftActionsHtml(stage, p) {
 }
 
 function draftHandHtml(p) {
-  const all = [...Object.values(p.team).filter(Boolean), ...p.bench];
+  const all = [...Object.values(p.team || {}).filter(Boolean), ...(p.bench || [])];
   if (!all.length) return `<div style="color:var(--silver); font-style:italic;">—</div>`;
   return all.map(c => `
     <div class="draft-card" data-tip="${escapeHTML(c.name)}·${c.stars}★">
@@ -2501,6 +2514,10 @@ function deckPoolForStars(stars) {
 const POS_SECONDARY = { outside: 'outside2', middle: 'middle2' };
 
 function placeIntoTeamOrBench(p, card) {
+  if (!Array.isArray(p.bench)) p.bench = [];
+  if (!p.team || typeof p.team !== 'object') {
+    p.team = { outside: null, outside2: null, middle: null, middle2: null, setter: null, diagonal: null, libero: null };
+  }
   removeCardFromPools(card);
   const primary = card.pos;
   const secondary = POS_SECONDARY[primary];
@@ -2696,7 +2713,7 @@ function draftPick1(pos) {
   const me = MULTIPLAYER ? mpDraftGetSubjectForHostAction() : g.players[0];
   if (MULTIPLAYER && !me) return;
   if (MULTIPLAYER && computeDraftStage(me) === 'done') return;
-  const counts = countByStars([...me.bench, ...Object.values(me.team).filter(Boolean)]);
+  const counts = countByStars([...(me.bench || []), ...Object.values(me.team || {}).filter(Boolean)]);
   if (counts[1] >= 3) { toast(T('draft_pick_limit'), 'bad'); return; }
   // outside2/middle2 share the same card pool as outside/middle
   const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
@@ -2771,6 +2788,10 @@ function autoDraftBot(bot) {
 }
 
 function ensureFiveStarter(p) {
+  if (!Array.isArray(p.bench)) p.bench = [];
+  if (!p.team || typeof p.team !== 'object') {
+    p.team = { outside: null, outside2: null, middle: null, middle2: null, setter: null, diagonal: null, libero: null };
+  }
   // Move bench cards into empty starter slots for any unfilled position
   for (const pos of POSITIONS) {
     if (!p.team[pos]) {
