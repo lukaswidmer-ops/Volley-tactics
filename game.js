@@ -1354,8 +1354,22 @@ function showJoinForm() {
 }
 
 // ── Multiplayer hand-off (called by multiplayer.js when host starts game) ──
-function startMultiplayer(opts) {
-  if (!opts || !Array.isArray(opts.players)) return;
+/**
+ * Stellt bei Nicht-Hosts MULTIPLAYER + mpRoom sicher, **bevor** applyRemoteState läuft.
+ * Wichtig: applyRemoteState bricht sonst sofort ab (`if (!MULTIPLAYER) return`) —
+ * startMultiplayer wird aber nur einmal pro Partie aufgerufen; Firebase kann erst
+ * `running` melden, bevor `gameState` da ist → ohne diesen Hook bleiben Clients ewig auf „Warte …“.
+ */
+function ensureMpClientSession(opts) {
+  if (!opts || !opts.roomCode || !Array.isArray(opts.players)) return;
+  if (opts.hostId === opts.localPlayerId) return;
+  if (MULTIPLAYER && state.mpRoom && state.mpRoom.roomCode === opts.roomCode) {
+    state.mpRoom.hostId = opts.hostId;
+    state.mpRoom.localPlayerId = opts.localPlayerId;
+    state.mpRoom.players = opts.players.slice();
+    state.mpRoom.isHost = false;
+    return;
+  }
   MULTIPLAYER = true;
   state.mode = 'mp';
   state.mpRoom = {
@@ -1363,11 +1377,23 @@ function startMultiplayer(opts) {
     hostId:        opts.hostId,
     localPlayerId: opts.localPlayerId,
     players:       opts.players.slice(),
+    isHost:        false,
   };
-  const isHost = (opts.hostId === opts.localPlayerId);
-  state.mpRoom.isHost = isHost;
+}
 
+function startMultiplayer(opts) {
+  if (!opts || !Array.isArray(opts.players)) return;
+  const isHost = (opts.hostId === opts.localPlayerId);
   if (isHost) {
+    MULTIPLAYER = true;
+    state.mode = 'mp';
+    state.mpRoom = {
+      roomCode:      opts.roomCode,
+      hostId:        opts.hostId,
+      localPlayerId: opts.localPlayerId,
+      players:       opts.players.slice(),
+      isHost:        true,
+    };
     // Host runs the engine locally. Build a 4-seat roster from the lobby
     // and kick off the existing draft → auction → season pipeline.
     initMultiplayerGame(opts);
@@ -1382,9 +1408,9 @@ function startMultiplayer(opts) {
     try { if (window.VV_MP && window.VV_MP.forceGameStateSync) window.VV_MP.forceGameStateSync(); } catch (_) {}
     toast(state.lang === 'de' ? 'Spiel gestartet — du bist Host.' : 'Game started — you are host.', 'good', 2200);
   } else {
+    ensureMpClientSession(opts);
     // Non-host: wenn der erste Raum-Snapshot schon gameState enthält (Draft/Auktion/…),
-    // sofort übernehmen — sonst bleiben Clients auf „Warte auf erste Daten vom Host…“,
-    // falls meta.status und gameState nicht im selben Listener-Tick ankommen.
+    // sofort übernehmen — sonst Warte-Screen bis zum nächsten Firebase-Tick.
     const ig = opts.initialGameState;
     try {
       if (ig && ig.phase && ig.phase !== 'lobby') {
@@ -6422,7 +6448,7 @@ window.VV = {
   exportLog, showFullHistory,
   // ── Multiplayer interop (used by multiplayer.js) ──
   state, toast,
-  startMultiplayer, applyRemoteState, resetLocalMultiplayerSession,
+  startMultiplayer, ensureMpClientSession, applyRemoteState, resetLocalMultiplayerSession,
   render, renderCurrentPhase,
 };
 

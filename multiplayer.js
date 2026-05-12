@@ -492,23 +492,24 @@ function onRoomUpdate(room) {
 
   const meta = room.meta || {};
 
-  // Auto-transition non-hosts into spectator mode once the host clicks "Start".
-  // This MUST run before we read the current view, since startMultiplayer
-  // switches the app data-view to 'mp_viewer'. Reading the view afterwards
-  // ensures we don't accidentally repaint the lobby over the spectator UI.
+  // Laufendes Spiel: Nicht-Hosts brauchen **immer** MULTIPLAYER/mpRoom bevor applyRemoteState,
+  // sonst bricht applyRemoteState wegen `!MULTIPLAYER` ab (startMultiplayer lief nur einmal / zu früh).
+  if ((meta.status === 'running' || meta.status === 'finished')
+      && !session.isHost
+      && window.VV && typeof window.VV.ensureMpClientSession === 'function') {
+    const lobbyPlayers = Object.entries(room.players || {})
+      .map(([id, p]) => ({ id, ...p }));
+    window.VV.ensureMpClientSession({
+      roomCode:      session.roomCode,
+      hostId:        meta.hostId,
+      localPlayerId: session.playerId,
+      players:       lobbyPlayers,
+    });
+  }
+
+  // Einmal-Flag (z. B. Rejoin / Telemetrie); Spielstart-UI kommt über ensure + applyRemoteState.
   if (meta.status === 'running' && !session.gameLaunched) {
     session.gameLaunched = true;
-    if (!session.isHost && window.VV && typeof window.VV.startMultiplayer === 'function') {
-      const lobbyPlayers = Object.entries(room.players || {})
-        .map(([id, p]) => ({ id, ...p }));
-      window.VV.startMultiplayer({
-        roomCode:          session.roomCode,
-        hostId:            meta.hostId,
-        localPlayerId:     session.playerId,
-        players:           lobbyPlayers,
-        initialGameState:  room.gameState || null,
-      });
-    }
   }
 
   // Re-read the view AFTER any possible transition above so we don't repaint
