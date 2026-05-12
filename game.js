@@ -1612,7 +1612,7 @@ function mpClientPaintOpeningAuctionStage() {
     </div>`;
 }
 
-/** Sichtbare UI-Phase aus dem Host-Snapshot, falls _mpUiView fehlt (ältere Saves). */
+/** Sichtbare UI-Phase aus dem Host-Snapshot. `phase` hat Vorrang vor `_mpUiView` (sonst bleibt z. B. mp_lobby aus Lobby-Snapshots auf dem Draft hängen). */
 function inferMpUiViewFromGame(g) {
   if (!g) return 'menu';
   if (g.phase === 'lobby') return 'mp_lobby';
@@ -1621,6 +1621,21 @@ function inferMpUiViewFromGame(g) {
   if (g.phase === 'auction') return 'auction';
   if (g.phase === 'draft') return 'draft';
   return 'game';
+}
+
+/** Welche game.js-View Clients zeigen — `_mpUiView` nur wo nötig (z. B. starting bei phase auction). */
+function resolveMpTargetViewFromRemote(remote) {
+  if (!remote) return 'menu';
+  if (remote.over && remote.winner) return 'end';
+  const ph = remote.phase;
+  if (ph === 'draft') return 'draft';
+  if (ph === 'season') return 'game';
+  if (ph === 'auction') {
+    if (remote._mpUiView === 'starting') return 'starting';
+    return 'auction';
+  }
+  if (ph === 'lobby') return 'mp_lobby';
+  return remote._mpUiView || inferMpUiViewFromGame(remote);
 }
 
 function applyRemoteState(remote) {
@@ -1636,17 +1651,23 @@ function applyRemoteState(remote) {
       ALL_CARDS = buildGameCardPool();
       try { if (typeof window !== 'undefined') window.VV_CARDS_DB = ALL_CARDS; } catch (_) {}
     }
-    const targetView = remote._mpUiView || inferMpUiViewFromGame(remote);
+    const targetView = resolveMpTargetViewFromRemote(remote);
     const prevView = state.view;
     state.game = remote;
     mpNormalizeHumanFlagsForLocalSeat();
-    if (prevView !== targetView || prevView === 'mp_viewer') {
+    if (prevView !== targetView || prevView === 'mp_viewer' || prevView === 'mp_lobby') {
       setView(targetView);
     } else {
       render();
     }
   } catch (e) {
     console.warn('[VV] applyRemoteState failed:', e);
+    try {
+      if (window.VV_MP && typeof window.VV_MP.debugLog === 'function') {
+        window.VV_MP.debugLog(`applyRemoteState: ${e && (e.stack || e.message || e)}`);
+        if (typeof window.VV_MP.debugShow === 'function') window.VV_MP.debugShow(false);
+      }
+    } catch (_) {}
   }
 }
 
