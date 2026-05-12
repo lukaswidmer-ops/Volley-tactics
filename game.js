@@ -1382,18 +1382,30 @@ function startMultiplayer(opts) {
     try { if (window.VV_MP && window.VV_MP.forceGameStateSync) window.VV_MP.forceGameStateSync(); } catch (_) {}
     toast(state.lang === 'de' ? 'Spiel gestartet — du bist Host.' : 'Game started — you are host.', 'good', 2200);
   } else {
-    // Non-host: show the connecting screen and wait for the host's first
-    // gameState snapshot. They are NOT a passive spectator — they will
-    // play their own seat via seat-prompt overlays once the auction
-    // phase starts. applyRemoteState() decides when to flip to the
-    // live board.
-    state.game = null;
-    setView('mp_viewer');
+    // Non-host: wenn der erste Raum-Snapshot schon gameState enthält (Draft/Auktion/…),
+    // sofort übernehmen — sonst bleiben Clients auf „Warte auf erste Daten vom Host…“,
+    // falls meta.status und gameState nicht im selben Listener-Tick ankommen.
+    const ig = opts.initialGameState;
     try {
-      if (window.VV_MP && typeof window.VV_MP.paintViewerWaiting === 'function') {
-        window.VV_MP.paintViewerWaiting();
+      if (ig && ig.phase && ig.phase !== 'lobby') {
+        applyRemoteState(ig);
+      } else {
+        state.game = null;
+        setView('mp_viewer');
+        if (window.VV_MP && typeof window.VV_MP.paintViewerWaiting === 'function') {
+          window.VV_MP.paintViewerWaiting();
+        }
       }
-    } catch (_) {}
+    } catch (e) {
+      console.warn('[VV] startMultiplayer client bootstrap', e);
+      state.game = null;
+      setView('mp_viewer');
+      try {
+        if (window.VV_MP && typeof window.VV_MP.paintViewerWaiting === 'function') {
+          window.VV_MP.paintViewerWaiting();
+        }
+      } catch (_) {}
+    }
     toast(state.lang === 'de'
       ? 'Verbinde mit Spiel — du spielst auf deinem Gerät.'
       : 'Connecting to the game — you play on your own device.', 'good', 3200);
@@ -1588,7 +1600,11 @@ function inferMpUiViewFromGame(g) {
 function applyRemoteState(remote) {
   if (!MULTIPLAYER) return;
   if (!remote) return;
-  if (remote.phase === 'lobby') return;
+  // Lobby-Snapshots dürfen keinen laufenden Match-Zustand überschreiben (RTDB kann kurz alte Daten melden).
+  if (remote.phase === 'lobby') {
+    if (state.game && state.game.phase && state.game.phase !== 'lobby') return;
+    return;
+  }
   try {
     if (!Array.isArray(ALL_CARDS) || !ALL_CARDS.length) {
       ALL_CARDS = buildGameCardPool();

@@ -372,9 +372,19 @@ async function joinRoom(code, name) {
       startHeartbeat();
       listenToRoom();
       if (meta.status === 'running' || meta.status === 'finished') {
-        // Live game: jump into the synced board (read-only viewer)
         showToast(DE('Wiederverbunden.', 'Reconnected.'), 'good');
-        if (window.VV && typeof window.VV.setView === 'function') window.VV.setView('game');
+        session.gameLaunched = true;
+        if (!session.isHost && window.VV && typeof window.VV.startMultiplayer === 'function') {
+          window.VV.startMultiplayer({
+            roomCode:          code,
+            hostId:            meta.hostId,
+            localPlayerId:     session.playerId,
+            players:           Object.entries(players).map(([id, p]) => ({ id, ...p })),
+            initialGameState:  room.gameState || null,
+          });
+        } else {
+          renderLobby();
+        }
       } else {
         renderLobby();
       }
@@ -492,10 +502,11 @@ function onRoomUpdate(room) {
       const lobbyPlayers = Object.entries(room.players || {})
         .map(([id, p]) => ({ id, ...p }));
       window.VV.startMultiplayer({
-        roomCode:      session.roomCode,
-        hostId:        meta.hostId,
-        localPlayerId: session.playerId,
-        players:       lobbyPlayers,
+        roomCode:          session.roomCode,
+        hostId:            meta.hostId,
+        localPlayerId:     session.playerId,
+        players:           lobbyPlayers,
+        initialGameState:  room.gameState || null,
       });
     }
   }
@@ -516,9 +527,7 @@ function onRoomUpdate(room) {
       session.lobbyGameState = gs;
       if (view === 'mp_lobby') paintLobby(room);
     } else if (st === 'running' || st === 'finished') {
-      if (gs.phase !== 'lobby') {
-        applyRemoteGameState(gs);
-      }
+      applyRemoteGameState(gs);
     }
   }
 
