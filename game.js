@@ -2121,12 +2121,33 @@ function mpClientSwapBoardToLocalMatchOpponent() {
 
 function mpClientEnsureLiveGamePopup() {
   if (!MULTIPLAYER || mpIsMultiplayerHost() || !state.game) return;
-  const lp = state.game._mpLivePopup;
+  const g = state.game;
+  const lp = g._mpLivePopup;
+
+  // Markt zu — Host hat _mpMarketOpen gelöscht; Popup lokal schließen (ohne endMarket-Callback).
+  if (!g._mpMarketOpen) {
+    const m = document.getElementById('market-popup');
+    if (m) {
+      try { delete _popupCloseCallbacks['market-popup']; } catch (_) {}
+      m.classList.remove('open');
+      setTimeout(() => { try { m.remove(); } catch (_) {} }, 200);
+    }
+    try { hideTeamSidebar(); } catch (_) {}
+  }
+
   if (!lp || !lp.open) {
     const auc = document.getElementById('live-auction-popup');
     if (auc) auc.remove();
     return;
   }
+
+  let bodyHtml = typeof lp.bodyHtml === 'string' ? lp.bodyHtml : '';
+  // Markt-HTML kommt vom Host-Screen (falscher Sitz) — Mitspieler: eigener Kader + Budget wie renderMarket().
+  if (lp.id === 'market-popup' && g._mpMarketOpen) {
+    const me = mpLocalGamePlayer();
+    if (me) bodyHtml = marketBodyHtml(me, weakestPosition(me));
+  }
+
   let pop = document.getElementById(lp.id);
   if (!pop) {
     pop = document.createElement('div');
@@ -2140,9 +2161,19 @@ function mpClientEnsureLiveGamePopup() {
         <span class="game-popup-title">${escapeHTML(lp.title || '')}</span>
         <button class="game-popup-close" id="${lp.id}-close-btn" disabled style="opacity:0.35">✕</button>
       </div>
-      <div class="game-popup-body" id="${lp.id}-body">${lp.bodyHtml || ''}</div>
+      <div class="game-popup-body" id="${lp.id}-body">${bodyHtml}</div>
     </div>`;
-  requestAnimationFrame(() => pop.classList.add('open'));
+  requestAnimationFrame(() => {
+    pop.classList.add('open');
+    if (lp.id === 'market-popup' && g._mpMarketOpen) {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        try {
+          showTeamSidebar(null);
+          wireMarketSidebarHover();
+        } catch (_) {}
+      }));
+    }
+  });
 }
 
 function mpPerformBuyOneStar(player, pos) {
@@ -6612,7 +6643,7 @@ function handleFloatingClick(pos) {
   // Manual bench-to-field swap: if a bench card is selected, try swapping it into this field slot
   if (state.selectedBenchCard) {
     try {
-      const me = state.game && state.game.players[0];
+      const me = MULTIPLAYER && state.mpRoom ? (mpLocalGamePlayer() || state.game.players[0]) : (state.game && state.game.players[0]);
       if (me) {
         const benchCard = (me.bench || []).find(c => c && c.id === state.selectedBenchCard);
         const primaryOf = { outside2: 'outside', middle2: 'middle' };
@@ -6647,7 +6678,7 @@ function handleFloatingBenchClick(id) {
   if (state.sellMode) { sellBenchCard(id); refreshTeamPanel(); return; }
   // Manual swap: toggle selection of this bench card
   try {
-    const me = state.game && state.game.players[0];
+    const me = MULTIPLAYER && state.mpRoom ? (mpLocalGamePlayer() || state.game.players[0]) : (state.game && state.game.players[0]);
     if (!me) return;
     const benchCard = (me.bench || []).find(c => c && c.id === id);
     if (!benchCard || benchCard.disabled) return; // can't swap suspended cards
