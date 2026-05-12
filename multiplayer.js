@@ -538,20 +538,22 @@ function paintViewerWaiting() {
     const g = (window.VV && window.VV.state && window.VV.state.game) || null;
     if (g) {
       if (g.phase === 'draft') {
-        const hostPlayer = (g.players || [])[0] || {};
-        const team = hostPlayer.team || {};
+        const plist = g.players || [];
+        const myId = session.playerId;
+        const me = plist.find(p => p && p.mpId === myId) || plist[0] || {};
+        const team = me.team || {};
         const slotsFilled = ['outside','outside2','middle','setter','diagonal','libero']
           .filter(k => team[k]).length;
-        const benchFilled = Array.isArray(hostPlayer.bench) ? hostPlayer.bench.length : 0;
+        const benchFilled = Array.isArray(me.bench) ? me.bench.length : 0;
         const totalPicked = slotsFilled + benchFilled;
         statusHtml = `
-          <div class="menu-sub">${esc(DE('Host draftet sein Team…', 'Host is drafting their team…'))}</div>
+          <div class="menu-sub">${esc(DE('Dein Draft wird vorbereitet …', 'Preparing your draft …'))}</div>
           <div class="menu-sub" style="margin-top:0.4rem; opacity:0.7;">
-            ${esc(DE('Karten gezogen', 'Cards drawn'))}: ${totalPicked}/9
+            ${esc(DE('Karten (dein Sitz)', 'Cards (your seat)'))}: ${totalPicked}/9
           </div>
           <div class="menu-sub" style="margin-top:0.6rem; color:var(--gold);">
-            ${esc(DE('Gleich bist du dran — in der Eröffnungs-Auktion bietest du auf deinem Gerät.',
-                     'You are up next — you will bid on your own device during the opening auction.'))}
+            ${esc(DE('Sobald der Host synchronisiert hat, öffnet sich dein Draft-Menü — danach Eröffnungsauktion im gleichen Setup-Bereich.',
+                     'Once the host syncs, your draft screen opens — then the opening auction in the same setup area.'))}
           </div>`;
       } else {
         statusHtml = `
@@ -709,6 +711,39 @@ function paintSeatPromptOverlay(pr) {
       </div>`;
     document.body.appendChild(root);
     document.getElementById('vvmp-seat-go2')?.addEventListener('click', () => send({ type: 'coneContinue', ok: true }));
+    return;
+  }
+
+  if (pr.type === 'pickOpponent') {
+    const isDe = L() === 'de';
+    const opps = Array.isArray(pr.opponents) ? pr.opponents : [];
+    const PICK_OPPONENT_TIMEOUT_MS = 25000;
+    const btns = opps.map(o =>
+      `<button type="button" class="btn btn-secondary vvmp-opp-btn" data-oid="${esc(o.id || '')}" style="margin:.3em .2em;min-width:140px">
+        ${esc(o.emoji || '')} ${esc(o.name || '')}<br>
+        <span style="font-size:.78em;color:var(--silver)">${esc(String(o.money != null ? o.money : ''))}’</span>
+      </button>`
+    ).join('');
+    root.innerHTML = `
+      <div class="vvmp-seat-card">
+        <div class="vvmp-seat-h">${esc(isDe ? 'Gegner wählen' : 'Choose opponent')}</div>
+        <p class="vvmp-seat-p" style="display:flex;flex-wrap:wrap;justify-content:center">${btns}</p>
+        <p class="vvmp-seat-meta" style="text-align:center;font-size:0.85rem;color:var(--silver)">${esc(isDe ? 'Tippe auf einen Gegner.' : 'Tap an opponent.')}</p>
+      </div>`;
+    document.body.appendChild(root);
+    let done = false;
+    const finish = (oid, timedOut) => {
+      if (done) return;
+      done = true;
+      clearTimeout(to);
+      if (timedOut) send({ type: 'pickOpponent', pass: true });
+      else send({ type: 'pickOpponent', opponentId: oid });
+    };
+    const to = setTimeout(() => finish(null, true), PICK_OPPONENT_TIMEOUT_MS + 500);
+    root.querySelectorAll('.vvmp-opp-btn').forEach(btn => {
+      btn.addEventListener('click', () => finish(btn.getAttribute('data-oid'), false));
+    });
+    return;
   }
 }
 
@@ -1011,25 +1046,35 @@ async function startGameFromLobby() {
                  'Fill all 4 seats (human or bot).'), 'bad');
     return;
   }
-  await fb('startGame', () => update(ref(db, `rooms/${session.roomCode}/meta`), { status: 'running' }));
-  // Host kicks off the local game flow. Solo init is reused; once integrated,
-  // we will swap into a real multiplayer engine. For now, the host runs the
-  // existing engine locally and writes state snapshots to Firebase.
-  showToast(DE('Spiel gestartet — Host führt die Runde aus.',
-               'Game started — host is running the round.'), 'good');
-  // The actual deep game-state sync is wired through window.VV when the
-  // host triggers state mutations. See state-sync helpers below.
-  if (window.VV && typeof window.VV.startMultiplayer === 'function') {
-    window.VV.startMultiplayer({
-      roomCode:    session.roomCode,
-      players:     Object.entries(players).map(([id, p]) => ({ id, ...p })),
-      hostId:      session.playerId,
-      localPlayerId: session.playerId,
-    });
-  } else {
+  // Host baut den Draft-Zustand lokal **bevor** `meta.status` auf running geht,
+  // damit der erste Client-Tick gleichzeitig `running` + Draft-Snapshot enthält
+  // (sonst: Clients sehen kurz Lobby-gameState und bleiben auf „Warten …“).
+  if (!window.VV || typeof window.VV.startMultiplayer !== 'function') {
     showToast(DE('Spielstart-Brücke fehlt. Bitte Solo verwenden.',
                  'Game-start bridge missing. Please use Solo for now.'), 'bad');
+    return;
   }
+  window.VV.startMultiplayer({
+    roomCode:      session.roomCode,
+    players:       Object.entries(players).map(([id, p]) => ({ id, ...p })),
+    hostId:        session.playerId,
+    localPlayerId: session.playerId,
+  });
+  let safe = null;
+  try {
+    const g = window.VV.state && window.VV.state.game;
+    if (g) safe = JSON.parse(JSON.stringify(g));
+  } catch (_) {}
+  if (!safe) {
+    showToast(DE('Spielzustand konnte nicht erstellt werden.', 'Could not create game state.'), 'bad');
+    return;
+  }
+  const ts = Date.now();
+  await fb('startGame', () => update(ref(db, `rooms/${session.roomCode}`), {
+    'meta/status':       'running',
+    'meta/lastActivity': ts,
+    gameState:           safe,
+  }));
 }
 
 // ---------------------------------------------------------------

@@ -876,6 +876,10 @@ function fire(name, val) {
   refreshDebugHud();
 }
 function skipAll() {
+  if (MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost) {
+    mpGameClientSubmit({ action: 'skipAll' });
+    return;
+  }
   state.skipping = true;
   ['coneRollNow','coneContinue','continueAfterMatch','serveOnce','endMarket'].forEach(fire);
   document.querySelectorAll('.modal-popup, .event-popup-banner, .game-popup').forEach(m => m.remove());
@@ -897,7 +901,7 @@ function showTeamSidebar(auctionCard) {
   try {
     const g = state.game;
     if (!g) return;
-    const me = g.players[0];
+    const me = MULTIPLAYER ? (mpLocalGamePlayer() || g.players[0]) : g.players[0];
     if (!me) return;
     const de = state.lang === 'de';
 
@@ -1055,15 +1059,25 @@ function openGamePopup(id, title, bodyHtml) {
       if (_popupCloseCallbacks[id]) _popupCloseCallbacks[id]();
       closeGamePopup(id);
     };
+    if (MULTIPLAYER && mpIsMultiplayerHost()) {
+      requestAnimationFrame(() => { try { mpHostSyncLivePopupFromDom(id); } catch (_) {} });
+    }
   });
 }
 function closeGamePopup(id) {
+  if (MULTIPLAYER && mpIsMultiplayerHost() && state.game && state.game._mpLivePopup && state.game._mpLivePopup.id === id) {
+    state.game._mpLivePopup = { open: false, id };
+    try { mpSyncIfHost(); } catch (_) {}
+  }
   const pop = document.getElementById(id);
   if (pop) { pop.classList.remove('open'); setTimeout(() => { pop.remove(); delete _popupCloseCallbacks[id]; }, 200); }
 }
 function updateGamePopupBody(id, bodyHtml) {
   const body = document.getElementById(id + '-body');
   if (body) body.innerHTML = bodyHtml;
+  if (MULTIPLAYER && mpIsMultiplayerHost()) {
+    try { mpHostSyncLivePopupFromDom(id); } catch (_) {}
+  }
 }
 
 function setActionsHtml(html) {
@@ -1137,6 +1151,21 @@ function dicePanel_roll(force, preferredWaiter) {
   _lastAdvanceSource = force ? 'action-btn' : 'dice-btn';
   const btn = document.getElementById('dice-panel-btn');
   if (!force && btn && btn.disabled) return;
+  if (MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost) {
+    let name = preferredWaiter;
+    if (!name && _expectedAdvance && typeof _expectedAdvance === 'string') name = _expectedAdvance;
+    if (!name) {
+      if (_waiters['serveOnce']) name = 'serveOnce';
+      else if (_waiters['continueAfterMatch']) name = 'continueAfterMatch';
+      else if (_waiters['coneContinue']) name = 'coneContinue';
+      else if (_waiters['coneRollNow']) name = 'coneRollNow';
+      else if (_waiters['endMarket']) name = 'endMarket';
+      else name = _expectedAdvance || 'coneRollNow';
+    }
+    mpGameClientSubmit({ action: 'fireWaiter', name });
+    refreshDebugHud();
+    return;
+  }
   // Prefer explicit intent from the clicked action button.
   if (preferredWaiter && _waiters[preferredWaiter]) { fire(preferredWaiter); return; }
   // Then prefer what the flow expects next.
@@ -1378,6 +1407,173 @@ function mpLocalGamePlayer() {
   return state.game.players.find(p => p && p.mpId === id) || null;
 }
 
+/** Solo: Nicht-Mensch. MP-Host: nur echte Bots — ferne Menschen nicht als Bot automatisieren. */
+function mpIsNpcOrSoloNonHuman(p) {
+  if (!p) return false;
+  if (!MULTIPLAYER || !state.mpRoom) return !p.isHuman;
+  return !!p.mpIsBot;
+}
+
+/**
+ * Host-Snapshot markiert nur den Host-Rechner mit isHuman=true.
+ * Auf jedem Client/Host nach Zuweisung von state.game: genau der lokale Sitz ist „Mensch“.
+ */
+function mpNormalizeHumanFlagsForLocalSeat() {
+  if (!MULTIPLAYER || !state.mpRoom || !state.game || !Array.isArray(state.game.players)) return;
+  const lid = state.mpRoom.localPlayerId;
+  for (const p of state.game.players) {
+    if (!p) continue;
+    p.isHuman = !!(p.mpId === lid && !p.mpIsBot);
+  }
+}
+
+let _mpMirrorPopupKey = null;
+
+function mpHostPublishMirroredActionPopup(payload) {
+  if (!MULTIPLAYER || !mpIsMultiplayerHost() || !state.game || !payload) return;
+  state.game._mpPopupSeq = (state.game._mpPopupSeq || 0) + 1;
+  state.game._mpMirroredPopup = Object.assign({ seq: state.game._mpPopupSeq, at: Date.now() }, payload);
+  try { if (window.VV_MP && window.VV_MP.forceGameStateSync) void window.VV_MP.forceGameStateSync(); } catch (_) {}
+}
+
+function mpHostClearMirroredPopup() {
+  if (!MULTIPLAYER || !mpIsMultiplayerHost() || !state.game) return;
+  if (!state.game._mpMirroredPopup) return;
+  delete state.game._mpMirroredPopup;
+  try { if (window.VV_MP && window.VV_MP.forceGameStateSync) void window.VV_MP.forceGameStateSync(); } catch (_) {}
+}
+
+/** Mitspieler: gleiche Action-Popups wie auf dem Host (nur Anzeige, OK schließt lokal). */
+function mpClientSyncMirroredPopupFromState() {
+  if (!MULTIPLAYER || mpIsMultiplayerHost() || !state.game) return;
+  const m = state.game._mpMirroredPopup;
+  if (!m) {
+    if (_mpMirrorPopupKey !== null) {
+      document.querySelectorAll('.modal-popup.mp-client-mirror').forEach(n => n.remove());
+      _mpMirrorPopupKey = null;
+    }
+    return;
+  }
+  const key = String(m.seq || 0) + '|' + String(m.kind || '');
+  if (key === _mpMirrorPopupKey) return;
+  document.querySelectorAll('.modal-popup.mp-client-mirror').forEach(n => n.remove());
+  _mpMirrorPopupKey = key;
+  const me = mpLocalGamePlayer();
+  const meId = me && me.id;
+  const cleanups = [];
+  const hlIds = (arr, cls) => {
+    for (const id of (arr || [])) {
+      if (!id) continue;
+      document.querySelectorAll('[data-card-id="' + id + '"]').forEach(el => {
+        el.classList.add(cls);
+        cleanups.push(() => { try { el.classList.remove(cls); } catch (_) {} });
+      });
+    }
+  };
+  hlIds(m.affectedCardIds, 'card-highlight-affected');
+  hlIds(m.positiveCardIds, 'card-highlight-positive');
+  for (const pid of (m.affectedPlayerIds || [])) {
+    if (!pid) continue;
+    const cls = (meId && pid === meId) ? 'team-highlight-own' : 'team-highlight-opponent';
+    document.querySelectorAll('[data-player-id="' + pid + '"]').forEach(el => {
+      el.classList.add(cls);
+      cleanups.push(() => { try { el.classList.remove(cls); } catch (_) {} });
+    });
+  }
+  const pid = 'mp-mir-' + (m.seq || Date.now());
+  const div = document.createElement('div');
+  div.className = 'modal-popup mp-client-mirror';
+  const hasCountdown = m.autoMs != null && Number(m.autoMs) > 0;
+  const isBot = hasCountdown && Number(m.autoMs) <= BOT_POPUP_MS + 500;
+  if (m.kind === 'async') {
+    div.innerHTML = `
+      <div class="modal-card">
+        <div class="modal-icon">${m.icon || ''}</div>
+        <div class="modal-h">${escapeHTML(m.title || '')}</div>
+        <div class="modal-p">${m.bodyHtml || ''}</div>
+        <button class="btn btn-primary" id="${pid}-ok">OK</button>
+      </div>`;
+  } else {
+    div.innerHTML = `
+      <div class="modal-card action-upop">
+        <div class="action-upop-title">${m.title || ''}</div>
+        <hr class="action-upop-divider">
+        <div class="action-upop-desc">${String(m.description || '').replace(/\n/g, '<br>')}</div>
+        <div class="action-upop-footer">
+          <button class="btn btn-primary" id="${pid}-ok">OK</button>
+          ${hasCountdown ? `
+          <div class="popup-timer-wrap">
+            <span class="popup-timer-seconds${isBot ? '' : ''}" id="${pid}-secs">${Math.ceil(Number(m.autoMs) / 1000)}s</span>
+            <div class="popup-timer-bar-outer">
+              <div class="popup-timer-bar-inner${isBot ? ' bot' : ''}" id="${pid}-bar"></div>
+            </div>
+          </div>` : ''}
+        </div>
+      </div>`;
+  }
+  document.body.appendChild(div);
+  setTimeout(() => div.classList.add('open'), 10);
+  const finish = () => {
+    if (document.body.contains(div)) div.remove();
+    for (const fn of cleanups) { try { fn(); } catch (_) {} }
+  };
+  const okBtn = document.getElementById(pid + '-ok');
+  if (okBtn) okBtn.addEventListener('click', finish);
+  div.addEventListener('click', e => { if (e.target === div) finish(); });
+  if (hasCountdown) {
+    setTimeout(() => {
+      startPopupTimer({
+        durationMs: Number(m.autoMs),
+        isBot,
+        onExpire: finish,
+        secEl: document.getElementById(pid + '-secs'),
+        barEl: document.getElementById(pid + '-bar'),
+      });
+    }, 50);
+  }
+}
+
+function mpHostSyncOpeningAuctionBoard(board) {
+  if (!MULTIPLAYER || !mpIsMultiplayerHost() || !state.game) return;
+  if (board) state.game._mpOpeningAuctionBoard = board;
+  else delete state.game._mpOpeningAuctionBoard;
+  try { if (window.VV_MP && window.VV_MP.scheduleGameStateSync) window.VV_MP.scheduleGameStateSync(); } catch (_) {}
+}
+
+function mpClientPaintOpeningAuctionStage() {
+  const stage = $('#auction-stage');
+  const g = state.game;
+  if (!stage || !g || !g._mpOpeningAuctionBoard) return;
+  const b = g._mpOpeningAuctionBoard;
+  const card = b.card || {};
+  const cardStars = Math.max(1, Math.floor(Number(card.stars || b.cardStars || 1)));
+  const minBid = Number(b.minBid) || cardStars * PRICE_PER_STAR;
+  const cur = Number(b.currentBid) || 0;
+  const hi = b.currentHighName ? escapeHTML(String(b.currentHighName)) : '';
+  const feedRows = (b.feedHtml && b.feedHtml.length)
+    ? b.feedHtml.map(h => `<div class="af-line">${h}</div>`).join('')
+    : '';
+  stage.innerHTML = `
+    <div class="auction-card">
+      <div class="auction-meta">
+        <div>${fmt(T('auction_card'), b.idx || 1, b.total || 6)}</div>
+        <div>${T('auction_minbid')}: <b>${fmtMoney(minBid)}</b></div>
+      </div>
+      <div class="auction-card-row">
+        <img class="ac-img" src="${escapeHTML(card.url || '')}" alt="">
+        <div class="ac-info">
+          <div class="ac-pos" style="background:${posColor(card.pos)}">${posShort(card.pos)} · ${posLabel(card.pos)}</div>
+          <div class="ac-stars">${'★'.repeat(cardStars)} <span style="color:var(--silver)">${escapeHTML(card.name || '')}</span></div>
+          <div class="ac-bid">
+            <div>${T('auction_currentbid')}: <b style="color:var(--gold)">${cur ? fmtMoney(cur) : '—'}</b>${hi ? ` <span style="color:var(--silver)">(${hi})</span>` : ''}</div>
+          </div>
+        </div>
+      </div>
+      <div id="auction-input"></div>
+      <div id="auction-feed" class="auction-feed">${feedRows}</div>
+    </div>`;
+}
+
 /** Sichtbare UI-Phase aus dem Host-Snapshot, falls _mpUiView fehlt (ältere Saves). */
 function inferMpUiViewFromGame(g) {
   if (!g) return 'menu';
@@ -1394,9 +1590,14 @@ function applyRemoteState(remote) {
   if (!remote) return;
   if (remote.phase === 'lobby') return;
   try {
+    if (!Array.isArray(ALL_CARDS) || !ALL_CARDS.length) {
+      ALL_CARDS = buildGameCardPool();
+      try { if (typeof window !== 'undefined') window.VV_CARDS_DB = ALL_CARDS; } catch (_) {}
+    }
     const targetView = remote._mpUiView || inferMpUiViewFromGame(remote);
     const prevView = state.view;
     state.game = remote;
+    mpNormalizeHumanFlagsForLocalSeat();
     if (prevView !== targetView || prevView === 'mp_viewer') {
       setView(targetView);
     } else {
@@ -1410,6 +1611,7 @@ function applyRemoteState(remote) {
 /** Stops host→Firebase sync interval and clears local MP flags (lobby leave, menu, play-again). */
 function resetLocalMultiplayerSession() {
   try { mpHostUnregisterDraftInputListeners(); } catch (_) {}
+  _mpMirrorPopupKey = null;
   try {
     if (window.VV_MP && typeof window.VV_MP.resetSyncScheduler === 'function') window.VV_MP.resetSyncScheduler();
   } catch (_) {}
@@ -1465,7 +1667,7 @@ function mpHostRegisterDraftInputListeners() {
     if (!p || p.mpIsBot || !p.mpId) continue;
     const id = p.mpId;
     const unsub = mp.listenForInput(id, (payload) => {
-      try { mpHostOnDraftInput(id, payload); } catch (e) { console.warn('[VV] mpHostOnDraftInput', e); }
+      try { mpHostRoutePlayerInput(id, payload); } catch (e) { console.warn('[VV] mpHostRoutePlayerInput', e); }
     }, { registerInSession: false });
     _mpDraftInputUnsubs.push(unsub);
   }
@@ -1571,7 +1773,6 @@ function mpDraftExpectedStarsForStage(p) {
 }
 
 function mpTransitionDraftToAuction() {
-  try { mpHostUnregisterDraftInputListeners(); } catch (_) {}
   try {
     if (window.VV_MP && typeof window.VV_MP.clearRoomTurnState === 'function') {
       void window.VV_MP.clearRoomTurnState();
@@ -1605,6 +1806,270 @@ function mpDraftClientSubmit(payload) {
     return;
   }
   void mp.submitInput(payload);
+}
+
+/** Allgemeiner Client → Host (Saison, Markt, Würfel, …). */
+function mpGameClientSubmit(payload) {
+  const mp = window.VV_MP;
+  if (!mp || typeof mp.submitInput !== 'function') return;
+  const me = mpLocalGamePlayer();
+  if (!me || me.mpIsBot) {
+    toast(state.lang === 'de' ? 'Kein gültiger Spieler-Sitz.' : 'No valid player seat.', 'bad', 1800);
+    return;
+  }
+  void mp.submitInput(payload);
+}
+
+function mpHostRoutePlayerInput(mpId, payload) {
+  try {
+    if (!mpIsMultiplayerHost() || !state.game || !payload) return;
+    if (state.game.phase === 'draft') {
+      mpHostOnDraftInput(mpId, payload);
+      return;
+    }
+    mpHostOnClientGameInput(mpId, payload);
+  } catch (e) {
+    console.warn('[VV] mpHostRoutePlayerInput', e);
+  }
+}
+
+function mpAfterHostGameMutation() {
+  if (!mpIsMultiplayerHost()) return;
+  try { render(); } catch (_) {}
+  mpHostAttachHudSnapshot();
+  try { if (window.VV_MP && window.VV_MP.forceGameStateSync) void window.VV_MP.forceGameStateSync(); } catch (_) {}
+}
+
+function mpHostAttachHudSnapshot() {
+  if (!MULTIPLAYER || !mpIsMultiplayerHost() || !state.game) return;
+  if (state.view !== 'game' || state.game.phase !== 'season') return;
+  try {
+    const a = document.getElementById('actions');
+    const s = document.getElementById('stage');
+    const btn = document.getElementById('dice-panel-btn');
+    const lbl = document.getElementById('dice-panel-label');
+    const res = document.getElementById('dice-panel-result');
+    state.game._mpHud = {
+      actionsHtml: a ? a.innerHTML : '',
+      stageHtml:   s ? s.innerHTML : '',
+      diceDisabled: !!(btn && btn.disabled),
+      diceText:     btn ? btn.textContent : '',
+      diceLbl:      lbl ? lbl.textContent : '',
+      diceRes:      res ? res.textContent : '',
+      expectedAdvance: typeof _expectedAdvance === 'string' ? _expectedAdvance : '',
+      activeIdx:     state.game.activeIdx,
+      at: Date.now(),
+    };
+  } catch (_) {}
+}
+
+function mpHostSyncLivePopupFromDom(id) {
+  if (!MULTIPLAYER || !mpIsMultiplayerHost() || !state.game || !id) return;
+  try {
+    const pop = document.getElementById(id);
+    if (!pop) return;
+    const title = pop.querySelector('.game-popup-title');
+    const body = document.getElementById(id + '-body');
+    state.game._mpLivePopup = {
+      id,
+      title: title ? title.textContent : '',
+      bodyHtml: body ? body.innerHTML : '',
+      open: true,
+    };
+    mpSyncIfHost();
+  } catch (_) {}
+}
+
+function mpClientApplyHudSnapshot() {
+  if (!MULTIPLAYER || mpIsMultiplayerHost() || !state.game || !state.game._mpHud) return;
+  const h = state.game._mpHud;
+  if (typeof h.expectedAdvance === 'string') _expectedAdvance = h.expectedAdvance;
+  const a = document.getElementById('actions');
+  const s = document.getElementById('stage');
+  const btn = document.getElementById('dice-panel-btn');
+  const lbl = document.getElementById('dice-panel-label');
+  const res = document.getElementById('dice-panel-result');
+  if (a && typeof h.actionsHtml === 'string') a.innerHTML = h.actionsHtml;
+  if (s && typeof h.stageHtml === 'string') s.innerHTML = h.stageHtml;
+  if (btn) {
+    btn.disabled = !!h.diceDisabled;
+    if (h.diceText != null) btn.textContent = h.diceText;
+  }
+  if (lbl && h.diceLbl != null) lbl.textContent = h.diceLbl;
+  if (res && h.diceRes != null) res.textContent = h.diceRes;
+}
+
+function mpClientEnsureLiveGamePopup() {
+  if (!MULTIPLAYER || mpIsMultiplayerHost() || !state.game) return;
+  const lp = state.game._mpLivePopup;
+  if (!lp || !lp.open) {
+    const auc = document.getElementById('live-auction-popup');
+    if (auc) auc.remove();
+    return;
+  }
+  let pop = document.getElementById(lp.id);
+  if (!pop) {
+    pop = document.createElement('div');
+    pop.id = lp.id;
+    pop.className = 'game-popup';
+    document.body.appendChild(pop);
+  }
+  pop.innerHTML = `
+    <div class="game-popup-inner">
+      <div class="game-popup-head">
+        <span class="game-popup-title">${escapeHTML(lp.title || '')}</span>
+        <button class="game-popup-close" id="${lp.id}-close-btn" disabled style="opacity:0.35">✕</button>
+      </div>
+      <div class="game-popup-body" id="${lp.id}-body">${lp.bodyHtml || ''}</div>
+    </div>`;
+  requestAnimationFrame(() => pop.classList.add('open'));
+}
+
+function mpPerformBuyOneStar(player, pos) {
+  if (!player || player.money < PRICE_PER_STAR) return false;
+  const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
+  const c = pickUnowned1Star(poolPos);
+  if (!c) return false;
+  removeCardFromPools(c);
+  const cur = player.team[pos];
+  if (cur) player.bench.push(cur);
+  player.team[pos] = c;
+  autoSelectLineup(player);
+  player.money -= PRICE_PER_STAR;
+  animateMoneyChange(player, -PRICE_PER_STAR);
+  toast(state.lang === 'de' ? `Gekauft: ${c.name}` : `Bought: ${c.name}`, 'good');
+  beep(880, 60);
+  logEntry(`💰 ${state.lang === 'de' ? 'Gekauft' : 'Bought'}: ${c.name} (1★) -${fmtMoney(PRICE_PER_STAR)}'`, 'win');
+  assertNoDuplicates();
+  return true;
+}
+
+function mpPerformBuyCard(player, id, skipStrongerConfirm) {
+  const g = state.game;
+  const c = (g.market || []).find(x => x.id === id) || (g.marketPile || []).find(x => x.id === id);
+  if (!c || !player) return false;
+  if (player.money < c.price) { toast(state.lang === 'de' ? 'Zu teuer' : 'Too expensive', 'bad'); return false; }
+  const cur = player.team[c.pos];
+  if (cur && cur.stars >= c.stars && !skipStrongerConfirm) {
+    if (!confirm(state.lang === 'de' ? 'Aktuelle Karte ist gleichstark oder stärker — trotzdem kaufen?' : 'Current card has equal or higher stars — buy anyway?')) return false;
+  }
+  removeCardFromPools(c);
+  if (cur) player.bench.push(cur);
+  player.team[c.pos] = c;
+  autoSelectLineup(player);
+  player.money -= c.price;
+  g.market = g.market.filter(x => x.id !== c.id);
+  g.marketPile = (g.marketPile || []).filter(x => x.id !== c.id);
+  toast(state.lang === 'de' ? `Gekauft: ${c.name}` : `Bought: ${c.name}`, 'good');
+  beep(880, 60);
+  assertNoDuplicates();
+  return true;
+}
+
+function mpPerformSellBench(player, id) {
+  if (!player) return false;
+  const idx = player.bench.findIndex(c => c.id === id);
+  if (idx < 0) return false;
+  const c = player.bench[idx];
+  if (c.disabled) {
+    toast(state.lang === 'de' ? '⛔ Gesperrt — Verkauf nicht möglich.' : '⛔ Suspended — cannot sell.', 'bad', 2500);
+    return false;
+  }
+  const price = Math.floor(cardBasePrice(c) / 2);
+  player.bench.splice(idx, 1);
+  player.money += price;
+  animateMoneyChange(player, +price);
+  toast(`+${fmtMoney(price)}’`, 'gold');
+  beep(820, 80);
+  logEntry(`💰 ${state.lang === 'de' ? 'Verkauft' : 'Sold'}: ${c.name} +${fmtMoney(price)}’`, 'win');
+  return true;
+}
+
+function mpPerformSellStarter(player, pos) {
+  if (!player) return false;
+  const c = player.team[pos];
+  if (!c) return false;
+  const price = Math.floor(cardBasePrice(c) / 2);
+  player.team[pos] = null;
+  autoSelectLineup(player);
+  player.money += price;
+  animateMoneyChange(player, +price);
+  toast(`+${fmtMoney(price)}’`, 'gold');
+  logEntry(`💰 ${state.lang === 'de' ? 'Verkauft' : 'Sold'}: ${c.name} +${fmtMoney(price)}’`, 'win');
+  state.sellMode = false;
+  return true;
+}
+
+function mpHostOnClientGameInput(mpId, payload) {
+  if (!mpIsMultiplayerHost() || !state.game || !payload || !payload.action) return;
+  const g = state.game;
+  const subject = g.players.find(p => p && p.mpId === mpId);
+  if (!subject || subject.mpIsBot) return;
+  const act = payload.action;
+
+  if (act === 'fireWaiter') {
+    const name = payload.name;
+    if (!name || typeof name !== 'string') return;
+    if ((name === 'coneRollNow' || name === 'coneContinue')) {
+      const active = g.players[g.activeIdx];
+      if (!active || active.mpId !== mpId) return;
+    }
+    fire(name);
+    mpAfterHostGameMutation();
+    return;
+  }
+  if (act === 'marketEnd') {
+    endMarketHostCore();
+    return;
+  }
+  if (act === 'startingRoll') {
+    if (state.view !== 'starting') return;
+    void mpHostRunStartingDice();
+    return;
+  }
+  if (act === 'skipAll') {
+    state.skipping = true;
+    ['coneRollNow', 'coneContinue', 'continueAfterMatch', 'serveOnce', 'endMarket'].forEach(fire);
+    document.querySelectorAll('.modal-popup, .event-popup-banner, .game-popup').forEach(m => m.remove());
+    setTimeout(() => { state.skipping = false; }, 3000);
+    mpAfterHostGameMutation();
+    return;
+  }
+  if (act === 'marketBuyOneStar') {
+    const pos = payload.pos;
+    if (!pos || !POSITIONS.includes(pos)) return;
+    if (subject.mpId !== mpId) return;
+    if (mpPerformBuyOneStar(subject, pos)) {
+      refreshTopbar(); refreshTeamPanel(); renderMarket(); refreshFloatingPanel();
+      mpAfterHostGameMutation();
+    }
+    return;
+  }
+  if (act === 'marketBuyCard') {
+    if (!payload.id || subject.mpId !== mpId) return;
+    if (mpPerformBuyCard(subject, payload.id, !!payload.confirmed)) {
+      refreshTopbar(); refreshTeamPanel(); renderMarket();
+      mpAfterHostGameMutation();
+    }
+    return;
+  }
+  if (act === 'marketSellBench') {
+    if (!payload.id || subject.mpId !== mpId) return;
+    if (mpPerformSellBench(subject, payload.id)) {
+      refreshTopbar(); refreshTeamPanel(); renderMarket(); refreshFloatingPanel();
+      mpAfterHostGameMutation();
+    }
+    return;
+  }
+  if (act === 'marketSellStarter') {
+    if (!payload.pos || subject.mpId !== mpId) return;
+    if (mpPerformSellStarter(subject, payload.pos)) {
+      refreshTopbar(); refreshTeamPanel(); refreshFloatingPanel();
+      if (state.view === 'game') renderMarket();
+      mpAfterHostGameMutation();
+    }
+    return;
+  }
 }
 
 /** True on host for a lobby human seat that is controlled from another device (Firebase seatPrompt). */
@@ -1835,10 +2300,10 @@ function renderDraft() {
   const mpBanner = MULTIPLAYER
     ? `<div class="mp-sync-banner" style="margin-bottom:1rem;padding:0.75rem 1rem;border-radius:8px;background:rgba(250,204,21,0.12);border:1px solid rgba(250,204,21,0.35);font-size:0.95rem;">
         ${mpDone
-          ? (de ? '<strong>Fertig.</strong> Warte, bis alle Spieler ihren Draft beendet haben — dann startet der Host die Auktion.' : '<strong>Done.</strong> Wait until every player has finished drafting — then the host opens the auction.')
+          ? (de ? '<strong>Fertig.</strong> Warte, bis alle Spieler ihren Draft beendet haben — danach startet die Eröffnungsauktion automatisch im gleichen Setup-Bereich.' : '<strong>Done.</strong> Wait until every player has finished drafting — the opening auction then starts automatically in the same setup area.')
           : (de
-            ? '<strong>Parallel-Draft</strong> — sobald der Host das Spiel startet, baut jeder gleichzeitig sein Team. Bots werden sofort vom Host ausgefüllt.'
-            : '<strong>Parallel draft</strong> — after the host starts, everyone drafts at once. Bots are filled by the host immediately.')}
+            ? '<strong>Parallel-Draft</strong> — jeder Spieler baut gleichzeitig sein eigenes Team. Bots füllt der Host automatisch.'
+            : '<strong>Parallel draft</strong> — every player builds their own team at the same time. The host fills bots automatically.')}
       </div>`
     : '';
   const actionsDim = MULTIPLAYER && !mpCanAct && !mpDone;
@@ -1875,7 +2340,18 @@ function computeDraftStage(p) {
   if (counts[4] < 1) return 'draw_4';
   if (counts[3] < 2) return 'draw_3';
   if (counts[2] < 3) return 'draw_2';
-  if (counts[1] < 3) return 'pick_1';
+  if (counts[1] < 3) {
+    // Treat bots (mpIsBot or no mpId in MP) as done if the 1★ pool is exhausted,
+    // so pool scarcity never permanently blocks the transition to auction.
+    if (p.mpIsBot || (MULTIPLAYER && !p.mpId)) {
+      const anyLeft = ['outside','middle','setter','diagonal','libero'].some(pos => {
+        const owned = ownedCardIds();
+        return (ALL_CARDS || []).some(c => c && c.stars === 1 && c.pos === pos && !owned.has(c.id));
+      });
+      if (!anyLeft) return 'done';
+    }
+    return 'pick_1';
+  }
   return 'done';
 }
 
@@ -2210,11 +2686,20 @@ function autoDraftBot(bot) {
     if (c) placeIntoTeamOrBench(bot, c);
   }
   // Pick 3× 1★ — prefer positions still empty, then bias position
+  // Fallback: try all positions if preferred is empty, so pool exhaustion
+  // never leaves the bot below 3× 1★ (which would block mpMaybeFinishDraftToAuction).
+  const allPoolPos = ['outside','middle','setter','diagonal','libero'];
   for (let i = 0; i < 3; i++) {
     const empties = POSITIONS.filter(p => !bot.team[p]);
     let pos = empties.length ? choice(empties) : (bot.biasPos || choice(POSITIONS));
     const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
-    const c = pickUnowned1Star(poolPos);
+    let c = pickUnowned1Star(poolPos);
+    if (!c) {
+      // Try all other positions before giving up
+      for (const alt of allPoolPos) {
+        if (alt !== poolPos) { c = pickUnowned1Star(alt); if (c) break; }
+      }
+    }
     if (c) {
       if (!bot.team[pos]) bot.team[pos] = c; else placeIntoTeamOrBench(bot, c);
     }
@@ -2253,11 +2738,14 @@ async function renderAuction() {
   const g = state.game;
   const panelP = MULTIPLAYER ? (mpLocalGamePlayer() || g.players[0]) : g.players[0];
   const isMpClient = MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost;
+  const mpDraftShell = MULTIPLAYER && state.mpRoom;
+  const ghMini = mpDraftShell ? `${T('setup_h')} · ${T('draft_h')}` : `${T('setup_h')} · ${T('auction_h')}`;
+  const mainH2 = mpDraftShell ? `${T('draft_h')} → ${T('auction_h')}` : T('auction_h');
   app.innerHTML = `
     <div class="gh">
       <div class="gh-logo">VOLLEY VENDETTA</div>
       <div class="gh-spacer"></div>
-      <div class="gh-mini">${T('setup_h')} · ${T('auction_h')}</div>
+      <div class="gh-mini">${ghMini}</div>
       <div class="gh-lang">
         <span class="lang-pill ${state.lang==='de'?'active':''}" onclick="VV.setLang('de')">DE</span>
         <span class="lang-pill ${state.lang==='en'?'active':''}" onclick="VV.setLang('en')">EN</span>
@@ -2265,8 +2753,11 @@ async function renderAuction() {
     </div>
     <div style="padding:1.5rem; display:grid; grid-template-columns:1fr 280px; gap:1.5rem; max-width:1200px; margin:0 auto;">
       <div>
-        <h2 class="h-cond" style="font-size:2rem; margin-bottom:0.3rem;">${T('auction_h')}</h2>
+        <h2 class="h-cond" style="font-size:2rem; margin-bottom:0.3rem;">${mainH2}</h2>
         <div style="color:var(--silver); margin-bottom:1.4rem;">${T('auction_sub')}</div>
+        ${mpDraftShell ? `<div class="mp-sync-banner" style="margin-bottom:1rem;padding:0.75rem 1rem;border-radius:8px;background:rgba(250,204,21,0.12);border:1px solid rgba(250,204,21,0.35);font-size:0.95rem;">${state.lang === 'de'
+          ? '<strong>Setup.</strong> Die Eröffnungsauktion läuft im selben Bereich wie der Draft — Gebot erscheint als Popover, wenn du dran bist.'
+          : '<strong>Setup.</strong> The opening auction runs in the same area as the draft — your bid appears as a pop-up when it is your turn.'}</div>` : ''}
         <div class="topbar" id="topbar">${state.game.players.map((p,i)=>playerCardHtml(p,i,false)).join('')}</div>
         <div id="auction-stage" class="stage" style="margin-top:1rem;"></div>
       </div>
@@ -2274,14 +2765,17 @@ async function renderAuction() {
     </div>`;
   if (isMpClient) {
     const stage = $('#auction-stage');
-    const de = state.lang === 'de';
     if (stage) {
-      stage.innerHTML = `<div class="event-card" style="max-width:560px;margin:0 auto;">
+      if (g._mpOpeningAuctionBoard) mpClientPaintOpeningAuctionStage();
+      else {
+        const de = state.lang === 'de';
+        stage.innerHTML = `<div class="event-card" style="max-width:560px;margin:0 auto;">
         <div class="event-h">${de ? 'Eröffnungsauktion' : 'Opening auction'}</div>
         <div class="event-p">${de
-          ? 'Der Host führt die Runde aus. Wenn du dran bist, erscheint dein Gebot als Popover — dieselbe Datenbasis wie beim Host.'
-          : 'The host runs this round. When it is your turn, your bid appears as an overlay — same state as the host.'}</div>
+          ? 'Synchronisiere mit dem Host … Sobald die erste Karte live ist, erscheint sie hier. Gebote weiterhin per Popover.'
+          : 'Syncing with the host … The first live card appears here. Bids still use the popover.'}</div>
       </div>`;
+      }
     }
     hideTeamSidebar();
     return;
@@ -2325,14 +2819,39 @@ async function runOpeningAuction() {
 
 async function runAuctionForCard(card, idx, total) {
   if (!card || !Number.isFinite(Number(card.stars))) return;
-  try {
-  const stage = $('#auction-stage');
   const cardStars = Math.max(1, Math.floor(Number(card.stars) || 1));
   const minBid = cardStars * PRICE_PER_STAR;
-  let high = 0; let highBidder = null;
-  // Auction rounds: youngest first (we treat human as youngest), then clockwise
+  const feedHistory = [];
   let currentBid = 0;
   let currentHigh = null;
+  function syncOpeningBoard() {
+    if (!MULTIPLAYER || !mpIsMultiplayerHost() || !state.game) return;
+    mpHostSyncOpeningAuctionBoard({
+      idx, total, minBid,
+      card: { id: card.id, name: card.name, url: card.url, stars: card.stars, pos: card.pos },
+      currentBid,
+      currentHighName: currentHigh ? currentHigh.name : '',
+      feedHtml: feedHistory.slice(),
+    });
+  }
+  function pushFeed(html) {
+    feedHistory.push(html);
+    const fd = $('#auction-feed');
+    if (fd) {
+      const el = document.createElement('div');
+      el.className = 'af-line';
+      el.innerHTML = html;
+      fd.appendChild(el);
+      fd.scrollTop = fd.scrollHeight;
+    }
+    syncOpeningBoard();
+  }
+  try {
+  const stage = $('#auction-stage');
+  let high = 0; let highBidder = null;
+  // Auction rounds: youngest first (we treat human as youngest), then clockwise
+  currentBid = 0;
+  currentHigh = null;
   // Each round, every player who hasn't passed gets a chance.
   const order = state.game.players.slice(); // human first (index 0)
   let active = order.slice();
@@ -2360,7 +2879,18 @@ async function runAuctionForCard(card, idx, total) {
         <div id="auction-input"></div>
         <div id="auction-feed" class="auction-feed"></div>
       </div>`;
+    const fd = $('#auction-feed');
+    if (fd) {
+      for (const h of feedHistory) {
+        const el = document.createElement('div');
+        el.className = 'af-line';
+        el.innerHTML = h;
+        fd.appendChild(el);
+      }
+      fd.scrollTop = fd.scrollHeight;
+    }
     showTeamSidebar(card);
+    syncOpeningBoard();
   }
   paint();
 
@@ -2378,24 +2908,24 @@ async function runAuctionForCard(card, idx, total) {
         const result = await humanBidPrompt(p, card, minNext);
         if (result.pass) {
           passes.add(p.id);
-          appendAuctionFeed(`${p.emoji} ${escapeHTML(p.name)} → ${T('auction_pass')}`);
+          pushFeed(`${p.emoji} ${escapeHTML(p.name)} → ${T('auction_pass')}`);
         } else {
           if (result.bid > p.money) { toast(state.lang==='de'?'Nicht genug Geld':'Not enough money', 'bad'); passes.add(p.id); continue; }
           if (result.bid < minNext) { toast(state.lang==='de'?'Gebot zu niedrig':'Bid too low', 'bad'); passes.add(p.id); continue; }
           currentBid = result.bid; currentHigh = p; lastBidder = p.id; bidThisRound = true;
-          appendAuctionFeed(`<b>${p.emoji} ${escapeHTML(p.name)}</b> → ${fmtMoney(currentBid)}’`);
+          pushFeed(`<b>${p.emoji} ${escapeHTML(p.name)}</b> → ${fmtMoney(currentBid)}’`);
           beep(820, 50);
         }
       } else if (mpSeatIsRemoteHumanOnHost(p)) {
         const result = await humanBidPromptRemote(p, card, minNext);
         if (result.pass) {
           passes.add(p.id);
-          appendAuctionFeed(`${p.emoji} ${escapeHTML(p.name)} → ${T('auction_pass')}`);
+          pushFeed(`${p.emoji} ${escapeHTML(p.name)} → ${T('auction_pass')}`);
         } else {
           if (result.bid > p.money) { toast(state.lang==='de'?'Nicht genug Geld':'Not enough money', 'bad'); passes.add(p.id); continue; }
           if (result.bid < minNext) { toast(state.lang==='de'?'Gebot zu niedrig':'Bid too low', 'bad'); passes.add(p.id); continue; }
           currentBid = result.bid; currentHigh = p; lastBidder = p.id; bidThisRound = true;
-          appendAuctionFeed(`<b>${p.emoji} ${escapeHTML(p.name)}</b> → ${fmtMoney(currentBid)}’`);
+          pushFeed(`<b>${p.emoji} ${escapeHTML(p.name)}</b> → ${fmtMoney(currentBid)}’`);
           beep(820, 50);
         }
       } else {
@@ -2404,10 +2934,10 @@ async function runAuctionForCard(card, idx, total) {
         const decision = window.VV_BOTS.shouldBid(p, card, currentBid, minNext, opps);
         if (decision.pass || decision.bid > p.money || decision.bid < minNext) {
           passes.add(p.id);
-          appendAuctionFeed(`${p.emoji} ${escapeHTML(p.name)} → ${T('auction_pass')}`);
+          pushFeed(`${p.emoji} ${escapeHTML(p.name)} → ${T('auction_pass')}`);
         } else {
           currentBid = decision.bid; currentHigh = p; lastBidder = p.id; bidThisRound = true;
-          appendAuctionFeed(`<b>${p.emoji} ${escapeHTML(p.name)}</b> → ${fmtMoney(currentBid)}’`);
+          pushFeed(`<b>${p.emoji} ${escapeHTML(p.name)}</b> → ${fmtMoney(currentBid)}’`);
           beep(740, 50);
         }
       }
@@ -2426,10 +2956,10 @@ async function runAuctionForCard(card, idx, total) {
     currentHigh.money -= currentBid;
     placeIntoTeamOrBench(currentHigh, card);
     refreshSetupTeamPanel();
-    appendAuctionFeed(`<b style="color:var(--gold)">${fmt(T('auction_won'), escapeHTML(currentHigh.name), fmtMoney(currentBid))}</b>`);
+    pushFeed(`<b style="color:var(--gold)">${fmt(T('auction_won'), escapeHTML(currentHigh.name), fmtMoney(currentBid))}</b>`);
     beep(900, 120);
   } else {
-    appendAuctionFeed(`<b style="color:var(--silver)">${T('auction_no_one')}</b>`);
+    pushFeed(`<b style="color:var(--silver)">${T('auction_no_one')}</b>`);
     state.game.marketPile.push(card); // unsold → available in market phase
   }
   showTeamSidebar(card);
@@ -2445,6 +2975,7 @@ async function runAuctionForCard(card, idx, total) {
   assertNoDuplicates();
   } finally {
     hideTeamSidebar();
+    mpHostSyncOpeningAuctionBoard(null);
   }
 }
 
@@ -2486,7 +3017,6 @@ function humanBidPrompt(p, card, minNext) {
 function renderStarting() {
   const app = $('#app');
   const g = state.game;
-  const mpWait = MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost;
   const de = state.lang === 'de';
   app.innerHTML = `
     <div class="gh">
@@ -2505,16 +3035,15 @@ function renderStarting() {
         <div class="dice-num" id="dice-num">—</div>
       </div>
       <div id="starting-result" style="margin-top:1.2rem;"></div>
-      ${mpWait
-        ? `<p id="mp-starting-wait" style="margin-top:1.2rem;color:var(--silver);">${de ? 'Der Host würfelt den Startspieler …' : 'The host is rolling for the first player …'}</p>`
-        : `<button class="btn btn-primary btn-large" id="start-roll-btn" onclick="VV.rollStartingDice()" style="margin-top:1.2rem;">🎲 ${T('starting_roll')}</button>`}
+      <button class="btn btn-primary btn-large" id="start-roll-btn" onclick="VV.rollStartingDice()" style="margin-top:1.2rem;">🎲 ${T('starting_roll')}</button>
     </div>`;
 }
 
-async function rollStartingDice() {
-  if (MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost) return;
-  const btn = $('#start-roll-btn'); if (btn) btn.disabled = true;
+async function mpHostRunStartingDice() {
   const g = state.game;
+  if (!g || g._mpStartingDiceStarted) return;
+  g._mpStartingDiceStarted = true;
+  const btn = $('#start-roll-btn'); if (btn) btn.disabled = true;
   const result = $('#starting-result');
   const rolls = [];
   for (const p of g.players) {
@@ -2535,6 +3064,15 @@ async function rollStartingDice() {
   for (const pl of g.players) pl.courtRotation = 0;
   setView('game');
   setTimeout(runSeason, speedMs(400));
+}
+
+async function rollStartingDice() {
+  if (MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost) {
+    const btn = $('#start-roll-btn'); if (btn) btn.disabled = true;
+    mpGameClientSubmit({ action: 'startingRoll' });
+    return;
+  }
+  await mpHostRunStartingDice();
 }
 
 
@@ -2638,6 +3176,9 @@ function renderGame() {
   for (const e of state.game.log.slice(-30)) logEntry(e.text, e.kind);
   refreshFloatingPanel();
   refreshDebugHud();
+  if (MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost && g && g._mpMarketOpen) {
+    try { renderMarket(); } catch (_) {}
+  }
 }
 
 function playerCardHtml(p, idx, withBars) {
@@ -2926,7 +3467,8 @@ function refreshTopbar() {
   const youEl = tb.querySelector('.you-card');
   if (youEl) {
     const newYou = document.createElement('div');
-    newYou.innerHTML = playerYouHtml(g.players[0], g);
+    const youP = MULTIPLAYER ? (mpLocalGamePlayer() || g.players[0]) : g.players[0];
+    newYou.innerHTML = playerYouHtml(youP, g);
     const yc = newYou.firstElementChild;
     if (yc) youEl.replaceWith(yc);
   }
@@ -2965,7 +3507,7 @@ function refreshBoard() {
 }
 function refreshTeamPanel() {
   const tp = $('#team-panel'); if (!tp || !state.game) return;
-  const _human = state.game.players[0];
+  const _human = MULTIPLAYER ? (mpLocalGamePlayer() || state.game.players[0]) : state.game.players[0];
   tp.dataset.playerId = _human.id; // for showActionPopup highlights
   tp.innerHTML = teamPanelHtml(_human);
   const sl = $('#team-strength-label');
@@ -2975,7 +3517,7 @@ function refreshTeamPanel() {
 function refreshMatchSidePanels(M) {
   const g = state.game;
   if (!g || !M) return;
-  const me = g.players.find(p => p.isHuman) || g.players[0];
+  const me = MULTIPLAYER ? (mpLocalGamePlayer() || g.players[0]) : (g.players.find(p => p.isHuman) || g.players[0]);
   if (M.home !== me && M.away !== me) return;
   refreshTeamPanel();
   const wrap = document.querySelector('.opp-team-wrap');
@@ -3439,7 +3981,18 @@ function humanBidPopup(p, card, minNext) {
  */
 function showActionPopup({ title, description, affectedCards = [], positiveCards = [], affectedPlayers = [], autoMs = EVENT_POPUP_MS }) {
   return new Promise(resolve => {
-    const me = state.game ? state.game.players[0] : null;
+    if (MULTIPLAYER && mpIsMultiplayerHost() && state.game) {
+      mpHostPublishMirroredActionPopup({
+        kind: 'action',
+        title: String(title || ''),
+        description: String(description || ''),
+        autoMs,
+        affectedPlayerIds: (affectedPlayers || []).map(p => p && p.id).filter(Boolean),
+        affectedCardIds: (affectedCards || []).map(c => c && c.id).filter(Boolean),
+        positiveCardIds: (positiveCards || []).map(c => c && c.id).filter(Boolean),
+      });
+    }
+    const me = MULTIPLAYER ? mpLocalGamePlayer() : (state.game ? state.game.players[0] : null);
     const cleanups = [];
 
     const hlCards = (cards, cls) => {
@@ -3454,10 +4007,10 @@ function showActionPopup({ title, description, affectedCards = [], positiveCards
     hlCards(positiveCards, 'card-highlight-positive');
 
     for (const p of affectedPlayers) {
-      const cls = (p === me) ? 'team-highlight-own' : 'team-highlight-opponent';
+      const cls = (me && p && p.id === me.id) ? 'team-highlight-own' : 'team-highlight-opponent';
       document.querySelectorAll('[data-player-id="' + p.id + '"]').forEach(el => {
         el.classList.add(cls);
-        cleanups.push(() => el.classList.remove(cls));
+        cleanups.push(() => { try { el.classList.remove(cls); } catch (_) {} });
       });
     }
 
@@ -3493,6 +4046,7 @@ function showActionPopup({ title, description, affectedCards = [], positiveCards
       cancelTimer();
       if (document.body.contains(div)) div.remove();
       for (const fn of cleanups) { try { fn(); } catch (_) {} }
+      if (MULTIPLAYER && mpIsMultiplayerHost()) mpHostClearMirroredPopup();
       resolve();
     };
 
@@ -3564,6 +4118,15 @@ function startPopupTimer({ durationMs, isBot, onExpire, secEl, barEl }) {
 
 function showActionPopupAsync(icon, title, bodyHtml, autoMs = EVENT_POPUP_MS) {
   return new Promise(resolve => {
+    if (MULTIPLAYER && mpIsMultiplayerHost() && state.game) {
+      mpHostPublishMirroredActionPopup({
+        kind: 'async',
+        icon: String(icon || ''),
+        title: String(title || ''),
+        bodyHtml: String(bodyHtml || ''),
+        autoMs,
+      });
+    }
     const pid = 'ac-pop-' + Date.now();
     const div = document.createElement('div');
     div.className = 'modal-popup';
@@ -3580,6 +4143,7 @@ function showActionPopupAsync(icon, title, bodyHtml, autoMs = EVENT_POPUP_MS) {
     let done = false;
     const finish = () => {
       if (done) return; done = true;
+      if (MULTIPLAYER && mpIsMultiplayerHost()) mpHostClearMirroredPopup();
       if (document.body.contains(div)) div.remove();
       resolve();
     };
@@ -3590,6 +4154,34 @@ function showActionPopupAsync(icon, title, bodyHtml, autoMs = EVENT_POPUP_MS) {
   });
 }
 
+async function pickOpponentRemoteHost(player, opponents, botPick) {
+  const mp = window.VV_MP;
+  if (!mp || typeof mp.publishSeatPrompt !== 'function' || typeof mp.waitForSeatInput !== 'function') {
+    return botPick();
+  }
+  const opLite = opponents.map(o => ({
+    id: o.id, name: o.name, emoji: o.emoji, money: o.money,
+  }));
+  try {
+    const pWait = mp.waitForSeatInput(player.mpId, EVENT_POPUP_MS + 8000, 'pickOpponent');
+    await mp.publishSeatPrompt({
+      type: 'pickOpponent',
+      mpId: player.mpId,
+      opponents: opLite,
+    });
+    const pl = await pWait;
+    if (!pl || pl.type !== 'pickOpponent') return botPick();
+    if (pl.pass) return botPick();
+    const chosen = opponents.find(o => o.id === pl.opponentId);
+    return chosen || botPick();
+  } catch (e) {
+    console.warn('[VV] pickOpponentRemoteHost', e);
+    return botPick();
+  } finally {
+    try { await mp.clearSeatPrompt(); } catch (_) {}
+  }
+}
+
 // Show opponent picker; bots auto-pick the wealthiest opponent.
 function pickOpponent(player) {
   const g = state.game;
@@ -3597,6 +4189,10 @@ function pickOpponent(player) {
   const opponents = g.players.filter(p => p !== player);
   const botPick = () => opponents.reduce((a, b) => a.money >= b.money ? a : b);
   if (!player.isHuman || state.speed === 'auto') return Promise.resolve(botPick());
+  const useRemoteSeat =
+    MULTIPLAYER && mpIsMultiplayerHost() && state.mpRoom && state.mpRoom.localPlayerId
+    && player.mpId && player.mpId !== state.mpRoom.localPlayerId;
+  if (useRemoteSeat) return pickOpponentRemoteHost(player, opponents, botPick);
   return new Promise(resolve => {
     const pid = 'ac-opp-' + Date.now();
     const div = document.createElement('div');
@@ -5168,8 +5764,12 @@ async function runMarketPhase() {
     }
   };
   safeRenderMarket();
+  if (MULTIPLAYER && mpIsMultiplayerHost()) {
+    g._mpMarketOpen = true;
+    mpSyncIfHost();
+  }
   // Bots act first, then human's turn (to give clear "your turn" feel)
-  for (const bot of g.players.filter(p => !p.isHuman)) {
+  for (const bot of g.players.filter(p => mpIsNpcOrSoloNonHuman(p))) {
     try {
       await sleep(speedMs(200)); // bot market buy thinking delay
       const pick = window.VV_BOTS.pickMarketBuy(bot, g.market);
@@ -5313,7 +5913,7 @@ function marketBodyHtml(me, weakPos) {
 
 function renderMarket() {
   if (!state.game) return;
-  const me = state.game.players[0];
+  const me = MULTIPLAYER ? (mpLocalGamePlayer() || state.game.players[0]) : state.game.players[0];
   if (!me) return;
   // Ensure bench has no nulls (safety after injury/emergency-buy flows)
   if (Array.isArray(me.bench)) me.bench = me.bench.filter(Boolean);
@@ -5383,27 +5983,17 @@ function benchCardHtml(c, me) {
 }
 
 function buyOneStar(pos) {
-  const me = state.game.players[0];
-  if (me.money < PRICE_PER_STAR) { toast(state.lang==='de'?'Zu teuer':'Too expensive', 'bad'); return; }
-  const poolPos = { outside2: 'outside', middle2: 'middle' }[pos] || pos;
-  const c = pickUnowned1Star(poolPos);
-  if (!c) return;
-  removeCardFromPools(c);
-  const cur = me.team[pos];
-  if (cur) me.bench.push(cur); // always move existing card to bench
-  me.team[pos] = c;
-  autoSelectLineup(me);
-  me.money -= PRICE_PER_STAR;
-  animateMoneyChange(me, -PRICE_PER_STAR);
-  toast(state.lang==='de'?`Gekauft: ${c.name}`:`Bought: ${c.name}`, 'good');
-  beep(880, 60);
+  if (MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost) {
+    mpGameClientSubmit({ action: 'marketBuyOneStar', pos });
+    return;
+  }
+  const me = MULTIPLAYER ? (mpLocalGamePlayer() || state.game.players[0]) : state.game.players[0];
+  if (!mpPerformBuyOneStar(me, pos)) return;
   refreshTopbar(); refreshTeamPanel(); renderMarket(); refreshFloatingPanel();
-  logEntry(`💰 ${state.lang==='de'?'Gekauft':'Bought'}: ${c.name} (1★) -${fmtMoney(PRICE_PER_STAR)}'`, 'win');
-  assertNoDuplicates();
 }
 
 function sellBenchCard(id) {
-  const me = state.game.players[0];
+  const me = MULTIPLAYER ? (mpLocalGamePlayer() || state.game.players[0]) : state.game.players[0];
   const idx = me.bench.findIndex(c => c.id === id);
   if (idx < 0) return;
   const c = me.bench[idx];
@@ -5413,28 +6003,24 @@ function sellBenchCard(id) {
   }
   const price = Math.floor(cardBasePrice(c) / 2);
   if (!confirm(state.lang==='de'?`${c.name} für ${fmtMoney(price)}’ verkaufen?`:`Sell ${c.name} for ${fmtMoney(price)}?`)) return;
-  me.bench.splice(idx, 1);
-  me.money += price;
-  animateMoneyChange(me, +price);
-  toast(`+${fmtMoney(price)}’`, 'gold');
-  beep(820, 80);
-  logEntry(`💰 ${state.lang==='de'?'Verkauft':'Sold'}: ${c.name} +${fmtMoney(price)}’`, 'win');
+  if (MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost) {
+    mpGameClientSubmit({ action: 'marketSellBench', id });
+    return;
+  }
+  if (!mpPerformSellBench(me, id)) return;
   refreshTopbar(); refreshTeamPanel(); renderMarket(); refreshFloatingPanel();
 }
 
 function sellStarter(pos) {
-  const me = state.game.players[0];
+  const me = MULTIPLAYER ? (mpLocalGamePlayer() || state.game.players[0]) : state.game.players[0];
   const c = me.team[pos]; if (!c) return;
   const price = Math.floor(cardBasePrice(c) / 2);
   if (!confirm(state.lang==='de'?`${c.name} für ${fmtMoney(price)}’ verkaufen?`:`Sell ${c.name} for ${fmtMoney(price)}?`)) return;
-  // Clear the slot first, then let autoSelectLineup pick the best available bench card
-  me.team[pos] = null;
-  autoSelectLineup(me);
-  me.money += price;
-  animateMoneyChange(me, +price);
-  toast(`+${fmtMoney(price)}’`, 'gold');
-  logEntry(`💰 ${state.lang==='de'?'Verkauft':'Sold'}: ${c.name} +${fmtMoney(price)}’`, 'win');
-  state.sellMode = false;
+  if (MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost) {
+    mpGameClientSubmit({ action: 'marketSellStarter', pos });
+    return;
+  }
+  if (!mpPerformSellStarter(me, pos)) return;
   refreshTopbar(); refreshTeamPanel(); refreshFloatingPanel();
   if (state.view === 'game') renderMarket();
 }
@@ -5461,28 +6047,24 @@ function marketCardHtml(c, player, opts) {
 function buyCard(id) {
   const g = state.game;
   const c = (g.market || []).find(x => x.id === id) || (g.marketPile || []).find(x => x.id === id);
-  const me = g.players[0];
+  const me = MULTIPLAYER ? (mpLocalGamePlayer() || g.players[0]) : g.players[0];
   if (!c) return;
   if (me.money < c.price) { toast(state.lang==='de'?'Zu teuer':'Too expensive', 'bad'); return; }
-  removeCardFromPools(c);
   const cur = me.team[c.pos];
+  let confirmed = false;
   if (cur && cur.stars >= c.stars) {
     if (!confirm(state.lang==='de'?'Aktuelle Karte ist gleichstark oder stärker — trotzdem kaufen?':'Current card has equal or higher stars — buy anyway?')) return;
+    confirmed = true;
   }
-  if (cur) me.bench.push(cur);
-  me.team[c.pos] = c;
-  autoSelectLineup(me);
-  me.money -= c.price;
-  // Remove from both market display list and marketPile
-  state.game.market = state.game.market.filter(x => x.id !== c.id);
-  state.game.marketPile = state.game.marketPile.filter(x => x.id !== c.id);
-  toast(state.lang==='de' ? `Gekauft: ${c.name}` : `Bought: ${c.name}`, 'good');
-  beep(880, 60);
+  if (MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost) {
+    mpGameClientSubmit({ action: 'marketBuyCard', id, confirmed });
+    return;
+  }
+  if (!mpPerformBuyCard(me, id, confirmed)) return;
   refreshTopbar(); refreshTeamPanel();
   renderMarket();
-  assertNoDuplicates();
 }
-function endMarket() {
+function endMarketHostCore() {
   closeGamePopup('market-popup');
   _setMarketBtnActive(false);
   hideTeamSidebar();
@@ -5490,8 +6072,19 @@ function endMarket() {
   if (g) {
     // Unsold market cards stay in marketPile for next week
     g.market = [];
+    if (MULTIPLAYER && mpIsMultiplayerHost()) {
+      g._mpMarketOpen = false;
+      mpSyncIfHost();
+    }
   }
   fire('endMarket');
+}
+function endMarket() {
+  if (MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost) {
+    mpGameClientSubmit({ action: 'marketEnd' });
+    return;
+  }
+  endMarketHostCore();
 }
 function toggleMarketPopup() {
   const pop = document.getElementById('market-popup');
@@ -5624,6 +6217,14 @@ function renderCurrentPhase() {
 
 function render() {
   renderCurrentPhase();
+  try { mpClientSyncMirroredPopupFromState(); } catch (_) {}
+  try {
+    if (MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost && state.view === 'game'
+        && state.game && state.game.phase === 'season') {
+      mpClientApplyHudSnapshot();
+      mpClientEnsureLiveGamePopup();
+    }
+  } catch (_) {}
   if (MULTIPLAYER && state.mpRoom && state.mpRoom.isHost && state.game
       && window.VV_MP && typeof window.VV_MP.scheduleGameStateSync === 'function') {
     try { window.VV_MP.scheduleGameStateSync(); } catch (_) {}
@@ -5828,6 +6429,11 @@ document.addEventListener('click', e => {
 document.addEventListener('keydown', e => {
   if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
   if (e.key === ' ' || e.key === 'Enter') {
+    if (MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost) {
+      e.preventDefault();
+      dicePanel_roll(true, null);
+      return;
+    }
     if (_waiters['coneContinue'])     { e.preventDefault(); fire('coneContinue');      return; }
     if (_waiters['continueAfterMatch']){ e.preventDefault(); fire('continueAfterMatch'); return; }
     if (_waiters['serveOnce'])        { e.preventDefault(); fire('serveOnce');         return; }
