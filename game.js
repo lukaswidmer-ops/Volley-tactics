@@ -92,6 +92,8 @@ const i18n = {
     starting_p: 'Alle würfeln den 12er. Höchste Zahl beginnt.',
     starting_roll: 'Würfeln',
     starting_winner: '%s beginnt!',
+    starting_wait_host: 'Der Host würfelt — die Ergebnisse erscheinen hier live für alle.',
+    starting_p_mp_client: 'Der Host würfelt den 12er nacheinander für jeden Sitz. Unten siehst du alle Würfe; die höchste Zahl startet in die Saison.',
 
     pos_outside: 'Aussenangreifer', pos_outside2: 'Aussenangreifer 2', pos_middle: 'Mittelblocker', pos_middle2: 'Mittelblocker 2', pos_setter: 'Setter',
     pos_diagonal: 'Diagonal', pos_libero: 'Libero',
@@ -264,6 +266,8 @@ const i18n = {
     starting_p: 'Everyone rolls the 12-sided die. Highest goes first.',
     starting_roll: 'Roll',
     starting_winner: '%s starts!',
+    starting_wait_host: 'The host is rolling — everyone sees the results here in sync.',
+    starting_p_mp_client: 'The host rolls the D12 for each seat in turn. All rolls appear below; the highest roll starts the season.',
 
     pos_outside: 'Outside', pos_outside2: 'Outside 2', pos_middle: 'Middle', pos_middle2: 'Middle 2', pos_setter: 'Setter',
     pos_diagonal: 'Diagonal', pos_libero: 'Libero',
@@ -810,6 +814,12 @@ function setView(v) {
   state.view = v;
   if (MULTIPLAYER && state.mpRoom && state.mpRoom.isHost && state.game) {
     try { state.game._mpUiView = v; } catch (_) {}
+  }
+  if (v === 'starting' && MULTIPLAYER && state.mpRoom && state.mpRoom.isHost && state.game) {
+    try {
+      delete state.game._mpStartingDiceStarted;
+      delete state.game._mpStartingRoll;
+    } catch (_) {}
   }
   if (v !== 'draft') removeDraftRestartButton();
   document.getElementById('app').dataset.view = v;
@@ -1965,6 +1975,34 @@ function mpHostBroadcastPlayfieldToClients() {
   } catch (_) {}
 }
 
+/** Host: „Wer beginnt?“ — Würfel- und Ergebnis-HTML in gameState, damit alle Clients dasselbe sehen. */
+function mpHostPushStartingRollSnapshot() {
+  if (!MULTIPLAYER || !mpIsMultiplayerHost() || !state.game) return;
+  if (state.view !== 'starting') return;
+  try {
+    const res = document.getElementById('starting-result');
+    const dn = document.getElementById('dice-num');
+    state.game._mpStartingRoll = {
+      resultHtml: res ? res.innerHTML : '',
+      diceNum: dn ? String(dn.textContent != null ? dn.textContent : '—').trim() || '—' : '—',
+      at: Date.now(),
+    };
+    if (window.VV_MP && typeof window.VV_MP.forceGameStateSync === 'function') void window.VV_MP.forceGameStateSync();
+  } catch (_) {}
+}
+
+function mpClientApplyStartingRollSnapshot() {
+  if (!MULTIPLAYER || mpIsMultiplayerHost() || state.view !== 'starting' || !state.game) return;
+  const s = state.game._mpStartingRoll;
+  if (!s || typeof s.resultHtml !== 'string') return;
+  try {
+    const res = document.getElementById('starting-result');
+    if (res) res.innerHTML = s.resultHtml;
+    const dn = document.getElementById('dice-num');
+    if (dn && s.diceNum != null && String(s.diceNum).length) dn.textContent = s.diceNum;
+  } catch (_) {}
+}
+
 function mpHostAttachHudSnapshot() {
   if (!MULTIPLAYER || !mpIsMultiplayerHost() || !state.game) return;
   if (state.view !== 'game' || state.game.phase !== 'season') return;
@@ -1976,6 +2014,8 @@ function mpHostAttachHudSnapshot() {
     const btn = document.getElementById('dice-panel-btn');
     const lbl = document.getElementById('dice-panel-label');
     const res = document.getElementById('dice-panel-result');
+    const tla = document.querySelector('.topbar-log-area');
+    const mcb = tla ? tla.querySelector('.match-crit-banner') : null;
     state.game._mpHud = {
       actionsHtml: a ? a.innerHTML : '',
       stageHtml:   s ? s.innerHTML : '',
@@ -1987,6 +2027,8 @@ function mpHostAttachHudSnapshot() {
       diceRes:      res ? res.textContent : '',
       expectedAdvance: typeof _expectedAdvance === 'string' ? _expectedAdvance : '',
       activeIdx:     state.game.activeIdx,
+      matchCritBannerHtml: mcb ? mcb.outerHTML : '',
+      matchCritBannerShow: !!(mcb && mcb.classList.contains('show')),
       at: Date.now(),
     };
   } catch (_) {}
@@ -2030,6 +2072,51 @@ function mpClientApplyHudSnapshot() {
   }
   if (lbl && h.diceLbl != null) lbl.textContent = h.diceLbl;
   if (res && h.diceRes != null) res.textContent = h.diceRes;
+  mpClientMergeMatchCritBannerFromHud(h);
+  mpClientSwapBoardToLocalMatchOpponent();
+  if (state.view === 'game' && state.game.phase === 'season') {
+    try { refreshTopbar(); } catch (_) {}
+    try { refreshTeamPanel(); } catch (_) {}
+  }
+}
+
+/** Mitspieler: Liga-/Match-Kriterium in der Topbar wie beim Host (Banner liegt außerhalb von #stage). */
+function mpClientMergeMatchCritBannerFromHud(h) {
+  if (!h) return;
+  const area = document.querySelector('.topbar-log-area');
+  if (!area) return;
+  const prev = area.querySelector('.match-crit-banner');
+  const raw = h.matchCritBannerHtml;
+  const html = typeof raw === 'string' ? raw.trim() : '';
+  if (!html) {
+    if (prev) prev.remove();
+    return;
+  }
+  if (prev) prev.remove();
+  try {
+    area.insertAdjacentHTML('beforeend', html);
+  } catch (_) {
+    return;
+  }
+  const nb = area.querySelector('.match-crit-banner');
+  if (!nb) return;
+  if (h.matchCritBannerShow) nb.classList.add('show');
+  else nb.classList.remove('show');
+}
+
+/** Mitspieler: im laufenden Match das linke Panel mit dem **eigenen** Gegner füllen (Host-Rechner markiert nur einen Sitz als isHuman). */
+function mpClientSwapBoardToLocalMatchOpponent() {
+  if (!MULTIPLAYER || mpIsMultiplayerHost() || !state.game) return;
+  const sides = state.game._mpMatchSides;
+  if (!sides || !sides.homeId || !sides.awayId) return;
+  const loc = mpLocalGamePlayer();
+  if (!loc) return;
+  const home = state.game.players.find(p => p && p.id === sides.homeId);
+  const away = state.game.players.find(p => p && p.id === sides.awayId);
+  if (!home || !away) return;
+  if (loc !== home && loc !== away) return;
+  const opp = loc === home ? away : home;
+  showOpponentBoard(opp);
 }
 
 function mpClientEnsureLiveGamePopup() {
@@ -2210,6 +2297,13 @@ function mpSeatIsRemoteHumanOnHost(player) {
   if (!mpIsMultiplayerHost() || !player || player.mpIsBot) return false;
   if (!player.mpId) return false;
   return player.mpId !== state.mpRoom.localPlayerId;
+}
+
+/** Solo: echter Mensch. Online: jeder Lobby-Sitz mit Gerät (mpId), kein Bot — unabhängig vom lokalen isHuman-Flag auf dem Host. */
+function mpIsLobbyHumanSeat(p) {
+  if (!p) return false;
+  if (MULTIPLAYER && state.mpRoom) return !!p.mpId && !p.mpIsBot;
+  return !!p.isHuman;
 }
 
 async function humanBidPromptRemote(p, card, minNext) {
@@ -3158,7 +3252,11 @@ function humanBidPrompt(p, card, minNext) {
 function renderStarting() {
   const app = $('#app');
   const g = state.game;
-  const de = state.lang === 'de';
+  const mpWait = MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost;
+  const sub = mpWait ? T('starting_p_mp_client') : T('starting_p');
+  const rollBlock = mpWait
+    ? `<p id="starting-wait-host" style="color:var(--gold);font-size:1.02rem;margin-top:0.75rem;line-height:1.45;">${escapeHTML(T('starting_wait_host'))}</p>`
+    : `<button class="btn btn-primary btn-large" id="start-roll-btn" onclick="VV.rollStartingDice()" style="margin-top:1.2rem;">🎲 ${T('starting_roll')}</button>`;
   app.innerHTML = `
     <div class="gh">
       <div class="gh-logo">VOLLEY VENDETTA</div>
@@ -3171,13 +3269,16 @@ function renderStarting() {
     </div>
     <div style="padding:1.5rem; max-width:900px; margin:0 auto; text-align:center;">
       <h2 class="h-cond" style="font-size:2rem; margin-bottom:0.3rem;">${T('starting_h')}</h2>
-      <div style="color:var(--silver); margin-bottom:1.4rem;">${T('starting_p')}</div>
+      <div style="color:var(--silver); margin-bottom:1.4rem;">${sub}</div>
       <div class="dice-area" style="margin:0 auto;">
         <div class="dice-num" id="dice-num">—</div>
       </div>
       <div id="starting-result" style="margin-top:1.2rem;"></div>
-      <button class="btn btn-primary btn-large" id="start-roll-btn" onclick="VV.rollStartingDice()" style="margin-top:1.2rem;">🎲 ${T('starting_roll')}</button>
+      ${rollBlock}
     </div>`;
+  if (mpWait) {
+    try { mpClientApplyStartingRollSnapshot(); } catch (_) {}
+  }
 }
 
 async function mpHostRunStartingDice() {
@@ -3185,20 +3286,27 @@ async function mpHostRunStartingDice() {
   if (!g || g._mpStartingDiceStarted) return;
   g._mpStartingDiceStarted = true;
   const btn = $('#start-roll-btn'); if (btn) btn.disabled = true;
+  mpHostPushStartingRollSnapshot();
   const result = $('#starting-result');
   const rolls = [];
   for (const p of g.players) {
     const v = await performDiceRoll(12);
     rolls.push({ player: p, roll: v });
     result.innerHTML += `<div style="margin:0.3rem;"><b>${p.emoji} ${escapeHTML(p.name)}</b>: 🎲 <span style="color:var(--gold); font-weight:800;">${v}</span></div>`;
+    mpHostPushStartingRollSnapshot();
     await sleep(speedMs(400));
   }
   rolls.sort((a,b) => b.roll - a.roll);
   const winner = rolls[0].player;
   g.activeIdx = g.players.indexOf(winner);
   result.innerHTML += `<div style="margin-top:1rem; font-family:'Barlow Condensed',sans-serif; font-weight:900; font-size:1.6rem; letter-spacing:2px; text-transform:uppercase; color:var(--gold);">${fmt(T('starting_winner'), escapeHTML(winner.name))}</div>`;
+  mpHostPushStartingRollSnapshot();
   beep(900, 200);
   await sleep(speedMs(1200));
+  try {
+    delete g._mpStartingRoll;
+    delete g._mpStartingDiceStarted;
+  } catch (_) {}
   // Begin season
   g.phase = 'season';
   g.week = 1; g.coneDay = 1;
@@ -3685,6 +3793,7 @@ function showOpponentBoard(opponent) {
 function restoreBoardPanel() {
   const boardInner = $('#board');
   if (!boardInner || !state.game) return;
+  try { delete state.game._mpMatchSides; } catch (_) {}
   boardInner.innerHTML = boardHtml(state.game);
 }
 function setPhase(active) {
@@ -5308,10 +5417,12 @@ function showLockedFeaturePopup(title) {
 //  Used for Liga matches and all tournament resolutions.
 // ────────────────────────────────────────────────────────────────
 async function runMatchClassic(home, away, isTournament) {
-  // Only swap the board for the human's match — bot vs bot would wrongly call showOpponentBoard(home).
-  const me = state.game.players.find(p => p.isHuman) || state.game.players[0];
-  if (home === me || away === me) {
-    const opp = home === me ? away : home;
+  const g = state.game;
+  if (g) g._mpMatchSides = { homeId: home.id, awayId: away.id };
+  // Gegner-Brett für jedes Match mit mindestens einem Lobby-Menschen (Host-Rechner: isHuman nur für Host).
+  if (mpIsLobbyHumanSeat(home) || mpIsLobbyHumanSeat(away)) {
+    const focal = mpIsLobbyHumanSeat(home) ? home : away;
+    const opp = focal === home ? away : home;
     showOpponentBoard(opp);
   }
   const stage = $('#stage');
@@ -5373,10 +5484,10 @@ async function runMatchClassic(home, away, isTournament) {
   setActionUI(); paint();
   refreshMatchSidePanels(M);
 
-  const humanInMatch = (home === me || away === me);
+  const anyLobbyHumanInMatch = mpIsLobbyHumanSeat(home) || mpIsLobbyHumanSeat(away);
   const totalRolls = () => M.totalRolls + M.crunchExtra;
   while (M.iRoll < totalRolls() && !M.ended) {
-    if (humanInMatch && state.speed !== 'auto') {
+    if (anyLobbyHumanInMatch && state.speed !== 'auto') {
       // Backup trigger: if the action button is obscured, dice-panel can still start the next rally.
       const dpBtn = document.getElementById('dice-panel-btn');
       if (dpBtn) {
@@ -5575,8 +5686,14 @@ function showMatchCriterionInTopbar(result, M) {
   banner.classList.add('show');
   if (_matchCritTimeout) clearTimeout(_matchCritTimeout);
   const humanPlaying = state.game && state.game.players.some(p => p.isHuman);
+  if (MULTIPLAYER && mpIsMultiplayerHost()) {
+    try { mpHostBroadcastPlayfieldToClients(); } catch (_) {}
+  }
   _matchCritTimeout = setTimeout(() => {
     if (banner) banner.classList.remove('show');
+    if (MULTIPLAYER && mpIsMultiplayerHost()) {
+      try { mpHostBroadcastPlayfieldToClients(); } catch (_) {}
+    }
   }, humanPlaying ? 5000 : 3000);
 }
 
@@ -5593,12 +5710,11 @@ async function showMatchSummary(M, winner, opts = {}) {
     <div style="margin-top:0.5rem; display:flex; gap:0.3rem; flex-wrap:wrap;">
       ${M.events.map(e => `<span class="crit-pill ${e.winner}">#${e.dice} ${T('crit_'+e.kind)}</span>`).join('')}
     </div>`;
-  const me = state.game ? (state.game.players.find(p => p.isHuman) || state.game.players[0]) : null;
-  const humanInMatch = me && (M.home === me || M.away === me);
+  const anyLobbyHumanInMatch = !!(state.game && (mpIsLobbyHumanSeat(M.home) || mpIsLobbyHumanSeat(M.away)));
   const forceAutoContinue = !!opts.forceAutoContinue;
 
   // Bot-vs-bot summaries must never depend on waiter/click flows.
-  if (!humanInMatch) {
+  if (!anyLobbyHumanInMatch) {
     await sleep(speedMs(1800));
     restoreBoardPanel();
     refreshTeamPanel();
@@ -5606,14 +5722,14 @@ async function showMatchSummary(M, winner, opts = {}) {
   }
 
   // Auto-continue only when: explicit auto-speed, OR forced (e.g. tournament) but human is NOT playing
-  const shouldAutoContinue = (state.speed === 'auto') || (forceAutoContinue && !humanInMatch);
+  const shouldAutoContinue = (state.speed === 'auto') || (forceAutoContinue && !anyLobbyHumanInMatch);
   const autoMs = shouldAutoContinue ? speedMs(4500) : 0;
   _expectedAdvance = 'continueAfterMatch';
   // Button always in actions panel — never buried in the stage scroll area
   setActionsHtml(`<h3>${T('phase_match')}</h3>${speedToggleHtml()}`);
   // Dice-panel button acts as backup "Continue" trigger during match summary
   const matchDpBtn = document.getElementById('dice-panel-btn');
-  if (humanInMatch && state.speed !== 'auto' && matchDpBtn) {
+  if (anyLobbyHumanInMatch && state.speed !== 'auto' && matchDpBtn) {
     matchDpBtn.disabled = false; matchDpBtn.classList.add('pulse');
     matchDpBtn.textContent = '▶ ' + T('next_match');
   }
@@ -6040,11 +6156,12 @@ async function runWeekendMatches(week) {
     const [home, away] = pairings[mi];
     if (!home || !away) continue;
 
-    const isHumanMatch = !!(home.isHuman || away.isHuman);
+    const isLobbyHumanMatch = mpIsLobbyHumanSeat(home) || mpIsLobbyHumanSeat(away);
     const matchLabel = mi === 0 ? T('weekend_match1') : T('weekend_match2');
 
-    if (isHumanMatch) {
-      const opp = home.isHuman ? away : home;
+    if (isLobbyHumanMatch) {
+      const focal = mpIsLobbyHumanSeat(home) ? home : away;
+      const opp = focal === home ? away : home;
       showOpponentBoard(opp);
     }
 
@@ -6413,6 +6530,9 @@ function render() {
         && state.game && state.game.phase === 'season') {
       mpClientApplyHudSnapshot();
       mpClientEnsureLiveGamePopup();
+    }
+    if (MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost && state.view === 'starting' && state.game) {
+      mpClientApplyStartingRollSnapshot();
     }
   } catch (_) {}
   if (MULTIPLAYER && state.mpRoom && state.mpRoom.isHost && state.game
