@@ -917,6 +917,11 @@ function showTeamSidebar(auctionCard) {
   try {
     const g = state.game;
     if (!g) return;
+    // Nur im laufenden Spiel (Saison + Spielbrett): Draft/Eröffnungsauktion haben das Team rechts.
+    if (state.view !== 'game' || g.phase !== 'season') {
+      hideTeamSidebar();
+      return;
+    }
     const me = MULTIPLAYER ? (mpLocalGamePlayer() || g.players[0]) : g.players[0];
     if (!me) return;
     const de = state.lang === 'de';
@@ -1496,26 +1501,32 @@ function mpEnsurePlayersRosterShape() {
 let _mpMirrorPopupKey = null;
 
 function mpHostPublishMirroredActionPopup(payload) {
-  if (!MULTIPLAYER || !mpIsMultiplayerHost() || !state.game || !payload) return;
+  if (!MULTIPLAYER || !mpIsMultiplayerHost() || !state.game || !payload) return Promise.resolve();
   state.game._mpPopupSeq = (state.game._mpPopupSeq || 0) + 1;
   state.game._mpMirroredPopup = Object.assign({ seq: state.game._mpPopupSeq, at: Date.now() }, payload);
-  try { if (window.VV_MP && window.VV_MP.forceGameStateSync) void window.VV_MP.forceGameStateSync(); } catch (_) {}
+  try {
+    if (window.VV_MP && typeof window.VV_MP.forceGameStateSync === 'function') return window.VV_MP.forceGameStateSync();
+  } catch (_) {}
+  return Promise.resolve();
 }
 
 /** Host: freistehendes .modal-popup (z. B. Auswahl-Dialog) read-only an andere Clients spiegeln. */
-function mpHostMirrorStandaloneModalReadonly(hostModalDiv, autoMs) {
+async function mpHostMirrorStandaloneModalReadonly(hostModalDiv, autoMs) {
   if (!MULTIPLAYER || !mpIsMultiplayerHost() || !state.game || !hostModalDiv) return;
   const inner = hostModalDiv.querySelector('.modal-card');
   const cardHtml = inner ? inner.outerHTML : '';
   const ms = autoMs != null ? Math.max(Number(autoMs) || 0, MP_ACTION_POPUP_MIN_MS) : Math.max(EVENT_POPUP_MS, MP_ACTION_POPUP_MIN_MS);
-  mpHostPublishMirroredActionPopup({ kind: 'asyncCard', cardHtml, autoMs: ms });
+  await mpHostPublishMirroredActionPopup({ kind: 'asyncCard', cardHtml, autoMs: ms });
 }
 
 function mpHostClearMirroredPopup() {
-  if (!MULTIPLAYER || !mpIsMultiplayerHost() || !state.game) return;
-  if (!state.game._mpMirroredPopup) return;
+  if (!MULTIPLAYER || !mpIsMultiplayerHost() || !state.game) return Promise.resolve();
+  if (!state.game._mpMirroredPopup) return Promise.resolve();
   delete state.game._mpMirroredPopup;
-  try { if (window.VV_MP && window.VV_MP.forceGameStateSync) void window.VV_MP.forceGameStateSync(); } catch (_) {}
+  try {
+    if (window.VV_MP && typeof window.VV_MP.forceGameStateSync === 'function') return window.VV_MP.forceGameStateSync();
+  } catch (_) {}
+  return Promise.resolve();
 }
 
 /** Mitspieler: gleiche Action-Popups wie auf dem Host (nur Anzeige, OK schließt lokal). */
@@ -1530,7 +1541,7 @@ function mpClientSyncMirroredPopupFromState() {
     return;
   }
   const key = String(m.seq || 0) + '|' + String(m.kind || '');
-  if (key === _mpMirrorPopupKey) return;
+  if (key === _mpMirrorPopupKey && document.querySelector('.modal-popup.mp-client-mirror')) return;
   document.querySelectorAll('.modal-popup.mp-client-mirror').forEach(n => n.remove());
   _mpMirrorPopupKey = key;
   const me = mpLocalGamePlayer();
@@ -1600,7 +1611,7 @@ function mpClientSyncMirroredPopupFromState() {
     const upopExtra = m.modalExtraClass === 'action-upop--vnl' ? ' action-upop--vnl' : '';
     div.innerHTML = `
       <div class="modal-card action-upop${upopExtra}">
-        <div class="action-upop-title">${m.title || ''}</div>
+        <div class="action-upop-title">${escapeHTML(String(m.title || ''))}</div>
         <hr class="action-upop-divider">
         <div class="action-upop-desc">${String(m.description || '').replace(/\n/g, '<br>')}</div>
         <div class="action-upop-footer">
@@ -4270,47 +4281,50 @@ function showActionPopup({ title, description, affectedCards = [], positiveCards
   }
   const upopExtra = modalExtraClass === 'action-upop--vnl' ? ' action-upop--vnl' : '';
   return new Promise(resolve => {
-    if (MULTIPLAYER && mpIsMultiplayerHost() && state.game) {
-      mpHostPublishMirroredActionPopup({
-        kind: 'action',
-        title: String(title || ''),
-        description: String(description || ''),
-        autoMs,
-        modalExtraClass: upopExtra.trim() || undefined,
-        affectedPlayerIds: (affectedPlayers || []).map(p => p && p.id).filter(Boolean),
-        affectedCardIds: (affectedCards || []).map(c => c && c.id).filter(Boolean),
-        positiveCardIds: (positiveCards || []).map(c => c && c.id).filter(Boolean),
-      });
-    }
-    const me = MULTIPLAYER ? mpLocalGamePlayer() : (state.game ? state.game.players[0] : null);
-    const cleanups = [];
+    void (async () => {
+      try {
+        if (MULTIPLAYER && mpIsMultiplayerHost() && state.game) {
+          await mpHostPublishMirroredActionPopup({
+            kind: 'action',
+            title: String(title || ''),
+            description: String(description || ''),
+            autoMs,
+            modalExtraClass: upopExtra.trim() || undefined,
+            affectedPlayerIds: (affectedPlayers || []).map(p => p && p.id).filter(Boolean),
+            affectedCardIds: (affectedCards || []).map(c => c && c.id).filter(Boolean),
+            positiveCardIds: (positiveCards || []).map(c => c && c.id).filter(Boolean),
+          });
+        }
+      } catch (_) {}
 
-    const hlCards = (cards, cls) => {
-      for (const card of cards) {
-        document.querySelectorAll('[data-card-id="' + card.id + '"]').forEach(el => {
+      const me = MULTIPLAYER ? mpLocalGamePlayer() : (state.game ? state.game.players[0] : null);
+      const cleanups = [];
+
+      const hlCards = (cards, cls) => {
+        for (const card of cards) {
+          document.querySelectorAll('[data-card-id="' + card.id + '"]').forEach(el => {
+            el.classList.add(cls);
+            cleanups.push(() => el.classList.remove(cls));
+          });
+        }
+      };
+      hlCards(affectedCards, 'card-highlight-affected');
+      hlCards(positiveCards, 'card-highlight-positive');
+
+      for (const p of affectedPlayers) {
+        const cls = (me && p && p.id === me.id) ? 'team-highlight-own' : 'team-highlight-opponent';
+        document.querySelectorAll('[data-player-id="' + p.id + '"]').forEach(el => {
           el.classList.add(cls);
-          cleanups.push(() => el.classList.remove(cls));
+          cleanups.push(() => { try { el.classList.remove(cls); } catch (_) {} });
         });
       }
-    };
-    hlCards(affectedCards, 'card-highlight-affected');
-    hlCards(positiveCards, 'card-highlight-positive');
 
-    for (const p of affectedPlayers) {
-      const cls = (me && p && p.id === me.id) ? 'team-highlight-own' : 'team-highlight-opponent';
-      document.querySelectorAll('[data-player-id="' + p.id + '"]').forEach(el => {
-        el.classList.add(cls);
-        cleanups.push(() => { try { el.classList.remove(cls); } catch (_) {} });
-      });
-    }
-
-    // isBot: detect from duration (bot popups use BOT_POPUP_MS ≤ 5 s)
-    const hasCountdown = autoMs != null;
-    const isBot = hasCountdown && autoMs <= BOT_POPUP_MS + 500;
-    const pid = 'upop-' + Date.now();
-    const div = document.createElement('div');
-    div.className = 'modal-popup';
-    div.innerHTML = `
+      const hasCountdown = autoMs != null;
+      const isBot = hasCountdown && autoMs <= BOT_POPUP_MS + 500;
+      const pid = 'upop-' + Date.now();
+      const div = document.createElement('div');
+      div.className = 'modal-popup';
+      div.innerHTML = `
       <div class="modal-card action-upop${upopExtra}">
         <div class="action-upop-title">${title}</div>
         <hr class="action-upop-divider">
@@ -4326,36 +4340,36 @@ function showActionPopup({ title, description, affectedCards = [], positiveCards
           </div>` : ''}
         </div>
       </div>`;
-    document.body.appendChild(div);
-    setTimeout(() => div.classList.add('open'), 10);
+      document.body.appendChild(div);
+      setTimeout(() => div.classList.add('open'), 10);
 
-    let cancelTimer = () => {};
-    let done = false;
-    const finish = () => {
-      if (done) return; done = true;
-      cancelTimer();
-      if (document.body.contains(div)) div.remove();
-      for (const fn of cleanups) { try { fn(); } catch (_) {} }
-      if (MULTIPLAYER && mpIsMultiplayerHost()) mpHostClearMirroredPopup();
-      resolve();
-    };
+      let cancelTimer = () => {};
+      let done = false;
+      const finish = () => {
+        if (done) return; done = true;
+        cancelTimer();
+        if (document.body.contains(div)) div.remove();
+        for (const fn of cleanups) { try { fn(); } catch (_) {} }
+        if (MULTIPLAYER && mpIsMultiplayerHost()) void mpHostClearMirroredPopup();
+        resolve();
+      };
 
-    if (hasCountdown) {
-      // Start timer after the popup is visible
-      setTimeout(() => {
-        cancelTimer = startPopupTimer({
-          durationMs: autoMs,
-          isBot,
-          onExpire: finish,
-          secEl: document.getElementById(pid + '-secs'),
-          barEl: document.getElementById(pid + '-bar'),
-        });
-      }, 50);
-    }
+      if (hasCountdown) {
+        setTimeout(() => {
+          cancelTimer = startPopupTimer({
+            durationMs: autoMs,
+            isBot,
+            onExpire: finish,
+            secEl: document.getElementById(pid + '-secs'),
+            barEl: document.getElementById(pid + '-bar'),
+          });
+        }, 50);
+      }
 
-    const okBtn = document.getElementById(pid + '-ok');
-    if (okBtn) okBtn.addEventListener('click', finish);
-    div.addEventListener('click', e => { if (e.target === div) finish(); });
+      const okBtn = document.getElementById(pid + '-ok');
+      if (okBtn) okBtn.addEventListener('click', finish);
+      div.addEventListener('click', e => { if (e.target === div) finish(); });
+    })();
   });
 }
 
@@ -4411,39 +4425,44 @@ function showActionPopupAsync(icon, title, bodyHtml, autoMs = EVENT_POPUP_MS) {
     autoMs = Math.max(Number(autoMs) || 0, MP_ACTION_POPUP_MIN_MS);
   }
   return new Promise(resolve => {
-    if (MULTIPLAYER && mpIsMultiplayerHost() && state.game) {
-      mpHostPublishMirroredActionPopup({
-        kind: 'async',
-        icon: String(icon || ''),
-        title: String(title || ''),
-        bodyHtml: String(bodyHtml || ''),
-        autoMs,
-      });
-    }
-    const pid = 'ac-pop-' + Date.now();
-    const div = document.createElement('div');
-    div.className = 'modal-popup';
-    div.id = pid;
-    div.innerHTML = `
+    void (async () => {
+      try {
+        if (MULTIPLAYER && mpIsMultiplayerHost() && state.game) {
+          await mpHostPublishMirroredActionPopup({
+            kind: 'async',
+            icon: String(icon || ''),
+            title: String(title || ''),
+            bodyHtml: String(bodyHtml || ''),
+            autoMs,
+          });
+        }
+      } catch (_) {}
+
+      const pid = 'ac-pop-' + Date.now();
+      const div = document.createElement('div');
+      div.className = 'modal-popup';
+      div.id = pid;
+      div.innerHTML = `
       <div class="modal-card">
         <div class="modal-icon">${icon}</div>
         <div class="modal-h">${title}</div>
         <div class="modal-p">${bodyHtml}</div>
         <button class="btn btn-primary" id="${pid}-ok">OK</button>
       </div>`;
-    document.body.appendChild(div);
-    setTimeout(() => div.classList.add('open'), 10);
-    let done = false;
-    const finish = () => {
-      if (done) return; done = true;
-      if (MULTIPLAYER && mpIsMultiplayerHost()) mpHostClearMirroredPopup();
-      if (document.body.contains(div)) div.remove();
-      resolve();
-    };
-    const okBtn = div.querySelector(`#${pid}-ok`);
-    if (okBtn) okBtn.addEventListener('click', finish);
-    div.addEventListener('click', e => { if (e.target === div) finish(); });
-    setTimeout(finish, autoMs);
+      document.body.appendChild(div);
+      setTimeout(() => div.classList.add('open'), 10);
+      let done = false;
+      const finish = () => {
+        if (done) return; done = true;
+        if (MULTIPLAYER && mpIsMultiplayerHost()) void mpHostClearMirroredPopup();
+        if (document.body.contains(div)) div.remove();
+        resolve();
+      };
+      const okBtn = div.querySelector(`#${pid}-ok`);
+      if (okBtn) okBtn.addEventListener('click', finish);
+      div.addEventListener('click', e => { if (e.target === div) finish(); });
+      setTimeout(finish, autoMs);
+    })();
   });
 }
 
@@ -4512,14 +4531,14 @@ function pickOpponent(player) {
         <div id="${pid}-note" style="font-size:.78em;color:var(--silver);text-align:center;padding-bottom:.5em;min-height:1.2em"></div>
       </div>`;
     document.body.appendChild(div);
-    if (MULTIPLAYER && mpIsMultiplayerHost()) mpHostMirrorStandaloneModalReadonly(div, EVENT_POPUP_MS);
+    if (MULTIPLAYER && mpIsMultiplayerHost()) void mpHostMirrorStandaloneModalReadonly(div, EVENT_POPUP_MS);
     setTimeout(() => div.classList.add('open'), 10);
     let cancelTimer = () => {};
     let done = false;
     const finish = (opp, autoSelected = false) => {
       if (done) return; done = true;
       cancelTimer();
-      if (MULTIPLAYER && mpIsMultiplayerHost()) mpHostClearMirroredPopup();
+      if (MULTIPLAYER && mpIsMultiplayerHost()) void mpHostClearMirroredPopup();
       if (autoSelected) {
         const note = document.getElementById(pid + '-note');
         if (note) note.textContent = de ? '⏱ Zeit abgelaufen — automatische Auswahl getroffen.' : '⏱ Time up — auto-selected.';
@@ -4656,14 +4675,14 @@ async function ac_talentfoerderung(player) {
           <div id="${pid}-note" style="font-size:.78em;color:var(--silver);text-align:center;padding:.3em 0;min-height:1.2em"></div>
         </div>`;
       document.body.appendChild(div);
-      if (MULTIPLAYER && mpIsMultiplayerHost()) mpHostMirrorStandaloneModalReadonly(div, EVENT_POPUP_MS);
+      if (MULTIPLAYER && mpIsMultiplayerHost()) void mpHostMirrorStandaloneModalReadonly(div, EVENT_POPUP_MS);
       setTimeout(() => div.classList.add('open'), 10);
       let cancelTimer = () => {};
       let done = false;
       const finish = (idx, autoSelected = false) => {
         if (done) return; done = true;
         cancelTimer();
-        if (MULTIPLAYER && mpIsMultiplayerHost()) mpHostClearMirroredPopup();
+        if (MULTIPLAYER && mpIsMultiplayerHost()) void mpHostClearMirroredPopup();
         const chosen = drawn[idx] ?? drawn[botIdx];
         if (autoSelected) {
           const note = document.getElementById(pid + '-note');
@@ -4849,14 +4868,14 @@ async function ac_leihgeschaeft(player) {
           <div id="${pid}-note" style="font-size:.78em;color:var(--silver);text-align:center;padding:.3em 0;min-height:1.2em"></div>
         </div>`;
       document.body.appendChild(div);
-      if (MULTIPLAYER && mpIsMultiplayerHost()) mpHostMirrorStandaloneModalReadonly(div, EVENT_POPUP_MS);
+      if (MULTIPLAYER && mpIsMultiplayerHost()) void mpHostMirrorStandaloneModalReadonly(div, EVENT_POPUP_MS);
       setTimeout(() => div.classList.add('open'), 10);
       let cancelTimer = () => {};
       let done = false;
       const finish = (idx, autoSelected = false) => {
         if (done) return; done = true;
         cancelTimer();
-        if (MULTIPLAYER && mpIsMultiplayerHost()) mpHostClearMirroredPopup();
+        if (MULTIPLAYER && mpIsMultiplayerHost()) void mpHostClearMirroredPopup();
         const chosen = loanable[idx] ?? loanable[botPickIdx];
         if (autoSelected) {
           const note = document.getElementById(pid + '-note');
@@ -5427,11 +5446,11 @@ function showLockedFeaturePopup(title) {
     document.body.appendChild(div);
     if (MULTIPLAYER && mpIsMultiplayerHost()) {
       const innerMs = state.speed === 'auto' ? 1200 : speedMs(2500);
-      mpHostMirrorStandaloneModalReadonly(div, Math.max(innerMs, MP_ACTION_POPUP_MIN_MS));
+      void mpHostMirrorStandaloneModalReadonly(div, Math.max(innerMs, MP_ACTION_POPUP_MIN_MS));
     }
     setTimeout(() => div.classList.add('open'), 10);
     const close = () => {
-      if (MULTIPLAYER && mpIsMultiplayerHost()) mpHostClearMirroredPopup();
+      if (MULTIPLAYER && mpIsMultiplayerHost()) void mpHostClearMirroredPopup();
       if (document.body.contains(div)) div.remove();
       resolve();
     };
@@ -6555,17 +6574,17 @@ function renderCurrentPhase() {
 
 function render() {
   renderCurrentPhase();
-  try { mpClientSyncMirroredPopupFromState(); } catch (_) {}
   try {
     if (MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost && state.view === 'game'
         && state.game && state.game.phase === 'season') {
       mpClientApplyHudSnapshot();
       mpClientEnsureLiveGamePopup();
     }
-    if (MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost && state.view === 'starting' && state.game) {
-      mpClientApplyStartingRollSnapshot();
-    }
+    mpClientSyncMirroredPopupFromState();
   } catch (_) {}
+  if (MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost && state.view === 'starting' && state.game) {
+    try { mpClientApplyStartingRollSnapshot(); } catch (_) {}
+  }
   if (MULTIPLAYER && state.mpRoom && state.mpRoom.isHost && state.game
       && window.VV_MP && typeof window.VV_MP.scheduleGameStateSync === 'function') {
     try { window.VV_MP.scheduleGameStateSync(); } catch (_) {}
