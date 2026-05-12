@@ -812,6 +812,9 @@ function beep(freq=440, dur=80, type='square', vol=0.05) {
 // ────────────────────────────────────────────────────────────────
 function setView(v) {
   state.view = v;
+  if (v !== 'game') {
+    try { hideTeamSidebar(); } catch (_) {}
+  }
   if (MULTIPLAYER && state.mpRoom && state.mpRoom.isHost && state.game) {
     try { state.game._mpUiView = v; } catch (_) {}
   }
@@ -916,8 +919,12 @@ function registerPopupClose(id, fn) { _popupCloseCallbacks[id] = fn; }
 function showTeamSidebar(auctionCard) {
   try {
     const g = state.game;
-    if (!g) return;
-    // Nur im laufenden Spiel (Saison + Spielbrett): Draft/Eröffnungsauktion haben das Team rechts.
+    if (!g) {
+      hideTeamSidebar();
+      return;
+    }
+    // Nur laufende Saison auf dem Spielbrett. `state.view` ist maßgeblich — `app.dataset.view`
+    // kann kurz hinterherhinken (z. B. MP-Snapshots) und sonst MY SQUAD in der Eröffnungsauktion zeigen.
     if (state.view !== 'game' || g.phase !== 'season') {
       hideTeamSidebar();
       return;
@@ -1130,34 +1137,104 @@ function teamBack(p)  {
 function teamBlock(p) { return ['outside','outside2','middle','middle2'].reduce((s,k) => s + ((p.team[k]&&!p.team[k].disabled?p.team[k].stars:0)),0); }
 
 
-function performDiceRoll(type) {
+async function performDiceRoll(type) {
   const value = roll(type);
-  return animateDicePanel(type, value).then(() => value);
+  if (MULTIPLAYER && mpIsMultiplayerHost() && state.game) {
+    await mpHostPublishDiceRollSync(type, value);
+  }
+  await animateDicePanel(type, value);
+  if (MULTIPLAYER && mpIsMultiplayerHost() && state.game) {
+    await mpHostClearDiceRollSync();
+  }
+  return value;
 }
 
-function animateDicePanel(type, finalValue) {
-  // Update label
+let _diceShuffleInterval = null;
+let _mpDiceAnimToken = 0;
+let _mpClientLastDiceSeq = 0;
+
+async function mpHostPublishDiceRollSync(type, finalValue) {
+  if (!MULTIPLAYER || !mpIsMultiplayerHost() || !state.game) return;
+  state.game._mpDiceSeq = (state.game._mpDiceSeq || 0) + 1;
+  state.game._mpDiceRoll = {
+    seq: state.game._mpDiceSeq,
+    type: Number(type),
+    final: Number(finalValue),
+    at: Date.now(),
+  };
+  await mpForceGameStateSync();
+}
+
+async function mpHostClearDiceRollSync() {
+  if (!MULTIPLAYER || !mpIsMultiplayerHost() || !state.game) return;
+  try { delete state.game._mpDiceRoll; } catch (_) {}
+  mpHostAttachHudSnapshot();
+  await mpForceGameStateSync();
+}
+
+function mpClientApplyDiceRollIfNeeded() {
+  if (!MULTIPLAYER || mpIsMultiplayerHost() || !state.game) return;
+  const d = state.game._mpDiceRoll;
+  if (!d || !Number.isFinite(d.type) || !Number.isFinite(d.final) || !Number.isFinite(d.seq)) return;
+  if (d.seq <= _mpClientLastDiceSeq) return;
+  _mpClientLastDiceSeq = d.seq;
+  void animateDicePanel(d.type, d.final, { silent: true });
+}
+
+/** `opts.silent` — MP-Client: kein Beep (Host würfelt bereits mit Ton). */
+function animateDicePanel(type, finalValue, opts = {}) {
+  if (_diceShuffleInterval) {
+    clearInterval(_diceShuffleInterval);
+    _diceShuffleInterval = null;
+  }
+  const myToken = ++_mpDiceAnimToken;
   const lbl = document.getElementById('dice-panel-label');
   if (lbl) lbl.textContent = '🎲 D' + type;
   const res = document.getElementById('dice-panel-result');
+  const numEl = document.getElementById('dice-num');
   const btn = document.getElementById('dice-panel-btn');
   if (btn) btn.disabled = true;
-  if (!res) return Promise.resolve();
+  const primary = res || numEl;
+  if (!primary) return Promise.resolve();
   return new Promise(resolve => {
-    res.className = 'dice-panel-result shuffling';
+    const setShuffleClass = (el) => {
+      if (!el) return;
+      el.className = el.id === 'dice-num' ? 'dice-num shuffling' : 'dice-panel-result shuffling';
+    };
+    const setLandedClass = (el) => {
+      if (!el) return;
+      el.className = el.id === 'dice-num' ? 'dice-num landed' : 'dice-panel-result landed';
+    };
+    setShuffleClass(res);
+    setShuffleClass(numEl);
     const dur = speedMs(900);
-    const start = performance.now();
-    const interval = setInterval(() => {
-      res.textContent = Math.floor(Math.random() * type) + 1;
+    _diceShuffleInterval = setInterval(() => {
+      const n = Math.floor(Math.random() * type) + 1;
+      if (res) res.textContent = n;
+      if (numEl && numEl !== res) numEl.textContent = n;
     }, 80);
     setTimeout(() => {
-      clearInterval(interval);
-      res.textContent = finalValue;
-      res.className = 'dice-panel-result landed';
-      // Also update old dice-num if present
-      const numEl = document.getElementById('dice-num');
-      if (numEl) { numEl.textContent = finalValue; }
-      beep(680 + finalValue * 15, 90);
+      if (myToken !== _mpDiceAnimToken) {
+        if (_diceShuffleInterval) {
+          clearInterval(_diceShuffleInterval);
+          _diceShuffleInterval = null;
+        }
+        resolve();
+        return;
+      }
+      if (_diceShuffleInterval) {
+        clearInterval(_diceShuffleInterval);
+        _diceShuffleInterval = null;
+      }
+      if (res) {
+        res.textContent = finalValue;
+        setLandedClass(res);
+      }
+      if (numEl) {
+        numEl.textContent = finalValue;
+        setLandedClass(numEl);
+      }
+      if (!opts.silent) beep(680 + finalValue * 15, 90);
       resolve();
     }, dur);
   });
@@ -1423,10 +1500,9 @@ function startMultiplayer(opts) {
     try { mpHostStartParallelDraft(); } catch (_) {}
     if (state.mpSyncTimer) clearInterval(state.mpSyncTimer);
     state.mpSyncTimer = setInterval(() => {
-      try { if (window.VV_MP && window.VV_MP.forceGameStateSync) window.VV_MP.forceGameStateSync(); }
-      catch (_) {}
+      try { void mpForceGameStateSync(); } catch (_) {}
     }, 10000);
-    try { if (window.VV_MP && window.VV_MP.forceGameStateSync) window.VV_MP.forceGameStateSync(); } catch (_) {}
+    try { void mpForceGameStateSync(); } catch (_) {}
     toast(state.lang === 'de' ? 'Spiel gestartet — du bist Host.' : 'Game started — you are host.', 'good', 2200);
   } else {
     ensureMpClientSession(opts);
@@ -1504,10 +1580,7 @@ function mpHostPublishMirroredActionPopup(payload) {
   if (!MULTIPLAYER || !mpIsMultiplayerHost() || !state.game || !payload) return Promise.resolve();
   state.game._mpPopupSeq = (state.game._mpPopupSeq || 0) + 1;
   state.game._mpMirroredPopup = Object.assign({ seq: state.game._mpPopupSeq, at: Date.now() }, payload);
-  try {
-    if (window.VV_MP && typeof window.VV_MP.forceGameStateSync === 'function') return window.VV_MP.forceGameStateSync();
-  } catch (_) {}
-  return Promise.resolve();
+  return mpForceGameStateSync();
 }
 
 /** Host: freistehendes .modal-popup (z. B. Auswahl-Dialog) read-only an andere Clients spiegeln. */
@@ -1523,10 +1596,7 @@ function mpHostClearMirroredPopup() {
   if (!MULTIPLAYER || !mpIsMultiplayerHost() || !state.game) return Promise.resolve();
   if (!state.game._mpMirroredPopup) return Promise.resolve();
   delete state.game._mpMirroredPopup;
-  try {
-    if (window.VV_MP && typeof window.VV_MP.forceGameStateSync === 'function') return window.VV_MP.forceGameStateSync();
-  } catch (_) {}
-  return Promise.resolve();
+  return mpForceGameStateSync();
 }
 
 /** Mitspieler: gleiche Action-Popups wie auf dem Host (nur Anzeige, OK schließt lokal). */
@@ -1738,7 +1808,6 @@ function applyRemoteState(remote) {
     } else {
       render();
     }
-    try { mpClientSyncMirroredPopupFromState(); } catch (_) {}
   } catch (e) {
     console.warn('[VV] applyRemoteState failed:', e);
   }
@@ -1748,6 +1817,7 @@ function applyRemoteState(remote) {
 function resetLocalMultiplayerSession() {
   try { mpHostUnregisterDraftInputListeners(); } catch (_) {}
   _mpMirrorPopupKey = null;
+  _mpClientLastDiceSeq = 0;
   try {
     if (window.VV_MP && typeof window.VV_MP.resetSyncScheduler === 'function') window.VV_MP.resetSyncScheduler();
   } catch (_) {}
@@ -1773,6 +1843,17 @@ function mpSyncIfHost() {
       window.VV_MP.scheduleGameStateSync();
     }
   } catch (_) {}
+}
+
+/** Sofortiger `gameState`-Push über multiplayer.js (nur Host wirkt; sonst no-op). */
+function mpForceGameStateSync() {
+  try {
+    const mp = window.VV_MP;
+    if (mp && typeof mp.forceGameStateSync === 'function') {
+      return Promise.resolve(mp.forceGameStateSync()).catch(() => {});
+    }
+  } catch (_) {}
+  return Promise.resolve();
 }
 
 /** Ab Auktion/Saison: `turns/currentTurn` für MP-Clients (Draft: nie). */
@@ -1866,7 +1947,7 @@ function mpAfterHostDraftMutation() {
     refreshDraftRestartButton();
   }
   mpSyncIfHost();
-  try { if (window.VV_MP && typeof window.VV_MP.forceGameStateSync === 'function') void window.VV_MP.forceGameStateSync(); } catch (_) {}
+  void mpForceGameStateSync();
 }
 
 /** Sobald alle Sitzplätze den Draft abgeschlossen haben → Eröffnungsauktion. */
@@ -1896,7 +1977,7 @@ function mpHostStartParallelDraft() {
     renderDraft();
     refreshDraftRestartButton();
     mpSyncIfHost();
-    try { if (window.VV_MP && typeof window.VV_MP.forceGameStateSync === 'function') void window.VV_MP.forceGameStateSync(); } catch (_) {}
+    void mpForceGameStateSync();
   }
 }
 
@@ -1973,7 +2054,7 @@ function mpAfterHostGameMutation() {
   if (!mpIsMultiplayerHost()) return;
   try { render(); } catch (_) {}
   mpHostAttachHudSnapshot();
-  try { if (window.VV_MP && window.VV_MP.forceGameStateSync) void window.VV_MP.forceGameStateSync(); } catch (_) {}
+  void mpForceGameStateSync();
 }
 
 /** Host: Spielbrett inkl. Liga-/Turnier-Match (#stage, Gegner-Brett) an Clients — ohne render(), damit Match-Schleifen intakt bleiben. */
@@ -1982,7 +2063,7 @@ function mpHostBroadcastPlayfieldToClients() {
   if (state.view !== 'game' || state.game.phase !== 'season') return;
   try {
     mpHostAttachHudSnapshot();
-    if (window.VV_MP && typeof window.VV_MP.forceGameStateSync === 'function') void window.VV_MP.forceGameStateSync();
+    void mpForceGameStateSync();
   } catch (_) {}
 }
 
@@ -1998,7 +2079,7 @@ function mpHostPushStartingRollSnapshot() {
       diceNum: dn ? String(dn.textContent != null ? dn.textContent : '—').trim() || '—' : '—',
       at: Date.now(),
     };
-    if (window.VV_MP && typeof window.VV_MP.forceGameStateSync === 'function') void window.VV_MP.forceGameStateSync();
+    void mpForceGameStateSync();
   } catch (_) {}
 }
 
@@ -3011,6 +3092,7 @@ function ensureFiveStarter(p) {
 // ────────────────────────────────────────────────────────────────
 async function renderAuction() {
   removeDraftRestartButton();
+  try { hideTeamSidebar(); } catch (_) {}
   const app = $('#app');
   const g = state.game;
   const panelP = MULTIPLAYER ? (mpLocalGamePlayer() || g.players[0]) : g.players[0];
@@ -3166,7 +3248,6 @@ async function runAuctionForCard(card, idx, total) {
       }
       fd.scrollTop = fd.scrollHeight;
     }
-    showTeamSidebar(card);
     syncOpeningBoard();
   }
   paint();
@@ -3239,7 +3320,6 @@ async function runAuctionForCard(card, idx, total) {
     pushFeed(`<b style="color:var(--silver)">${T('auction_no_one')}</b>`);
     state.game.marketPile.push(card); // unsold → available in market phase
   }
-  showTeamSidebar(card);
   // Setup/auction view uses a flat playerCardHtml list in #topbar; refreshTopbar() targets
   // .topbar-bots/.you-card which only exist in the game view. Re-render directly here.
   const auctionTopbar = $('#topbar');
@@ -3318,9 +3398,6 @@ function renderStarting() {
       <div id="starting-result" style="margin-top:1.2rem;"></div>
       ${rollBlock}
     </div>`;
-  if (mpWait) {
-    try { mpClientApplyStartingRollSnapshot(); } catch (_) {}
-  }
 }
 
 async function mpHostRunStartingDice() {
@@ -3354,6 +3431,14 @@ async function mpHostRunStartingDice() {
   g.week = 1; g.coneDay = 1;
   for (const pl of g.players) pl.courtRotation = 0;
   setView('game');
+  // MP: Ersten Saison-Screen inkl. _mpHud sofort zu RTDB pushen, bevor runSeason (Woche‑1‑Popups / _mpMirroredPopup).
+  // Sonst kann der Client noch kurz auf „starting“ hängen oder den ersten Popup-Sync verpassen.
+  try {
+    if (MULTIPLAYER && mpIsMultiplayerHost()) {
+      mpHostAttachHudSnapshot();
+      await mpForceGameStateSync();
+    }
+  } catch (_) {}
   setTimeout(runSeason, speedMs(400));
 }
 
@@ -6572,19 +6657,27 @@ function renderCurrentPhase() {
   }
 }
 
-function render() {
-  renderCurrentPhase();
+/** MP-Nicht-Host: nach Phasen-Zeichnen HUD, Live-Popup, gespiegelte Modals, Startwurf- und Würfel-Sync. */
+function mpClientApplyNonHostUiMirror() {
+  if (!MULTIPLAYER || !state.mpRoom || state.mpRoom.isHost || !state.game) return;
   try {
-    if (MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost && state.view === 'game'
-        && state.game && state.game.phase === 'season') {
+    if (state.view === 'game' && state.game.phase === 'season') {
       mpClientApplyHudSnapshot();
       mpClientEnsureLiveGamePopup();
     }
     mpClientSyncMirroredPopupFromState();
   } catch (_) {}
-  if (MULTIPLAYER && state.mpRoom && !state.mpRoom.isHost && state.view === 'starting' && state.game) {
+  if (state.view === 'starting') {
     try { mpClientApplyStartingRollSnapshot(); } catch (_) {}
   }
+  if (state.game._mpDiceRoll) {
+    try { mpClientApplyDiceRollIfNeeded(); } catch (_) {}
+  }
+}
+
+function render() {
+  renderCurrentPhase();
+  mpClientApplyNonHostUiMirror();
   if (MULTIPLAYER && state.mpRoom && state.mpRoom.isHost && state.game
       && window.VV_MP && typeof window.VV_MP.scheduleGameStateSync === 'function') {
     try { window.VV_MP.scheduleGameStateSync(); } catch (_) {}
